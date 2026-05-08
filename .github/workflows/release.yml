@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select latest Xcode 16.x
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          elif [ -d /Applications/Xcode_16.3.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.3.app
+          else
+            sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort | tail -n1)"
+          fi
+
+      - name: Verify version matches tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "Releasing version $TAG"
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Run unit tests
+        # Integration suites auto-skip via @Suite(.enabled(if:)) when env vars absent.
+        run: swift test
+
+      - name: Compute xcframework checksum
+        id: hash
+        run: |
+          if [ -d Frameworks/spark_frostFFI.xcframework ]; then
+            HASH=$(find Frameworks/spark_frostFFI.xcframework -type f -exec shasum -a 256 {} \; | shasum -a 256 | awk '{print $1}')
+            echo "xcframework_sha256=$HASH" >> "$GITHUB_OUTPUT"
+            echo "xcframework SHA-256: $HASH"
+          fi
+
+      - name: Generate release notes
+        id: notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const fs = require('fs');
+            // Pull from CHANGELOG.md if available
+            try {
+              const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+              const re = new RegExp(`## \\[${tag.replace('v','')}\\][\\s\\S]*?(?=\\n## \\[|$)`);
+              const match = changelog.match(re);
+              if (match) {
+                core.setOutput('body', match[0]);
+                return;
+              }
+            } catch {}
+            core.setOutput('body', `Release ${tag}`);
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: |
+            ${{ steps.notes.outputs.body }}
+
+            ---
+            **xcframework SHA-256:** `${{ steps.hash.outputs.xcframework_sha256 }}`
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true

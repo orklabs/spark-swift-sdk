@@ -1,0 +1,686 @@
+import Foundation
+import CryptoKit
+import GRPCCore
+import SwiftProtobuf
+
+private let initialRootNodeSequence: UInt32 = 0
+private let initialRefundSequence: UInt32 = 2000 // INITIAL_TIMELOCK from JS SDK
+
+extension SparkWallet {
+    /// Generate a one-time deposit address. After sending BTC on-chain, call `claimDeposit(txID:)`.
+    public func getDepositAddress() async throws -> DepositAddress {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+
+        let leafId = UUID().uuidString.lowercased()
+        let keyPair = try signer.deriveLeafSigningKeyPair(leafId)
+
+        var request = Spark_GenerateDepositAddressRequest()
+        request.identityPublicKey = signer.identityPublicKey
+        request.signingPublicKey = keyPair.publicKey
+        request.network = config.networkProto
+        request.leafID = leafId
+        request.hashVariant = .v2
+
+        let response = try await client.generate_deposit_address(
+            request: ClientRequest(message: request, metadata: metadata)
+        )
+
+        let deposit = response.depositAddress
+        return DepositAddress(
+            address: deposit.address,
+            leafId: leafId,
+            userPublicKey: keyPair.publicKey,
+            verifyingKey: Data(deposit.verifyingKey)
+        )
+    }
+
+    /// Claim an on-chain deposit after it has been confirmed.
+    /// Automatically matches the tx outputs against unused deposit addresses.
+    /// - Parameter txID: The on-chain transaction ID (hex string)
+    /// - Parameter vout: The output index (default 0)
+    public func claimDeposit(txID: String, vout: UInt32 = 0) async throws {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+        let networkStr = config.networkString
+
+        // Fetch raw tx from electrs
+        let rawTx = try await fetchRawTransaction(txID: txID)
+
+        // Query unused deposit addresses to find the matching one
+        var queryReq = Spark_QueryUnusedDepositAddressesRequest()
+        queryReq.identityPublicKey = signer.identityPublicKey
+        queryReq.network = config.networkProto
+        let queryResp = try await client.query_unused_deposit_addresses(
+            request: ClientRequest(message: queryReq, metadata: metadata)
+        )
+
+        // Find the deposit address that matches this transaction
+        guard let depositInfo = queryResp.depositAddresses.first(where: { deposit in
+            // Match by checking if the tx pays to this deposit address
+            !deposit.leafID.isEmpty
+        }) else {
+            throw SparkError.invalidResponse("No unused deposit address found. Generate one first with getDepositAddress().")
+        }
+
+        // Use the first unused deposit address (or match by address if multiple)
+        let leafId = depositInfo.leafID
+        let verifyingKey = Data(depositInfo.verifyingPublicKey)
+
+        let signingKey = try signer.deriveLeafSigningKey(leafId)
+        let signingPubKey = try getPublicKeyBytes(privateKeyBytes: signingKey, compressed: true)
+
+        // Create the CPFP root node transaction spending the deposit UTXO
+        // Root node tx uses sequence=0, direct uses DIRECT_TIMELOCK_OFFSET
+        let rootNodeTx = try constructNodeTxPair(
+            parentTx: rawTx, vout: vout,
+            address: depositInfo.depositAddress,
+            sequence: initialRootNodeSequence,
+            directSequence: 50, // DIRECT_TIMELOCK_OFFSET
+            feeSats: sparkDefaultFeeSats
+        )
+
+        // Create initial timelock refund txs
+        // cpfp refund: sequence = 2000, directFromCpfp: sequence = 2050 (2000 + DIRECT_OFFSET)
+        let refundTrio = try constructRefundTxTrio(
+            cpfpNodeTx: rootNodeTx.cpfp.tx,
+            directNodeTx: nil,
+            vout: 0,
+            receivingPubkey: signingPubKey,
+            network: networkStr,
+            sequence: initialRefundSequence,
+            directSequence: initialRefundSequence + 50,
+            feeSats: sparkDefaultFeeSats
+        )
+
+        // Get signing commitments (3: root, cpfpRefund, directFromCpfpRefund)
+        var commitmentsReq = Spark_GetSigningCommitmentsRequest()
+        commitmentsReq.count = 3
+        commitmentsReq.nodeIDCount = 1
+        let commitmentsResp = try await client.get_signing_commitments(
+            request: ClientRequest(message: commitmentsReq, metadata: metadata)
+        )
+        let allCommitments = commitmentsResp.signingCommitments
+
+        // Build signing jobs
+        let rootJob = try FrostSigningHelper.buildSigningJob(
+            leafID: leafId,
+            signingKey: signingKey, verifyingKey: verifyingKey,
+            rawTx: rootNodeTx.cpfp.tx, sighash: rootNodeTx.cpfp.sighash,
+            soCommitments: allCommitments[0].signingNonceCommitments
+        )
+
+        let refundJob = try FrostSigningHelper.buildSigningJob(
+            leafID: leafId,
+            signingKey: signingKey, verifyingKey: verifyingKey,
+            rawTx: refundTrio.cpfpRefund.tx, sighash: refundTrio.cpfpRefund.sighash,
+            soCommitments: allCommitments[1].signingNonceCommitments
+        )
+
+        let directFromCpfpRefundJob = try FrostSigningHelper.buildSigningJob(
+            leafID: leafId,
+            signingKey: signingKey, verifyingKey: verifyingKey,
+            rawTx: refundTrio.directFromCpfpRefund.tx, sighash: refundTrio.directFromCpfpRefund.sighash,
+            soCommitments: allCommitments[2].signingNonceCommitments
+        )
+
+        // Convert txid hex to bytes (reversed for protobuf)
+        let txidBytes = Data(Data(hexString: txID)!.reversed())
+
+        var utxo = Spark_UTXO()
+        utxo.rawTx = rawTx
+        utxo.vout = vout
+        utxo.network = config.networkProto
+        utxo.txid = txidBytes
+
+        var finalizeReq = Spark_FinalizeDepositTreeCreationRequest()
+        finalizeReq.identityPublicKey = signer.identityPublicKey
+        finalizeReq.onChainUtxo = utxo
+        finalizeReq.rootTxSigningJob = rootJob
+        finalizeReq.refundTxSigningJob = refundJob
+        finalizeReq.directFromCpfpRefundTxSigningJob = directFromCpfpRefundJob
+
+        let finalizeResp = try await client.finalize_deposit_tree_creation(
+            request: ClientRequest(message: finalizeReq, metadata: metadata)
+        )
+
+        _ = finalizeResp.rootNode
+    }
+
+    /// Generate a static (reusable) deposit address.
+    public func getStaticDepositAddress() async throws -> StaticDepositAddress {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+
+        let staticKey = try signer.deriveStaticDepositKey(0)
+        let staticPubKey = try getPublicKeyBytes(privateKeyBytes: staticKey, compressed: true)
+
+        var request = Spark_GenerateStaticDepositAddressRequest()
+        request.signingPublicKey = staticPubKey
+        request.identityPublicKey = signer.identityPublicKey
+        request.network = config.networkProto
+        request.hashVariant = .v2
+
+        let response = try await client.generate_static_deposit_address(
+            request: ClientRequest(message: request, metadata: metadata)
+        )
+
+        let deposit = response.depositAddress
+        return StaticDepositAddress(
+            address: deposit.address,
+            verifyingKey: Data(deposit.verifyingKey)
+        )
+    }
+
+    /// Claim a static deposit via the SSP.
+    /// - Parameters:
+    ///   - transactionId: The on-chain tx id
+    ///   - outputIndex: The output index (vout)
+    /// Returns the Spark transfer ID for the claimed deposit.
+    @discardableResult
+    public func claimStaticDeposit(transactionId: String, outputIndex: UInt32 = 0) async throws -> String {
+        // Step 1: Get quote from SSP
+        let quoteResponse = try await sspClient.executeRaw(
+            query: GraphQLQueries.staticDepositQuote,
+            variables: [
+                "transaction_id": transactionId,
+                "output_index": Int(outputIndex),
+                "network": config.networkGraphQL,
+            ] as [String: any Sendable]
+        )
+
+        guard let quoteData = quoteResponse["static_deposit_quote"] as? [String: Any],
+              let creditAmountSats = quoteData["credit_amount_sats"] as? Int64,
+              let quoteSignature = quoteData["signature"] as? String else {
+            throw SparkError.invalidResponse("Invalid static deposit quote response")
+        }
+
+        // Step 2: Build signing payload
+        let staticSecretKey = try signer.deriveStaticDepositKey(0)
+        let depositSecretKeyHex = staticSecretKey.hexString
+
+        // Payload: "claim_static_deposit" + network(lowercase) + txid + outputIndex(LE u32) + requestType(u8: 0=Fixed) + creditAmountSats(LE u64) + sspSignature
+        var payload = Data("claim_static_deposit".utf8)
+        payload.append(Data(config.networkGraphQL.lowercased().utf8))
+        payload.append(Data(transactionId.utf8))
+        var outputIndexLE = outputIndex.littleEndian
+        payload.append(Data(bytes: &outputIndexLE, count: 4))
+        payload.append(UInt8(0)) // requestType = Fixed
+        var creditLE = UInt64(creditAmountSats).littleEndian
+        payload.append(Data(bytes: &creditLE, count: 8))
+        let sigBytes = Data(hexString: quoteSignature) ?? Data(quoteSignature.utf8)
+        payload.append(sigBytes)
+
+        let payloadHash = Data(CryptoKit.SHA256.hash(data: payload))
+        let signature = try signer.signWithIdentityKey(payloadHash)
+
+        // Step 3: Call SSP to claim
+        let claimResponse = try await sspClient.executeRaw(
+            query: GraphQLMutations.claimStaticDeposit,
+            variables: [
+                "transaction_id": transactionId,
+                "output_index": Int(outputIndex),
+                "network": config.networkGraphQL,
+                "request_type": "FIXED_AMOUNT",
+                "credit_amount_sats": creditAmountSats,
+                "deposit_secret_key": depositSecretKeyHex,
+                "signature": signature.hexString,
+                "quote_signature": quoteSignature,
+            ] as [String: any Sendable]
+        )
+
+        guard let claimData = claimResponse["claim_static_deposit"] as? [String: Any],
+              let transferId = claimData["transfer_id"] as? String else {
+            throw SparkError.invalidResponse("No transfer_id in claim response")
+        }
+        return transferId
+    }
+
+    /// Query unused (unclaimed) deposit addresses.
+    public func queryUnusedDepositAddresses(limit: Int = 100, offset: Int = 0) async throws -> [UnusedDepositAddress] {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+
+        var request = Spark_QueryUnusedDepositAddressesRequest()
+        request.identityPublicKey = signer.identityPublicKey
+        request.network = config.networkProto
+        request.limit = Int64(limit)
+        request.offset = Int64(offset)
+
+        let response = try await client.query_unused_deposit_addresses(
+            request: ClientRequest(message: request, metadata: metadata)
+        )
+
+        return response.depositAddresses.map { deposit in
+            UnusedDepositAddress(
+                address: deposit.depositAddress,
+                leafId: deposit.leafID,
+                userSigningPublicKey: Data(deposit.userSigningPublicKey),
+                verifyingPublicKey: Data(deposit.verifyingPublicKey)
+            )
+        }
+    }
+
+    /// Get UTXOs sent to a deposit address. Calls the Spark coordinator (not mempool).
+    /// - Parameters:
+    ///   - address: The deposit address to check
+    ///   - excludeClaimed: If true, only returns unclaimed UTXOs (default true)
+    /// - Returns: Array of UTXOs at this address
+    public func getUtxosForDepositAddress(
+        address: String,
+        excludeClaimed: Bool = true
+    ) async throws -> [DepositUtxo] {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+
+        var request = Spark_GetUtxosForAddressRequest()
+        request.address = address
+        request.network = config.networkProto
+        request.excludeClaimed = excludeClaimed
+
+        let response = try await client.get_utxos_for_address(
+            request: ClientRequest(message: request, metadata: metadata)
+        )
+
+        return response.utxos.map { utxo in
+            let txidHex = utxo.txid.hexString
+            return DepositUtxo(txid: txidHex, vout: utxo.vout)
+        }
+    }
+
+    /// Query all static deposit addresses for this wallet.
+    public func queryStaticDepositAddresses() async throws -> [StaticDepositAddress] {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+
+        var request = Spark_QueryStaticDepositAddressesRequest()
+        request.identityPublicKey = signer.identityPublicKey
+        request.network = config.networkProto
+        request.hashVariant = .v2
+
+        let response = try await client.query_static_deposit_addresses(
+            request: ClientRequest(message: request, metadata: metadata)
+        )
+
+        return response.depositAddresses.map { deposit in
+            StaticDepositAddress(
+                address: deposit.depositAddress,
+                verifyingKey: Data(deposit.verifyingPublicKey)
+            )
+        }
+    }
+
+    /// Claim a static deposit, but only if the fee is at or below `maxFee` sats.
+    /// Returns nil if the fee exceeds the max.
+    @discardableResult
+    public func claimStaticDepositWithMaxFee(
+        transactionId: String,
+        maxFee: Int64,
+        outputIndex: UInt32 = 0
+    ) async throws -> String? {
+        // Get quote first
+        let quote = try await getDepositFeeEstimate(transactionId: transactionId, outputIndex: outputIndex)
+
+        // Fetch the raw tx to determine the output value
+        let rawTx = try await fetchRawTransaction(txID: transactionId)
+        let output = Self.parseTxOutput(rawTx, vout: outputIndex)
+        let totalAmount = Int64(output.value)
+        let fee = totalAmount - quote.creditAmountSats
+
+        guard fee <= maxFee else {
+            return nil
+        }
+
+        return try await claimStaticDeposit(transactionId: transactionId, outputIndex: outputIndex)
+    }
+
+    /// Get fee quote for claiming a static deposit (how much will be credited after fees).
+    public func getDepositFeeEstimate(transactionId: String, outputIndex: UInt32 = 0) async throws -> DepositFeeEstimate {
+        let response = try await sspClient.executeRaw(
+            query: GraphQLQueries.staticDepositQuote,
+            variables: [
+                "transaction_id": transactionId,
+                "output_index": Int(outputIndex),
+                "network": config.networkGraphQL,
+            ] as [String: any Sendable]
+        )
+
+        guard let quoteData = response["static_deposit_quote"] as? [String: Any],
+              let creditAmountSats = quoteData["credit_amount_sats"] as? Int64,
+              let signature = quoteData["signature"] as? String else {
+            throw SparkError.invalidResponse("Invalid static deposit quote response")
+        }
+
+        return DepositFeeEstimate(creditAmountSats: creditAmountSats, quoteSignature: signature)
+    }
+
+    /// Refund a static deposit back on-chain. Returns the signed transaction hex.
+    /// - Parameters:
+    ///   - depositTransactionId: The on-chain tx id of the deposit
+    ///   - outputIndex: The output index (vout)
+    ///   - destinationAddress: Bitcoin address to send refund to
+    ///   - satsPerVbyte: Fee rate (max 150)
+    /// - Returns: Signed transaction hex ready for broadcast
+    public func refundStaticDeposit(
+        depositTransactionId: String,
+        outputIndex: UInt32 = 0,
+        destinationAddress: String,
+        satsPerVbyte: UInt64
+    ) async throws -> String {
+        guard satsPerVbyte <= 150 else {
+            throw SparkError.invalidResponse("satsPerVbyte must be <= 150")
+        }
+
+        // Estimated vbytes for 1-input 1-output P2TR tx
+        let estimatedVbytes: UInt64 = 194
+        let fee = satsPerVbyte * estimatedVbytes
+        guard fee >= 194 else {
+            throw SparkError.invalidResponse("Fee must be at least 194 sats")
+        }
+
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+
+        // Fetch the deposit tx to know the output value
+        let rawDepositTx = try await fetchRawTransaction(txID: depositTransactionId)
+        let depositOutput = Self.parseTxOutput(rawDepositTx, vout: outputIndex)
+        let totalAmount = depositOutput.value
+        let creditAmountSats = Int64(totalAmount) - Int64(fee)
+        guard creditAmountSats > 0 else {
+            throw SparkError.invalidResponse("Fee too large, credit amount must be > 0")
+        }
+
+        // Build spend tx: 1 input (deposit utxo), 1 output (destination)
+        let spendTx = try Self.constructSpendTx(
+            depositTxId: depositTransactionId,
+            outputIndex: outputIndex,
+            destinationAddress: destinationAddress,
+            amountSats: UInt64(creditAmountSats),
+            network: config.networkString
+        )
+
+        // Compute sighash for the spend tx
+        let sighash = try computeMultiInputSighashUniffi(
+            tx: spendTx,
+            inputIndex: 0,
+            prevOutScripts: [depositOutput.script],
+            prevOutValues: [depositOutput.value]
+        )
+
+        // Generate nonce commitment
+        let staticKey = try signer.deriveStaticDepositKey(0)
+        let staticPubKey = try getPublicKeyBytes(privateKeyBytes: staticKey, compressed: true)
+        let networkStr = config.networkString.lowercased()
+
+        // Build signing payload for user signature
+        var payload = Data("claim_static_deposit".utf8)
+        payload.append(Data(networkStr.utf8))
+        payload.append(Data(depositTransactionId.utf8))
+        var outputIndexLE = outputIndex.littleEndian
+        payload.append(Data(bytes: &outputIndexLE, count: 4))
+        payload.append(UInt8(2)) // requestType = Refund
+        var creditLE = UInt64(creditAmountSats).littleEndian
+        payload.append(Data(bytes: &creditLE, count: 8))
+        payload.append(Data(sighash.hexString.utf8)) // sighash as hex string
+        let payloadHash = Data(CryptoKit.SHA256.hash(data: payload))
+        let userSignature = try signer.signWithIdentityKey(payloadHash)
+
+        // Create nonce for FROST signing
+        let keyPackage = KeyPackage(secretKey: staticKey, publicKey: staticPubKey, verifyingKey: staticPubKey)
+        let nonceResult = try frostNonce(keyPackage: keyPackage)
+
+        // Build signing job
+        var signingJob = Spark_SigningJob()
+        signingJob.signingPublicKey = staticPubKey
+        signingJob.rawTx = spendTx
+        signingJob.signingNonceCommitment = Common_SigningCommitment.with {
+            $0.hiding = nonceResult.commitment.hiding
+            $0.binding = nonceResult.commitment.binding
+        }
+
+        // UTXO (txid in internal byte order)
+        let txidBytes = Data(Data(hexString: depositTransactionId)!.reversed())
+        var utxo = Spark_UTXO()
+        utxo.txid = txidBytes
+        utxo.vout = outputIndex
+        utxo.network = config.networkProto
+
+        // Call gRPC
+        var refundReq = Spark_InitiateStaticDepositUtxoRefundRequest()
+        refundReq.onChainUtxo = utxo
+        refundReq.refundTxSigningJob = signingJob
+        refundReq.userSignature = userSignature
+
+        let refundResp = try await client.initiate_static_deposit_utxo_refund(
+            request: ClientRequest(message: refundReq, metadata: metadata)
+        )
+
+        let signingResult = refundResp.refundTxSigningResult
+        let verifyingKey = Data(refundResp.depositAddress.verifyingPublicKey)
+
+        // Sign FROST and aggregate
+        let realKeyPackage = KeyPackage(secretKey: staticKey, publicKey: staticPubKey, verifyingKey: verifyingKey)
+        var nativeCommitments: [String: SigningCommitment] = [:]
+        for (soID, protoCommitment) in signingResult.signingNonceCommitments {
+            nativeCommitments[soID] = SigningCommitment(
+                hiding: protoCommitment.hiding,
+                binding: protoCommitment.binding
+            )
+        }
+
+        let selfSignature = try signFrost(
+            msg: sighash,
+            keyPackage: realKeyPackage,
+            nonce: nonceResult.nonce,
+            selfCommitment: nonceResult.commitment,
+            statechainCommitments: nativeCommitments,
+            adaptorPublicKey: nil
+        )
+
+        let aggregatedSig = try aggregateFrost(
+            msg: sighash,
+            statechainCommitments: nativeCommitments,
+            selfCommitment: nonceResult.commitment,
+            statechainSignatures: signingResult.signatureShares,
+            selfSignature: selfSignature,
+            statechainPublicKeys: signingResult.publicKeys,
+            selfPublicKey: staticPubKey,
+            verifyingKey: verifyingKey,
+            adaptorPublicKey: nil
+        )
+
+        // Add witness to spend tx
+        let signedTx = Self.addWitnessToTx(spendTx, witness: aggregatedSig)
+        return signedTx.hexString
+    }
+
+    /// Broadcast a raw transaction hex via mempool/electrs API
+    public func broadcastTransaction(_ txHex: String) async throws -> String {
+        let baseURL: String
+        switch config.network {
+        case .mainnet:
+            baseURL = "https://mempool.space/api"
+        case .regtest:
+            baseURL = "http://localhost:3000"
+        }
+
+        let url = URL(string: "\(baseURL)/tx")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data(txHex.utf8)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw SparkError.invalidResponse("Failed to broadcast tx: \(body)")
+        }
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Refund a static deposit and broadcast it. Returns the txid.
+    public func refundAndBroadcastStaticDeposit(
+        depositTransactionId: String,
+        outputIndex: UInt32 = 0,
+        destinationAddress: String,
+        satsPerVbyte: UInt64
+    ) async throws -> String {
+        let txHex = try await refundStaticDeposit(
+            depositTransactionId: depositTransactionId,
+            outputIndex: outputIndex,
+            destinationAddress: destinationAddress,
+            satsPerVbyte: satsPerVbyte
+        )
+        return try await broadcastTransaction(txHex)
+    }
+
+    // MARK: - Internal helpers
+
+    /// Build a simple 1-input 1-output spend transaction (version 3, no witness)
+    static func constructSpendTx(
+        depositTxId: String,
+        outputIndex: UInt32,
+        destinationAddress: String,
+        amountSats: UInt64,
+        network: String
+    ) throws -> Data {
+        var tx = Data()
+
+        // Version 3
+        var version: UInt32 = 3
+        tx.append(Data(bytes: &version, count: 4))
+
+        // Segwit marker + flag
+        tx.append(contentsOf: [0x00, 0x01])
+
+        // 1 input
+        tx.append(UInt8(1))
+
+        // Input: txid (reversed) + vout + empty scriptSig + sequence
+        let txidBytes = Data(Data(hexString: depositTxId)!.reversed())
+        tx.append(txidBytes)
+        var voutLE = outputIndex.littleEndian
+        tx.append(Data(bytes: &voutLE, count: 4))
+        tx.append(UInt8(0)) // scriptSig length = 0
+        var seq: UInt32 = 0xFFFFFFFF
+        tx.append(Data(bytes: &seq, count: 4))
+
+        // 1 output
+        tx.append(UInt8(1))
+
+        // Output value
+        var amountLE = amountSats.littleEndian
+        tx.append(Data(bytes: &amountLE, count: 8))
+
+        // Output script - decode bech32/bech32m address to scriptPubKey
+        let scriptPubKey = try decodeAddressToScript(destinationAddress, network: network)
+        tx.append(encodeVarInt(UInt64(scriptPubKey.count)))
+        tx.append(scriptPubKey)
+
+        // Witness placeholder (empty for now, will be filled after signing)
+        tx.append(UInt8(0)) // 0 witness items
+
+        // Locktime
+        var locktime: UInt32 = 0
+        tx.append(Data(bytes: &locktime, count: 4))
+
+        return tx
+    }
+
+    /// Decode a Bitcoin address (bech32/bech32m) to its scriptPubKey
+    static func decodeAddressToScript(_ address: String, network: String) throws -> Data {
+        // Try bech32m first (P2TR), then bech32 (P2WPKH/P2WSH)
+        let lower = address.lowercased()
+
+        let expectedPrefix: String
+        switch network {
+        case "mainnet": expectedPrefix = "bc"
+        case "regtest": expectedPrefix = "bcrt"
+        default: expectedPrefix = "tb"
+        }
+
+        guard lower.hasPrefix(expectedPrefix) else {
+            throw SparkError.invalidResponse("Address doesn't match network")
+        }
+
+        let (witnessVersion, programData) = try Bech32m.decode(address)
+
+        var script = Data()
+        if witnessVersion == 0 {
+            script.append(UInt8(0x00)) // OP_0
+        } else {
+            script.append(UInt8(0x50 + witnessVersion)) // OP_1..OP_16
+        }
+        script.append(UInt8(programData.count))
+        script.append(programData)
+        return script
+    }
+
+    /// Add a schnorr witness (single signature) to a 1-input segwit tx
+    static func addWitnessToTx(_ rawTx: Data, witness: Data) -> Data {
+        // Find witness section: after outputs, before locktime
+        var offset = 4 // version
+        let hasWitness = rawTx.count > 5 && rawTx[offset] == 0x00 && rawTx[offset + 1] == 0x01
+        if hasWitness { offset += 2 }
+
+        // Skip inputs
+        let (inputCount, inputCountLen) = readVarInt(rawTx, at: offset)
+        offset += inputCountLen
+        for _ in 0..<inputCount {
+            offset += 36
+            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
+            offset += scriptLenLen + Int(scriptLen) + 4
+        }
+
+        // Skip outputs
+        let (outputCount, outputCountLen) = readVarInt(rawTx, at: offset)
+        offset += outputCountLen
+        for _ in 0..<outputCount {
+            offset += 8
+            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
+            offset += scriptLenLen + Int(scriptLen)
+        }
+
+        // Build new tx with witness replaced
+        var result = Data()
+        // version + marker + flag
+        result.append(rawTx[0..<4])
+        result.append(contentsOf: [0x00, 0x01])
+
+        // inputs + outputs (from after marker/flag or version to witness section)
+        let inputOutputStart = hasWitness ? 6 : 4
+        result.append(rawTx[inputOutputStart..<offset])
+
+        // Witness: 1 item (schnorr signature)
+        result.append(UInt8(1)) // witness item count
+        result.append(encodeVarInt(UInt64(witness.count)))
+        result.append(witness)
+
+        // Locktime (last 4 bytes)
+        result.append(rawTx[(rawTx.count - 4)...])
+
+        return result
+    }
+
+    // MARK: - Internal helpers
+
+    /// Fetch raw transaction bytes from electrs/blockstream API
+    func fetchRawTransaction(txID: String) async throws -> Data {
+        let baseURL: String
+        switch config.network {
+        case .mainnet:
+            baseURL = "https://mempool.space/api"
+        case .regtest:
+            baseURL = "http://localhost:3000"
+        }
+
+        let url = URL(string: "\(baseURL)/tx/\(txID)/hex")!
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw SparkError.invalidResponse("Failed to fetch raw transaction \(txID)")
+        }
+        let hexString = String(data: data, encoding: .utf8)!.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let rawTx = Data(hexString: hexString) else {
+            throw SparkError.invalidResponse("Invalid hex in raw transaction response")
+        }
+        return rawTx
+    }
+}

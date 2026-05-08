@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+/.build
+/Packages
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Secrets — DO NOT COMMIT
+.env
+.env.*
+!.env.example
+.netrc
+secrets/
+*.pem
+*.key
+
+# Test artifacts
+TestResults/
+*.xcresult
+coverage/
+*.profdata
+*.profraw
+
+# DocC build output
+docs/
+
+# Tooling
+.vscode/
+.idea/

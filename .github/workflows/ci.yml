@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & Unit Test (macOS)
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode 16.x
+        # Xcode 16.4 ships Swift 6.1 which matches the toolchain we develop against.
+        # If the runner image stops including 16.4, fall back to whatever 16.x is present.
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          elif [ -d /Applications/Xcode_16.3.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.3.app
+          else
+            sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort | tail -n1)"
+          fi
+          xcode-select -p
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build (debug)
+        run: swift build -v
+
+      - name: Build (release)
+        run: swift build -c release -v
+
+      - name: Run unit tests
+        # Integration suites are auto-skipped via @Suite(.enabled(if:)) when
+        # SPARK_TEST_WALLET_*_MNEMONIC env vars are absent (see TestConfig.swift).
+        run: swift test -v
+
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    timeout-minutes: 5
+    # SwiftLint runs in non-strict mode for the initial release. Warnings are
+    # surfaced in the Actions log but do not fail the build. Tighten this once
+    # the existing surface has been cleaned up.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Run SwiftLint
+        run: swiftlint --reporter github-actions-logging

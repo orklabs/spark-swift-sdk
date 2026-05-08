@@ -1,0 +1,9 @@
+{
+  "object" : [
+    {
+      "mirror" : "https://github.com/grpc/grpc-swift-2.git",
+      "original" : "https://github.com/grpc/grpc-swift.git"
+    }
+  ],
+  "version" : 1
+}
