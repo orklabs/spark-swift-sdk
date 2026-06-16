@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time to file a bug report.
 
-        > ⚠️ **Security issues should NOT be filed here.** Please follow [SECURITY.md](https://github.com/p-i-g-g-y/spark-swift-sdk/blob/main/SECURITY.md) for private disclosure.
+        > ⚠️ **Security issues should NOT be filed here.** Please follow [SECURITY.md](https://github.com/orklabs/spark-swift-sdk/blob/main/SECURITY.md) for private disclosure.
 
   - type: textarea
     id: summary

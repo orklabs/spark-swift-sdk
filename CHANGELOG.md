@@ -44,5 +44,5 @@ Initial public release.
 - FROST threshold signing via `spark_frostFFI.xcframework` (Rust UniFFI).
 - Test suite: BIP-39 vectors, key derivation, token validation, full integration coverage.
 
-[Unreleased]: https://github.com/p-i-g-g-y/spark-swift-sdk/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/p-i-g-g-y/spark-swift-sdk/releases/tag/v0.1.0
+[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/orklabs/spark-swift-sdk/releases/tag/v0.1.0
