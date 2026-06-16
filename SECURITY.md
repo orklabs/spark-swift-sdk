@@ -11,7 +11,7 @@ Please report security issues privately by either:
 
 1. **Email** — `gm@orklabs.com`
 2. **GitHub Security Advisories** — use the
-   [private vulnerability reporting](https://github.com/p-i-g-g-y/spark-swift-sdk/security/advisories/new)
+   [private vulnerability reporting](https://github.com/orklabs/spark-swift-sdk/security/advisories/new)
    form on this repository.
 
 Include as much of the following as possible:

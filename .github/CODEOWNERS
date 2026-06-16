@@ -2,21 +2,21 @@
 # Replace placeholders with real GitHub handles before publishing.
 
 # Default owners for everything
-*                                   @p-i-g-g-y/maintainers
+*                                   @orklabs/maintainers
 
 # Cryptography & FROST signing
-/Sources/SparkSDK/Frost/            @p-i-g-g-y/maintainers
-/Sources/SparkSDK/Services/FrostSigningHelper.swift   @p-i-g-g-y/maintainers
-/Sources/SparkSDK/Services/KeyTweakHelper.swift       @p-i-g-g-y/maintainers
-/Sources/SparkSDK/KeyDerivation.swift @p-i-g-g-y/maintainers
-/Sources/SparkSDK/SparkSigner.swift   @p-i-g-g-y/maintainers
-/Frameworks/                          @p-i-g-g-y/maintainers
+/Sources/SparkSDK/Frost/            @orklabs/maintainers
+/Sources/SparkSDK/Services/FrostSigningHelper.swift   @orklabs/maintainers
+/Sources/SparkSDK/Services/KeyTweakHelper.swift       @orklabs/maintainers
+/Sources/SparkSDK/KeyDerivation.swift @orklabs/maintainers
+/Sources/SparkSDK/SparkSigner.swift   @orklabs/maintainers
+/Frameworks/                          @orklabs/maintainers
 
 # Generated code — review only that the regen script produced the diff
-/Sources/SparkSDK/Proto/            @p-i-g-g-y/maintainers
+/Sources/SparkSDK/Proto/            @orklabs/maintainers
 
 # CI / build / governance
-/.github/                           @p-i-g-g-y/maintainers
-/scripts/                           @p-i-g-g-y/maintainers
-/Package.swift                      @p-i-g-g-y/maintainers
-/SECURITY.md                        @p-i-g-g-y/maintainers
+/.github/                           @orklabs/maintainers
+/scripts/                           @orklabs/maintainers
+/Package.swift                      @orklabs/maintainers
+/SECURITY.md                        @orklabs/maintainers

@@ -6,12 +6,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/p-i-g-g-y/spark-swift-sdk/actions/workflows/ci.yml"><img src="https://github.com/p-i-g-g-y/spark-swift-sdk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/orklabs/spark-swift-sdk/actions/workflows/ci.yml"><img src="https://github.com/orklabs/spark-swift-sdk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6.0-orange.svg" alt="Swift 6.0"></a>
-  <a href="https://swiftpackageindex.com/p-i-g-g-y/spark-swift-sdk"><img src="https://img.shields.io/badge/SPM-compatible-brightgreen.svg" alt="SPM"></a>
+  <a href="https://swiftpackageindex.com/orklabs/spark-swift-sdk"><img src="https://img.shields.io/badge/SPM-compatible-brightgreen.svg" alt="SPM"></a>
   <img src="https://img.shields.io/badge/platforms-iOS%2018%20%7C%20macOS%2015-lightgrey.svg" alt="Platforms">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <a href="https://github.com/p-i-g-g-y/spark-swift-sdk/releases"><img src="https://img.shields.io/github/v/release/p-i-g-g-y/spark-swift-sdk?include_prereleases&sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/orklabs/spark-swift-sdk/releases"><img src="https://img.shields.io/github/v/release/orklabs/spark-swift-sdk?include_prereleases&sort=semver" alt="Latest release"></a>
 </p>
 
 > ⚠️ **Self-custody warning.** SparkSDK manages cryptographic keys that control real Bitcoin.
@@ -76,14 +76,14 @@
 In Xcode: `File ▸ Add Package Dependencies…` and paste:
 
 ```
-https://github.com/p-i-g-g-y/spark-swift-sdk.git
+https://github.com/orklabs/spark-swift-sdk.git
 ```
 
 Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/p-i-g-g-y/spark-swift-sdk.git", from: "0.1.0"),
+    .package(url: "https://github.com/orklabs/spark-swift-sdk.git", from: "0.1.0"),
 ],
 targets: [
     .target(
@@ -342,4 +342,4 @@ xcframework rebuild, coding standards, and the release process. Please read the
 
 ## License
 
-[MIT](LICENSE) © Piggy
+[MIT](LICENSE) © OrkLabs

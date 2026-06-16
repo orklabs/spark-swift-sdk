@@ -26,7 +26,7 @@ By participating in this project you agree to abide by our
 ## Quick Start
 
 ```bash
-git clone https://github.com/p-i-g-g-y/spark-swift-sdk.git
+git clone https://github.com/orklabs/spark-swift-sdk.git
 cd spark-swift-sdk
 cp .env.example .env       # fill in funded test mnemonics for integration tests
 swift build
