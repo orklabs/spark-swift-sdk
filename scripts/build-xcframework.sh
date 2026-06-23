@@ -103,64 +103,44 @@ lipo -create "$LIB_SIM_ARM" "$LIB_SIM_X86" -output "$STAGING/libspark_frost_sim.
 echo "==> Creating fat macOS library..."
 lipo -create "$LIB_MAC_ARM" "$LIB_MAC_X86" -output "$STAGING/libspark_frost_macos.a"
 
-# ── 7. Prepare framework slices ────────────────────────────────────
-# We wrap each static library in a .framework directory structure
-# to match the existing xcframework layout.
+# ── 7. Prepare static-library slices ───────────────────────────────
+# spark_frost is a Rust *static* library (libspark_frost.a), so we ship a
+# static-library xcframework — NOT a .framework wrapper. A static archive
+# wrapped as a .framework gets embedded into the app's Frameworks/ folder
+# and is then validated as if it were a dynamic framework: its frozen
+# MinimumOSVersion can't be re-targeted by Xcode, so raising the app's
+# deployment target above it fails App Store validation (ITMS-90208).
+# A static-library xcframework is linked into the app binary and never
+# embedded, so that check never applies and any app deployment target works.
 
-create_framework() {
-    local dir="$1"
-    local lib="$2"
-    local min_os="$3"
-    local fwk="$dir/spark_frostFFI.framework"
+# Shared headers dir + a (non-framework) module map so `import spark_frostFFI`
+# resolves. Headers are stable and bootstrapped from the current xcframework.
+HEADERS="$STAGING/Headers"
+mkdir -p "$HEADERS"
+cp "$XCFW_DIR/ios-arm64/Headers/spark_frostFFI.h"          "$HEADERS/"
+cp "$XCFW_DIR/ios-arm64/Headers/spark_frostFFI-umbrella.h" "$HEADERS/"
+cat > "$HEADERS/module.modulemap" << 'MODMAP'
+module spark_frostFFI {
+  umbrella header "spark_frostFFI-umbrella.h"
 
-    mkdir -p "$fwk/Headers" "$fwk/Modules"
-    cp "$lib" "$fwk/spark_frostFFI"
-
-    # Copy headers from existing xcframework (or from Spark repo if available)
-    cp "$XCFW_DIR/ios-arm64/spark_frostFFI.framework/Headers/"* "$fwk/Headers/"
-    cp "$XCFW_DIR/ios-arm64/spark_frostFFI.framework/Modules/module.modulemap" "$fwk/Modules/"
-
-    # Create Info.plist
-    cat > "$fwk/Info.plist" << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
-	<key>CFBundleExecutable</key>
-	<string>spark_frostFFI</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.spark.frostFFI</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>spark_frostFFI</string>
-	<key>CFBundlePackageType</key>
-	<string>FMWK</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
-	<key>MinimumOSVersion</key>
-	<string>${min_os}</string>
-</dict>
-</plist>
-PLIST
+  export *
+  module * { export * }
 }
+MODMAP
 
-echo "==> Packaging framework slices..."
-create_framework "$STAGING/ios-arm64"              "$LIB_IOS"                       "$MIN_IOS"
-create_framework "$STAGING/ios-arm64_x86_64-sim"   "$STAGING/libspark_frost_sim.a"  "$MIN_IOS"
-create_framework "$STAGING/macos-arm64_x86_64"     "$STAGING/libspark_frost_macos.a" "$MIN_MACOS"
+# Each slice needs the archive under a uniform name in its own directory.
+mkdir -p "$STAGING/ios-arm64" "$STAGING/ios-sim" "$STAGING/macos"
+cp "$LIB_IOS"                        "$STAGING/ios-arm64/libspark_frostFFI.a"
+cp "$STAGING/libspark_frost_sim.a"   "$STAGING/ios-sim/libspark_frostFFI.a"
+cp "$STAGING/libspark_frost_macos.a" "$STAGING/macos/libspark_frostFFI.a"
 
 # ── 8. Create xcframework ──────────────────────────────────────────
-echo "==> Creating xcframework..."
+echo "==> Creating static-library xcframework..."
 rm -rf "$STAGING/spark_frostFFI.xcframework"
 xcodebuild -create-xcframework \
-    -framework "$STAGING/ios-arm64/spark_frostFFI.framework" \
-    -framework "$STAGING/ios-arm64_x86_64-sim/spark_frostFFI.framework" \
-    -framework "$STAGING/macos-arm64_x86_64/spark_frostFFI.framework" \
+    -library "$STAGING/ios-arm64/libspark_frostFFI.a" -headers "$HEADERS" \
+    -library "$STAGING/ios-sim/libspark_frostFFI.a"   -headers "$HEADERS" \
+    -library "$STAGING/macos/libspark_frostFFI.a"     -headers "$HEADERS" \
     -output "$STAGING/spark_frostFFI.xcframework"
 
 # ── 9. Replace existing xcframework ────────────────────────────────
@@ -170,9 +150,11 @@ mv "$STAGING/spark_frostFFI.xcframework" "$XCFW_DIR"
 
 # ── 10. Verify ──────────────────────────────────────────────────────
 echo ""
-echo "==> Verifying minos in built binary..."
-otool -l "$XCFW_DIR/ios-arm64/spark_frostFFI.framework/spark_frostFFI" 2>/dev/null \
-    | grep -A 3 'LC_BUILD_VERSION' | head -8
+echo "==> Verifying static-library xcframework..."
+LIB="$XCFW_DIR/ios-arm64/libspark_frostFFI.a"
+file "$LIB"
+echo "    minos (must be <= the consuming app's deployment target):"
+otool -l "$LIB" 2>/dev/null | grep -m1 -A2 'LC_BUILD_VERSION' | grep -E 'platform|minos'
 
 echo ""
 echo "==> Done! xcframework rebuilt at:"

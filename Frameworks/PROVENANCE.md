@@ -29,6 +29,14 @@ The bundled xcframework contains three slices:
 | `ios-arm64_x86_64-simulator`    | `aarch64-apple-ios-sim`, `x86_64-apple-ios`             | iOS 18.0 simulator |
 | `macos-arm64_x86_64`            | `aarch64-apple-darwin`, `x86_64-apple-darwin`           | macOS 15.0 |
 
+Each slice is a **static library** (`libspark_frostFFI.a`) plus a `Headers/`
+directory (the UniFFI-generated C header and a module map). It is packaged as a
+static-library xcframework — *not* a `.framework` wrapper — so consumers link it
+into their app binary rather than embedding it under `Frameworks/`. Embedding a
+static archive wrapped as a framework triggers App Store validation error
+ITMS-90208 once the app's deployment target is raised above the archive's frozen
+`MinimumOSVersion`; a linked static library has no such constraint.
+
 ## Reproducible build
 
 ```bash
@@ -41,9 +49,9 @@ git -C /tmp/spark checkout <UPSTREAM_COMMIT_SHA>
 
 # 3. Compare checksums (should match the table below)
 shasum -a 256 \
-  Frameworks/spark_frostFFI.xcframework/ios-arm64/spark_frostFFI.framework/spark_frostFFI \
-  Frameworks/spark_frostFFI.xcframework/ios-arm64_x86_64-simulator/spark_frostFFI.framework/spark_frostFFI \
-  Frameworks/spark_frostFFI.xcframework/macos-arm64_x86_64/spark_frostFFI.framework/spark_frostFFI
+  Frameworks/spark_frostFFI.xcframework/ios-arm64/libspark_frostFFI.a \
+  Frameworks/spark_frostFFI.xcframework/ios-arm64_x86_64-simulator/libspark_frostFFI.a \
+  Frameworks/spark_frostFFI.xcframework/macos-arm64_x86_64/libspark_frostFFI.a
 ```
 
 ## Checksums (SHA-256)
@@ -53,19 +61,16 @@ They are recomputed and verified by the `release.yml` workflow on every tagged r
 
 | Path | SHA-256 |
 |---|---|
-| `Info.plist` | `59125729565d9c90813027cc6dd5b4e2d0e6482a0e01e55f0daea9e128aa5fa9` |
-| `ios-arm64/spark_frostFFI.framework/Info.plist` | `7cd5ead5c2def54353f6b64dd0e16fd95eb0bbf279ff7c097a46bccd4a7a183d` |
-| `ios-arm64/spark_frostFFI.framework/spark_frostFFI` | `4cbe90ae7c4c68c881a4eb88e070e91232c55072ea30e65a55b21d57404b38a0` |
-| `ios-arm64_x86_64-simulator/spark_frostFFI.framework/Info.plist` | `7cd5ead5c2def54353f6b64dd0e16fd95eb0bbf279ff7c097a46bccd4a7a183d` |
-| `ios-arm64_x86_64-simulator/spark_frostFFI.framework/spark_frostFFI` | `a8743b1723f3a5c8fad21fb5236759d7ae9862b3999a0f191d71b516b8391648` |
-| `macos-arm64_x86_64/spark_frostFFI.framework/Info.plist` | `cff7c2e0ebddaeed427d81d226c0916b06ada033c7154640b862ab34ccd29e71` |
-| `macos-arm64_x86_64/spark_frostFFI.framework/spark_frostFFI` | `2f5a61513fd158214043d2223eee68af88e7409c7392dbf365eeeade633686df` |
+| `Info.plist` | `fef1ec1aa0b7464a97a909256a9ef5babe65ba83ff84a573cd7f77a689f2d51a` |
+| `ios-arm64/libspark_frostFFI.a` | `4cbe90ae7c4c68c881a4eb88e070e91232c55072ea30e65a55b21d57404b38a0` |
+| `ios-arm64_x86_64-simulator/libspark_frostFFI.a` | `a8743b1723f3a5c8fad21fb5236759d7ae9862b3999a0f191d71b516b8391648` |
+| `macos-arm64_x86_64/libspark_frostFFI.a` | `2f5a61513fd158214043d2223eee68af88e7409c7392dbf365eeeade633686df` |
 
 To regenerate this table:
 
 ```bash
 find Frameworks/spark_frostFFI.xcframework -type f \
-    \( -name 'spark_frostFFI' -o -name 'Info.plist' \) \
+    \( -name 'libspark_frostFFI.a' -o -name 'Info.plist' \) \
     | sort | xargs shasum -a 256
 ```
 

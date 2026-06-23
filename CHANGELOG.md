@@ -21,6 +21,12 @@ migration note.
 - SwiftLint configuration (`.swiftlint.yml`).
 
 ### Changed
+- `spark_frostFFI.xcframework` is now packaged as a **static-library** xcframework
+  (`libspark_frostFFI.a` + headers) instead of a static archive wrapped in a `.framework`.
+  It is linked into the consuming app rather than embedded under `Frameworks/`, which fixes
+  App Store validation error ITMS-90208 ("does not support the minimum OS Version specified
+  in the Info.plist") when an app sets a deployment target above the archive's baked-in
+  minimum. No source or API changes — `import spark_frostFFI` is unchanged.
 - Integration test mnemonics are now loaded from `SPARK_TEST_WALLET_*` environment variables
   or a gitignored `.env` file. Previously hardcoded mnemonics have been removed from source.
 - `.gitignore` extended to cover `.env`, secrets directories, test artifacts, and DocC output.
