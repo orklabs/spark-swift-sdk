@@ -33,6 +33,17 @@ public struct SparkRecoverySnapshot: Codable, Sendable {
 }
 
 extension SparkWallet {
+    /// query_nodes with include_parents returns every leaf's full ancestor
+    /// chain in ONE message, and long-lived wallets exceed the transport's
+    /// 4 MiB default cap (seen live: 6.9 MB → resourceExhausted). Raise both
+    /// size limits for the recovery queries only.
+    private static var recoveryCallOptions: CallOptions {
+        var options = CallOptions.defaults
+        options.maxRequestMessageBytes = 128 * 1024 * 1024
+        options.maxResponseMessageBytes = 128 * 1024 * 1024
+        return options
+    }
+
     /// Fetch the wallet's leaves plus the complete ancestor chain of every leaf.
     ///
     /// The bulk include-parents query can omit nodes (notably legacy tree roots),
@@ -51,7 +62,8 @@ extension SparkWallet {
         request.network = config.networkProto
 
         let response = try await client.query_nodes(
-            request: try await makeAuthenticatedRequest(message: request)
+            request: try await makeAuthenticatedRequest(message: request),
+            options: Self.recoveryCallOptions
         )
         for (id, node) in response.nodes { all[id] = node }
 
@@ -67,7 +79,8 @@ extension SparkWallet {
             repairRequest.includeParents = true
 
             let repairResponse = try await client.query_nodes(
-                request: try await makeAuthenticatedRequest(message: repairRequest)
+                request: try await makeAuthenticatedRequest(message: repairRequest),
+                options: Self.recoveryCallOptions
             )
             let countBefore = all.count
             for (id, node) in repairResponse.nodes { all[id] = node }
