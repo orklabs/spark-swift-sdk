@@ -58,8 +58,8 @@ func missingParentDetection() {
     #expect(SparkWallet.missingParentIds(in: ["leaf": leaf]) == ["ghost-root"])
 }
 
-@Test("Nodes owned by someone else never classify as leaves")
-func foreignNodesAreAncestorsOnly() throws {
+@Test("Nodes owned by someone else never classify as leaves, and unneeded nodes are pruned")
+func foreignNodesArePruned() throws {
     let me = Data(repeating: 0x02, count: 33)
     let them = Data(repeating: 0x03, count: 33)
     let foreign = makeNode(id: "foreign", owner: them, status: "AVAILABLE")
@@ -68,5 +68,35 @@ func foreignNodesAreAncestorsOnly() throws {
         from: ["foreign": foreign], identityPublicKey: me, network: "MAINNET"
     )
     #expect(snapshot.leaves.isEmpty)
-    #expect(snapshot.nodes.map(\.id) == ["foreign"])
+    #expect(snapshot.nodes.isEmpty)
+}
+
+@Test("Historical nodes off the current leaves' chains are pruned from the bundle")
+func historicalNodesArePruned() throws {
+    let me = Data(repeating: 0x02, count: 33)
+    let root = makeNode(id: "root", owner: me, status: "SPLITTED")
+    let leaf = makeNode(id: "leaf", parent: "root", owner: me, status: "AVAILABLE")
+    // Old split intermediate under the same root whose sats moved on long ago:
+    // it is nobody's parent and not owned-status, so no exit package needs it.
+    let stale = makeNode(id: "stale", parent: "root", owner: me, status: "SPLITTED")
+    // A whole disconnected historical tree.
+    let oldRoot = makeNode(id: "old-root", owner: me, status: "SPLITTED")
+
+    let snapshot = try SparkWallet.buildRecoverySnapshot(
+        from: ["root": root, "leaf": leaf, "stale": stale, "old-root": oldRoot],
+        identityPublicKey: me, network: "MAINNET"
+    )
+    #expect(snapshot.leaves.map(\.id) == ["leaf"])
+    #expect(snapshot.nodes.map(\.id) == ["root"])
+}
+
+@Test("A hole in a needed chain throws instead of producing a broken bundle")
+func brokenNeededChainThrows() {
+    let me = Data(repeating: 0x02, count: 33)
+    let leaf = makeNode(id: "leaf", parent: "ghost", owner: me, status: "AVAILABLE")
+    #expect(throws: SparkError.self) {
+        _ = try SparkWallet.buildRecoverySnapshot(
+            from: ["leaf": leaf], identityPublicKey: me, network: "MAINNET"
+        )
+    }
 }
