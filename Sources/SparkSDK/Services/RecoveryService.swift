@@ -33,6 +33,17 @@ public struct SparkRecoverySnapshot: Codable, Sendable {
 }
 
 extension SparkWallet {
+    /// query_nodes with include_parents returns every leaf's full ancestor
+    /// chain in ONE message, and long-lived wallets exceed the transport's
+    /// 4 MiB default cap (seen live: 6.9 MB → resourceExhausted). Raise both
+    /// size limits for the recovery queries only.
+    private static var recoveryCallOptions: CallOptions {
+        var options = CallOptions.defaults
+        options.maxRequestMessageBytes = 128 * 1024 * 1024
+        options.maxResponseMessageBytes = 128 * 1024 * 1024
+        return options
+    }
+
     /// Fetch the wallet's leaves plus the complete ancestor chain of every leaf.
     ///
     /// The bulk include-parents query can omit nodes (notably legacy tree roots),
@@ -51,13 +62,15 @@ extension SparkWallet {
         request.network = config.networkProto
 
         let response = try await client.query_nodes(
-            request: try await makeAuthenticatedRequest(message: request)
+            request: try await makeAuthenticatedRequest(message: request),
+            options: Self.recoveryCallOptions
         )
         for (id, node) in response.nodes { all[id] = node }
 
         // Repair pass: fetch any parent referenced by a node in the map but not
         // present in it. Bounded so a coordinator that keeps returning nothing
-        // can't loop us forever; no-progress also exits.
+        // can't loop us forever; no-progress also exits. Best-effort here — the
+        // build step is the arbiter of whether the chains that MATTER are whole.
         var missing = Self.missingParentIds(in: all)
         var attempts = 0
         while !missing.isEmpty, attempts < 10 {
@@ -67,17 +80,13 @@ extension SparkWallet {
             repairRequest.includeParents = true
 
             let repairResponse = try await client.query_nodes(
-                request: try await makeAuthenticatedRequest(message: repairRequest)
+                request: try await makeAuthenticatedRequest(message: repairRequest),
+                options: Self.recoveryCallOptions
             )
             let countBefore = all.count
             for (id, node) in repairResponse.nodes { all[id] = node }
             guard all.count > countBefore else { break }
             missing = Self.missingParentIds(in: all)
-        }
-        if !missing.isEmpty {
-            throw SparkError.invalidResponse(
-                "Recovery snapshot incomplete: missing ancestor nodes \(missing.sorted().joined(separator: ", "))"
-            )
         }
 
         return try Self.buildRecoverySnapshot(
@@ -98,7 +107,10 @@ extension SparkWallet {
 
     /// Pure classification of a complete node map into snapshot leaves + ancestors.
     /// A leaf is a node we own, in a spendable/locked status, that no other node
-    /// claims as parent; everything else rides along as ancestor material.
+    /// claims as parent. Ancestors are PRUNED to the union of the current leaves'
+    /// parent chains — the owner query also returns historical nodes (old splits,
+    /// spent intermediates) that no exit package will ever use, and keeping them
+    /// bloats the bundle severalfold. Throws if a needed chain has a hole.
     static func buildRecoverySnapshot(
         from all: [String: Spark_TreeNode],
         identityPublicKey: Data,
@@ -113,26 +125,47 @@ extension SparkWallet {
         )
 
         var leaves: [SparkRecoveryLeaf] = []
-        var nodes: [SparkRecoveryNode] = []
+        var leafIds: [String] = []
         for (id, node) in all {
-            let hex = try node.serializedData().hexString
             let isLeaf = node.ownerIdentityPublicKey == identityPublicKey
                 && ownedStatuses.contains(node.status)
                 && !referencedAsParent.contains(id)
-            if isLeaf {
-                leaves.append(SparkRecoveryLeaf(
-                    id: id,
-                    status: node.status,
-                    valueSats: Int64(node.value),
-                    treeNodeHex: hex
-                ))
-            } else {
-                nodes.append(SparkRecoveryNode(id: id, treeNodeHex: hex))
+            guard isLeaf else { continue }
+            leaves.append(SparkRecoveryLeaf(
+                id: id,
+                status: node.status,
+                valueSats: Int64(node.value),
+                treeNodeHex: try node.serializedData().hexString
+            ))
+            leafIds.append(id)
+        }
+
+        // Walk each leaf's chain to its root, collecting exactly the ancestors
+        // an exit package needs. A hole in a needed chain makes the snapshot
+        // useless for that leaf — refuse to produce one (callers then keep
+        // their previous good file).
+        var neededIds = Set<String>()
+        for leafId in leafIds {
+            var cursor = all[leafId]
+            while let node = cursor, node.hasParentNodeID, !node.parentNodeID.isEmpty {
+                let parentId = node.parentNodeID
+                guard let parent = all[parentId] else {
+                    throw SparkError.invalidResponse(
+                        "Recovery snapshot incomplete: missing ancestor \(parentId) above leaf \(leafId)"
+                    )
+                }
+                guard neededIds.insert(parentId).inserted else { break }  // chain already walked
+                cursor = parent
             }
         }
+
+        var nodes: [SparkRecoveryNode] = []
+        for id in neededIds.sorted() {
+            nodes.append(SparkRecoveryNode(id: id, treeNodeHex: try all[id]!.serializedData().hexString))
+        }
+
         // Deterministic ordering so identical wallet state yields identical bytes.
         leaves.sort { $0.id < $1.id }
-        nodes.sort { $0.id < $1.id }
 
         return SparkRecoverySnapshot(
             network: network,
