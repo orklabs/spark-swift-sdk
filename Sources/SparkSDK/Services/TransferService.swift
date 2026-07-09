@@ -46,7 +46,7 @@ extension SparkWallet {
             let directCommitments = allCommitments[i + selectedLeaves.count].signingNonceCommitments
             let directFromCpfpCommitments = allCommitments[i + 2 * selectedLeaves.count].signingNonceCommitments
 
-            let (cpfpSequence, directSequence) = Self.computeNextSequences(from: Data(node.refundTx))
+            let (cpfpSequence, directSequence) = try Self.computeNextSequences(from: Data(node.refundTx))
 
             let cpfpNodeTx = Data(node.nodeTx)
             let directNodeTx = node.directTx.isEmpty ? nil : Data(node.directTx)
@@ -141,11 +141,28 @@ extension SparkWallet {
     }
 
     /// Compute next cpfp and direct sequences from a refund tx.
-    static func computeNextSequences(from refundTxData: Data) -> (cpfp: UInt32, direct: UInt32) {
+    static func computeNextSequences(from refundTxData: Data) throws -> (cpfp: UInt32, direct: UInt32) {
         let rawSequence = parseSequenceFromRawTx(refundTxData)
         let currentTimelock = rawSequence & 0xFFFF
         let bit30 = rawSequence & (1 << 30)
+        // A leaf at the timelock floor cannot be moved again until it is
+        // renewed by the operators. This used to underflow UInt32 and TRAP —
+        // crashing the caller instead of failing the one leaf's operation.
+        // Strictly greater: the coordinator rejects a decrement that reaches
+        // zero ("too small to subtract TimeLockInterval without reaching zero").
+        guard currentTimelock > sparkTimeLockInterval else {
+            throw SparkError.leafTimelockExhausted(
+                "Leaf timelock exhausted (\(currentTimelock) <= \(sparkTimeLockInterval)); needs renewal before it can move"
+            )
+        }
         let nextTimelock = currentTimelock - sparkTimeLockInterval
         return (bit30 | nextTimelock, bit30 | (nextTimelock + sparkDirectTimelockOffset))
+    }
+
+    /// Whether the leaf's refund timelock still has room to decrement — i.e.
+    /// the leaf can be transferred/swapped without operator renewal. Strictly
+    /// greater: the coordinator rejects decrements that reach zero.
+    static func timelockCanDecrement(_ refundTxData: Data) -> Bool {
+        (parseSequenceFromRawTx(refundTxData) & 0xFFFF) > sparkTimeLockInterval
     }
 }

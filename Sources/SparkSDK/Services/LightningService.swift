@@ -183,7 +183,7 @@ extension SparkWallet {
             let directCommitments = htlcCommitments[i + selectedLeaves.count].signingNonceCommitments
             let directFromCpfpCommitments = htlcCommitments[i + 2 * selectedLeaves.count].signingNonceCommitments
 
-            let (cpfpSeq, _) = Self.computeNextSequences(from: Data(node.refundTx))
+            let (cpfpSeq, _) = try Self.computeNextSequences(from: Data(node.refundTx))
             let bit30 = cpfpSeq & (1 << 30)
             let nextTimelock = cpfpSeq & 0xFFFF
 
@@ -276,7 +276,7 @@ extension SparkWallet {
 
             let cpfpCommitments = swapCommitments[i].signingNonceCommitments
 
-            let (nextSequence, _) = Self.computeNextSequences(from: Data(node.refundTx))
+            let (nextSequence, _) = try Self.computeNextSequences(from: Data(node.refundTx))
 
             let cpfpRefund = try constructRefundTx(
                 tx: Data(node.nodeTx), vout: 0,

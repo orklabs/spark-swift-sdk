@@ -131,7 +131,7 @@ extension SparkWallet {
             let verifyingKey = Data(node.verifyingPublicKey)
 
             let cpfpCommitments = allCommitments[i].signingNonceCommitments
-            let (cpfpSequence, _) = Self.computeNextSequences(from: Data(node.refundTx))
+            let (cpfpSequence, _) = try Self.computeNextSequences(from: Data(node.refundTx))
 
             // Build CPFP refund tx
             let cpfpNodeTx = Data(node.nodeTx)

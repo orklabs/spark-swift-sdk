@@ -11,6 +11,7 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
     case notImplemented(String)
     case insufficientTokenBalance(token: String, need: String, have: String)
     case tokenValidationFailed(String)
+    case leafTimelockExhausted(String)
 
     public var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
             return "Insufficient token balance for \(token): need \(need), have \(have)"
         case .tokenValidationFailed(let msg):
             return "Token validation failed: \(msg)"
+        case .leafTimelockExhausted(let msg):
+            return msg
         }
     }
 }
