@@ -143,6 +143,51 @@ struct BalanceTests {
 }
 
 // =============================================================================
+// MARK: - Recovery Snapshot Tests (unilateral-exit bundle material)
+// =============================================================================
+
+@Suite("Recovery", .enabled(if: TestConfig.hasIntegrationCredentials))
+struct RecoveryTests {
+
+    @Test("Recovery snapshot covers the balance with complete ancestor chains")
+    func recoverySnapshot() async throws {
+        let wallet = try await makeWallet(walletAMnemonic)
+        defer { Task { await wallet.close() } }
+
+        let balance = try await wallet.getBalance()
+        let snapshot = try await wallet.getRecoverySnapshot()
+        print("Snapshot: \(snapshot.leaves.count) leaves (\(snapshot.totalLeafSats) sats), \(snapshot.nodes.count) ancestor nodes")
+
+        #expect(snapshot.network == "MAINNET")
+        #expect(snapshot.identityPublicKeyHex == wallet.identityPublicKeyHex)
+        // Every available sat must be covered by the snapshot's leaves.
+        #expect(snapshot.totalLeafSats >= balance.satsBalance.available)
+
+        // Decode every entry and verify each leaf chain walks to a root.
+        var byId: [String: Spark_TreeNode] = [:]
+        for entry in snapshot.leaves {
+            let node = try Spark_TreeNode(serializedBytes: Data(hexString: entry.treeNodeHex)!)
+            #expect(!node.refundTx.isEmpty, "leaf \(entry.id) missing refund tx")
+            #expect(!node.nodeTx.isEmpty, "leaf \(entry.id) missing node tx")
+            byId[entry.id] = node
+        }
+        for entry in snapshot.nodes {
+            byId[entry.id] = try Spark_TreeNode(serializedBytes: Data(hexString: entry.treeNodeHex)!)
+        }
+        for leaf in snapshot.leaves {
+            var cursor = byId[leaf.id]
+            var hops = 0
+            while let node = cursor, node.hasParentNodeID, !node.parentNodeID.isEmpty {
+                cursor = byId[node.parentNodeID]
+                #expect(cursor != nil, "broken chain above leaf \(leaf.id)")
+                hops += 1
+                #expect(hops < 100, "chain too deep — cycle?")
+            }
+        }
+    }
+}
+
+// =============================================================================
 // MARK: - Deposit Tests (matching JS: deposit.test.ts)
 // =============================================================================
 
