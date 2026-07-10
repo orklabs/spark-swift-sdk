@@ -110,7 +110,7 @@ extension SparkWallet {
             let signingPubKey = try getPublicKeyBytes(privateKeyBytes: signingKey, compressed: true)
             let verifyingKey = Data(node.verifyingPublicKey)
 
-            let (cpfpSequence, directSequence) = Self.computeNextSequences(from: Data(node.refundTx))
+            let (cpfpSequence, directSequence) = try Self.computeNextSequences(from: Data(node.refundTx))
 
             let cpfpNodeTx = Data(node.nodeTx)
             let directNodeTx = node.directTx.isEmpty ? nil : Data(node.directTx)

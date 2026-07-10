@@ -188,6 +188,31 @@ struct RecoveryTests {
 }
 
 // =============================================================================
+// MARK: - Consolidation Tests
+// =============================================================================
+
+@Suite("Consolidation", .enabled(if: TestConfig.hasIntegrationCredentials))
+struct ConsolidationTests {
+
+    @Test("Consolidation reduces leaf count without losing sats", .timeLimit(.minutes(5)))
+    func consolidateLeaves() async throws {
+        let wallet = try await makeWallet(walletAMnemonic)
+        defer { Task { await wallet.close() } }
+
+        let before = try await wallet.getLeaves()
+        let result = try await wallet.consolidateLeaves()
+        print("Consolidation: \(result.leavesBefore) -> \(result.leavesAfter) leaves in \(result.rounds) round(s), fee \(result.feeSats) sats")
+
+        #expect(result.leavesBefore == before.count)
+        #expect(result.leavesAfter <= result.leavesBefore)
+        #expect(result.feeSats == 0, "SSP swap unexpectedly charged \(result.feeSats) sats")
+        // Already-minimal wallets are a no-op; fragmented ones must shrink.
+        let ideal = SparkWallet.binaryDecomposition(of: result.totalSatsBefore).count
+        #expect(result.leavesAfter <= max(ideal, result.leavesBefore))
+    }
+}
+
+// =============================================================================
 // MARK: - Deposit Tests (matching JS: deposit.test.ts)
 // =============================================================================
 
