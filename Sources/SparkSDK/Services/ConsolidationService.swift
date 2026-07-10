@@ -30,6 +30,11 @@ extension SparkWallet {
     /// emergency path. Batched so a very fragmented wallet never swaps more
     /// than `maxLeavesPerRound` leaves in one request.
     public func consolidateLeaves(maxLeavesPerRound: Int = 100) async throws -> SparkLeafConsolidation {
+        // Un-freeze what we can first: renewal resets low refund timelocks so
+        // those leaves can join the swap instead of being skipped. Best-effort —
+        // a failed renewal just leaves that leaf in the skipped bucket.
+        _ = try? await renewExhaustedLeaves()
+
         var current = try await getLeaves()
         let leavesBefore = current.count
         let totalBefore = current.reduce(0 as Int64) { $0 + $1.valueSats }
