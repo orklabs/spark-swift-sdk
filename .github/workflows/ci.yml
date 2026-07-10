@@ -19,7 +19,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select latest Xcode 16.x
         # Xcode 16.4 ships Swift 6.1 which matches the toolchain we develop against.
@@ -62,7 +62,7 @@ jobs:
     # the existing surface has been cleaned up.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install SwiftLint
         run: brew install swiftlint
       - name: Run SwiftLint
