@@ -9,7 +9,6 @@ public final class SparkWallet: Sendable {
     let connectionManager: GrpcConnectionManager
     let authenticator: SparkAuthenticator
     let sspClient: SspGraphQLClient
-    private let taskManager: ClientTaskManager
 
     public var identityPublicKeyHex: String {
         signer.identityPublicKey.hexString
@@ -26,7 +25,7 @@ public final class SparkWallet: Sendable {
         self.config = config
         let resolvedAccount = account ?? (config.network == .mainnet ? 1 : 0)
         self.signer = try SparkSigner(mnemonic: mnemonic, account: resolvedAccount)
-        (self.connectionManager, self.authenticator, self.sspClient, self.taskManager) =
+        (self.connectionManager, self.authenticator, self.sspClient) =
             Self.makeComponents(config: config, signer: self.signer)
     }
 
@@ -39,7 +38,7 @@ public final class SparkWallet: Sendable {
         let chainCode = accountKey.suffix(32)
         self.config = config
         self.signer = try SparkSigner(accountKey: Data(key), accountChainCode: Data(chainCode))
-        (self.connectionManager, self.authenticator, self.sspClient, self.taskManager) =
+        (self.connectionManager, self.authenticator, self.sspClient) =
             Self.makeComponents(config: config, signer: self.signer)
     }
 
@@ -51,16 +50,35 @@ public final class SparkWallet: Sendable {
     public init(config: SparkConfig = SparkConfig(), signer: SparkSignerProtocol) {
         self.config = config
         self.signer = signer
-        (self.connectionManager, self.authenticator, self.sspClient, self.taskManager) =
+        (self.connectionManager, self.authenticator, self.sspClient) =
             Self.makeComponents(config: config, signer: signer)
     }
 
     private static func makeComponents(
         config: SparkConfig,
         signer: SparkSignerProtocol
-    ) -> (GrpcConnectionManager, SparkAuthenticator, SspGraphQLClient, ClientTaskManager) {
-        let connectionManager = GrpcConnectionManager(addresses: config.signingOperatorAddresses)
+    ) -> (GrpcConnectionManager, SparkAuthenticator, SspGraphQLClient) {
         let authenticator = SparkAuthenticator()
+        // Every operator client re-authenticates and replays a call once on UNAUTHENTICATED (the
+        // official SDK's auth middleware), so a token the server stopped honouring is replaced on
+        // the spot rather than replayed until the process restarts. The manager is captured weakly:
+        // the interceptor lives inside the clients the manager owns.
+        let managerRef = WeakConnectionManager()
+        let connectionManager = GrpcConnectionManager(
+            addresses: config.signingOperatorAddresses,
+            interceptorFactory: { address in
+                [AuthRetryInterceptor(refreshToken: {
+                    guard let manager = managerRef.manager else {
+                        throw SparkError.grpcError("Connection manager released")
+                    }
+                    await authenticator.invalidate(soAddress: address, signer: signer)
+                    return try await authenticator.getToken(
+                        connectionManager: manager, soAddress: address, signer: signer
+                    )
+                })]
+            }
+        )
+        managerRef.manager = connectionManager
         let sspAuthenticator = SspAuthenticator()
         let session = URLSession.shared
         let sspURL = config.sspURL
@@ -69,29 +87,27 @@ public final class SparkWallet: Sendable {
             sspURL: sspURL,
             getToken: { [sspAuthenticator] in
                 try await sspAuthenticator.getToken(session: session, sspURL: sspURL, signer: signer)
+            },
+            invalidateToken: { [sspAuthenticator] in
+                await sspAuthenticator.invalidate()
             }
         )
-        return (connectionManager, authenticator, sspClient, ClientTaskManager())
+        return (connectionManager, authenticator, sspClient)
     }
 
+    /// Warm every operator's connection. `getClient` drives each client's connection loop itself
+    /// (and evicts the client when that loop ends), so a second `runConnections()` here would only
+    /// throw "already running"; callers that never `start()` get lazily-built clients on first use.
     public func start() async {
         for address in config.signingOperatorAddresses {
-            let mgr = connectionManager
-            let task = Task {
-                do {
-                    let client = try await mgr.getClient(for: address)
-                    try await client.runConnections()
-                } catch {
-                    // Client shut down or failed to connect
-                }
-            }
-            await taskManager.add(task)
+            _ = try? await connectionManager.getClient(for: address)
         }
     }
 
+    /// Shut every operator connection down. The wallet stays usable: the next call after `close()`
+    /// builds fresh clients (that is how a host app cycles connections around backgrounding).
     public func close() async {
         await connectionManager.close()
-        await taskManager.cancelAll()
     }
 
     func getAuthMetadata(for soAddress: String) async throws -> Metadata {
@@ -116,16 +132,8 @@ public final class SparkWallet: Sendable {
     }
 }
 
-/// Thread-safe task manager to replace mutable array on SparkWallet.
-private actor ClientTaskManager {
-    private var tasks: [Task<Void, Never>] = []
-
-    func add(_ task: Task<Void, Never>) {
-        tasks.append(task)
-    }
-
-    func cancelAll() {
-        for task in tasks { task.cancel() }
-        tasks.removeAll()
-    }
+/// Lets the auth interceptors reach the connection manager that owns their clients without a
+/// retain cycle.
+private final class WeakConnectionManager: @unchecked Sendable {
+    weak var manager: GrpcConnectionManager?
 }

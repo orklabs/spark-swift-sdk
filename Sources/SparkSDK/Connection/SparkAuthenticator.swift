@@ -34,6 +34,14 @@ actor SparkAuthenticator {
         return token.token
     }
 
+    /// Forget this operator's cached session. Called by `AuthRetryInterceptor` when the operator
+    /// answers UNAUTHENTICATED: a token the server no longer honours stays "valid" by its own
+    /// `expiresAt` for hours, and replaying it would fail every call until the process restarts.
+    /// Per operator and identity, like the official SDK's cache.
+    func invalidate(soAddress: String, signer: SparkSignerProtocol) {
+        tokenCache["\(soAddress):\(signer.identityPublicKey.hexString)"] = nil
+    }
+
     func getAuthMetadata(
         connectionManager: GrpcConnectionManager,
         soAddress: String,
