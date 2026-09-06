@@ -34,6 +34,14 @@ actor SparkAuthenticator {
         return token.token
     }
 
+    /// Forget every cached session. Called by `AuthInvalidatingInterceptor` when an operator
+    /// answers UNAUTHENTICATED: a token the server no longer honours stays "valid" by its own
+    /// `expiresAt` for hours, and replaying it would fail every call until the process restarts.
+    /// The next call re-authenticates (two cheap RPCs per operator).
+    func invalidateAll() {
+        tokenCache.removeAll()
+    }
+
     func getAuthMetadata(
         connectionManager: GrpcConnectionManager,
         soAddress: String,
