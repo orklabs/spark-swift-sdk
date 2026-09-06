@@ -6,42 +6,44 @@ import GRPCProtobuf
 actor GrpcConnectionManager {
     private var clients: [String: GRPCClient<HTTP2ClientTransport.Posix>] = [:]
     private let addresses: [String]
-    /// Applied to every client — see `AuthInvalidatingInterceptor`.
-    private let interceptors: [any ClientInterceptor]
+    /// Builds the interceptors for one operator's client — see `AuthRetryInterceptor`.
+    private let interceptorFactory: @Sendable (String) -> [any ClientInterceptor]
 
-    /// Deadline applied to every RPC by default (`serviceConfig`). Generous enough for the
-    /// multi-MB `query_nodes` behind a recovery snapshot on a slow link; bounded so a connection
-    /// that looks alive but never answers (a socket iOS dropped in the background, a NAT that
-    /// forgot the flow) fails the call instead of parking the caller until the process restarts.
-    /// Without any deadline, grpc-swift queues an RPC on a not-yet-ready client indefinitely.
+    /// Deadline applied to every RPC by default (`serviceConfig`). Mirrors the official Spark
+    /// SDK's last-resort 60 s cap on unary calls: without any deadline, grpc-swift queues an RPC
+    /// on a not-yet-ready client indefinitely, so a connection that looks alive but never
+    /// answers parks the caller until the process restarts.
     static let defaultRPCTimeout: Duration = .seconds(60)
 
-    /// The event subscription is a long-lived server stream and must stay unbounded; a
+    /// The official SDK's retry policy, verbatim: up to 3 attempts, 1 s → 10 s exponential
+    /// backoff, on UNAVAILABLE and CANCELLED only. That is how a pooled connection the server
+    /// closed while idle (or rotated out by its max connection age) heals: the failed attempt
+    /// never reached the server, and the retry re-establishes the connection. A deadline is
+    /// deliberately NOT retryable.
+    static let retryPolicy = RetryPolicy(
+        maxAttempts: 3,
+        initialBackoff: .seconds(1),
+        maxBackoff: .seconds(10),
+        backoffMultiplier: 2,
+        retryableStatusCodes: [.unavailable, .cancelled]
+    )
+
+    /// The event subscription is a long-lived server stream: unbounded and never retried here
+    /// (reconnecting it with backoff is the subscriber's job, as in the official wallet). A
     /// per-method entry takes precedence over the global (empty-name) one.
     static let serviceConfig = ServiceConfig(methodConfig: [
-        MethodConfig(names: [MethodConfig.Name(service: "", method: "")], timeout: defaultRPCTimeout),
+        MethodConfig(names: [MethodConfig.Name(service: "", method: "")],
+                     timeout: defaultRPCTimeout,
+                     executionPolicy: .retry(retryPolicy)),
         MethodConfig(names: [MethodConfig.Name(service: "spark.SparkService", method: "subscribe_to_events")],
-                     timeout: nil),
+                     timeout: nil,
+                     executionPolicy: nil),
     ])
 
-    /// Connection hygiene. Idle connections are dropped after 5 minutes (the default is 30) so a
-    /// call after a long pause opens a fresh socket rather than probing a stale one. Keepalive
-    /// pings run only while a call is in flight and no more often than every 5 minutes — under
-    /// the ping policy gRPC servers enforce by default (more frequent pings, or pings without
-    /// calls, earn a `too_many_pings` GOAWAY that would make reconnects worse, not better) —
-    /// so a dead connection under a long stream is still noticed, not just at the TCP timeout.
-    static var transportConfig: HTTP2ClientTransport.Posix.Config {
-        var config = HTTP2ClientTransport.Posix.Config.defaults
-        config.connection = .init(
-            maxIdleTime: .seconds(300),
-            keepalive: .init(time: .seconds(300), timeout: .seconds(20), allowWithoutCalls: false)
-        )
-        return config
-    }
-
-    init(addresses: [String], interceptors: [any ClientInterceptor] = []) {
+    init(addresses: [String],
+         interceptorFactory: @escaping @Sendable (String) -> [any ClientInterceptor] = { _ in [] }) {
         self.addresses = addresses
-        self.interceptors = interceptors
+        self.interceptorFactory = interceptorFactory
     }
 
     func getClient(for address: String) throws -> GRPCClient<HTTP2ClientTransport.Posix> {
@@ -57,14 +59,15 @@ actor GrpcConnectionManager {
         let port = url.port ?? (url.scheme == "https" ? 443 : 80)
         let useTLS = url.scheme == "https"
 
+        // Transport on the defaults, like the official SDK: no client keepalive (the operators
+        // send their own keepalive pings and bound how often clients may ping), default idle time.
         let transport = try HTTP2ClientTransport.Posix(
             target: .dns(host: host, port: port),
             transportSecurity: useTLS ? .tls(.defaults) : .plaintext,
-            config: Self.transportConfig,
             serviceConfig: Self.serviceConfig
         )
 
-        let client = GRPCClient(transport: transport, interceptors: interceptors)
+        let client = GRPCClient(transport: transport, interceptors: interceptorFactory(address))
         clients[address] = client
 
         // Drive the client's connection loop. When it returns the client is terminal (shut down,

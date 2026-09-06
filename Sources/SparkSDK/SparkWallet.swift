@@ -59,13 +59,26 @@ public final class SparkWallet: Sendable {
         signer: SparkSignerProtocol
     ) -> (GrpcConnectionManager, SparkAuthenticator, SspGraphQLClient) {
         let authenticator = SparkAuthenticator()
-        // Every operator client drops the cached session tokens on UNAUTHENTICATED, so a token
-        // the server stopped honouring is replaced on the next call rather than replayed until
-        // the process restarts.
+        // Every operator client re-authenticates and replays a call once on UNAUTHENTICATED (the
+        // official SDK's auth middleware), so a token the server stopped honouring is replaced on
+        // the spot rather than replayed until the process restarts. The manager is captured weakly:
+        // the interceptor lives inside the clients the manager owns.
+        let managerRef = WeakConnectionManager()
         let connectionManager = GrpcConnectionManager(
             addresses: config.signingOperatorAddresses,
-            interceptors: [AuthInvalidatingInterceptor(authenticator: authenticator)]
+            interceptorFactory: { address in
+                [AuthRetryInterceptor(refreshToken: {
+                    guard let manager = managerRef.manager else {
+                        throw SparkError.grpcError("Connection manager released")
+                    }
+                    await authenticator.invalidate(soAddress: address, signer: signer)
+                    return try await authenticator.getToken(
+                        connectionManager: manager, soAddress: address, signer: signer
+                    )
+                })]
+            }
         )
+        managerRef.manager = connectionManager
         let sspAuthenticator = SspAuthenticator()
         let session = URLSession.shared
         let sspURL = config.sspURL
@@ -117,4 +130,10 @@ public final class SparkWallet: Sendable {
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         return ClientRequest(message: message, metadata: metadata)
     }
+}
+
+/// Lets the auth interceptors reach the connection manager that owns their clients without a
+/// retain cycle.
+private final class WeakConnectionManager: @unchecked Sendable {
+    weak var manager: GrpcConnectionManager?
 }
