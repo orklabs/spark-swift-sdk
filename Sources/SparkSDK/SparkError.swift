@@ -20,6 +20,8 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
     case invalidAddress(String)
     /// A BOLT-11 invoice is malformed or belongs to another network.
     case invalidInvoice(String)
+    /// A BIP-39 mnemonic failed wordlist or checksum validation.
+    case invalidMnemonic(String)
     /// A response from the SSP or a coordinator failed client-side validation. Nothing was signed.
     case untrustedResponse(String)
     /// A quoted fee exceeds the limit the caller allowed.
@@ -61,6 +63,8 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
             return "Invalid address: \(msg)"
         case .invalidInvoice(let msg):
             return "Invalid invoice: \(msg)"
+        case .invalidMnemonic(let msg):
+            return "Invalid mnemonic: \(msg)"
         case .untrustedResponse(let msg):
             return "Response failed validation: \(msg)"
         case .feeExceedsLimit(let fee, let max):

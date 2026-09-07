@@ -19,12 +19,16 @@ public final class SparkWallet: Sendable {
         try signer.signWithIdentityKey(messageHash)
     }
 
-    /// - Parameter account: BIP32 account index. Defaults to `1` on mainnet, `0` on regtest
-    ///   (matching the TypeScript Spark SDK behaviour).
-    public init(config: SparkConfig = SparkConfig(), mnemonic: String, account: Int? = nil) throws {
+    /// - Parameters:
+    ///   - account: BIP32 account index. Defaults to `1` on mainnet, `0` on regtest
+    ///     (matching the TypeScript Spark SDK behaviour).
+    ///   - validateMnemonic: Reject phrases that fail BIP-39 wordlist or checksum validation
+    ///     with `SparkError.invalidMnemonic` instead of silently deriving a different wallet.
+    ///     Defaults to `true`; pass `false` only for phrases known to be non-standard.
+    public init(config: SparkConfig = SparkConfig(), mnemonic: String, account: Int? = nil, validateMnemonic: Bool = true) throws {
         self.config = config
         let resolvedAccount = account ?? (config.network == .mainnet ? 1 : 0)
-        self.signer = try SparkSigner(mnemonic: mnemonic, account: resolvedAccount)
+        self.signer = try SparkSigner(mnemonic: mnemonic, account: resolvedAccount, validateMnemonic: validateMnemonic)
         (self.connectionManager, self.authenticator, self.sspClient) =
             Self.makeComponents(config: config, signer: self.signer)
     }

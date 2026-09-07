@@ -16,8 +16,10 @@ public protocol SparkSignerProtocol: Sendable {
 public final class SparkSigner: SparkSignerProtocol, @unchecked Sendable {
     private let keys: KeyDerivation
 
-    public init(mnemonic: String, account: Int = 0, passphrase: String? = nil) throws {
-        self.keys = try KeyDerivation(mnemonic: mnemonic, account: account, passphrase: passphrase)
+    /// - Parameter validateMnemonic: Reject phrases that fail BIP-39 wordlist or checksum
+    ///   validation (`SparkError.invalidMnemonic`). Defaults to `true`.
+    public init(mnemonic: String, account: Int = 0, passphrase: String? = nil, validateMnemonic: Bool = true) throws {
+        self.keys = try KeyDerivation(mnemonic: mnemonic, account: account, passphrase: passphrase, validateMnemonic: validateMnemonic)
     }
 
     /// Initialize from pre-derived account key material (skips mnemonic → seed derivation).

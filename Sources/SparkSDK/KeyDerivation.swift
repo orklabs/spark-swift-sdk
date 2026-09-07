@@ -27,7 +27,16 @@ final class KeyDerivation: @unchecked Sendable {
     let accountKeyData: Data
     let accountChainCodeData: Data
 
-    convenience init(mnemonic: String, account: Int = 0, passphrase: String? = nil) throws {
+    /// - Parameter validateMnemonic: Check the phrase against the BIP-39 English wordlist and
+    ///   checksum first (throws `SparkError.invalidMnemonic`). Pass `false` only to load a
+    ///   phrase that is known to be non-standard.
+    convenience init(mnemonic: String, account: Int = 0, passphrase: String? = nil, validateMnemonic: Bool = true) throws {
+        if validateMnemonic {
+            try BIP39.validate(mnemonic)
+        }
+        guard account >= 0, account < Int(Self.hardenedOffset) else {
+            throw SparkError.invalidArgument("account index must be between 0 and 2^31-1, got \(account)")
+        }
         let seed = try Self.mnemonicToSeed(mnemonic, passphrase: passphrase ?? "")
         let master = try Self.hmacSHA512(key: Data("Bitcoin seed".utf8), data: seed)
 
