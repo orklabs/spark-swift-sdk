@@ -121,132 +121,88 @@ extension SparkWallet {
         let connectorTxId = validated.connectorTx.txid
         let coopExitTxidBytes = validated.exitTxid
 
-        // Step 2: Build LeafRefundTxSigningJobs with connector inputs
-        let receiverPubKey = config.sspIdentityPublicKey
-        let expiryTime = Google_Protobuf_Timestamp(date: Date().addingTimeInterval(7 * 24 * 60 * 60 + 300))
-
-        var signingJobs: [Spark_LeafRefundTxSigningJob] = []
-
-        struct LeafSigningData {
-            let leafId: String
-            let signingKey: Data
-            let verifyingKey: Data
-            let cpfpRefundTx: Data
-            let directRefundTx: Data?
-            let directFromCpfpRefundTx: Data
-            let cpfpNonce: NonceResult
-            let directNonce: NonceResult
-            let directFromCpfpNonce: NonceResult
-            let cpfpNodeTx: Data
-            let directNodeTx: Data?
-            let connectorOutputIndex: Int
+        // Step 2: SO nonce commitments, three per leaf (cpfp, direct, directFromCpfp), laid out
+        // leaf-major like the transfer flow.
+        var commitmentsRequest = Spark_GetSigningCommitmentsRequest()
+        commitmentsRequest.count = 3
+        commitmentsRequest.nodeIds = leafIds
+        let commitmentsResponse = try await client.get_signing_commitments(
+            request: ClientRequest(message: commitmentsRequest, metadata: metadata)
+        )
+        let allCommitments = commitmentsResponse.signingCommitments
+        guard allCommitments.count >= 3 * selectedLeaves.count else {
+            throw SparkError.invalidResponse(
+                "Got \(allCommitments.count) signing commitments, need \(3 * selectedLeaves.count)"
+            )
         }
 
-        var leafDataList: [LeafSigningData] = []
-
-        for i in 0..<selectedLeaves.count {
-            let leaf = selectedLeaves[i]
-            let node = leaf.node
+        // Step 3: Refund transactions that also spend a connector output, FROST-signed by the user
+        let receiverPubKey = config.sspIdentityPublicKey
+        var cpfpJobs: [Spark_UserSignedTxSigningJob] = []
+        var directJobs: [Spark_UserSignedTxSigningJob] = []
+        var directFromCpfpJobs: [Spark_UserSignedTxSigningJob] = []
+        for (i, leaf) in selectedLeaves.enumerated() {
             let signingKey = try signer.deriveLeafSigningKey(leaf.id)
-            let signingPubKey = try getPublicKeyBytes(privateKeyBytes: signingKey, compressed: true)
-            let verifyingKey = Data(node.verifyingPublicKey)
-
-            let (cpfpSequence, directSequence) = try Self.computeNextSequences(from: Data(node.refundTx))
-
-            let cpfpNodeTx = Data(node.nodeTx)
-            let directNodeTx = node.directTx.isEmpty ? nil : Data(node.directTx)
-
-            let isZeroNode = try Self.isZeroTimelockNode(cpfpNodeTx)
-
-            // Build refund txs (single input)
-            let refundTrio = try constructRefundTxTrio(
-                cpfpNodeTx: cpfpNodeTx,
-                directNodeTx: directNodeTx,
-                vout: 0,
-                receivingPubkey: receiverPubKey,
-                network: networkStr,
-                sequence: cpfpSequence,
-                directSequence: directSequence,
-                feeSats: sparkDefaultFeeSats
+            let verifyingKey = Data(leaf.node.verifyingPublicKey)
+            let refunds = try Self.buildConnectorRefunds(
+                node: leaf.node,
+                receiverPubKey: receiverPubKey,
+                connectorTxid: connectorTxId,
+                connectorTx: validated.connectorTx,
+                connectorVout: UInt32(i),
+                network: networkStr
             )
-
-            // Add connector input to each refund tx
-            let connectorInput = RawTransaction.Input(previousTxid: connectorTxId, previousIndex: UInt32(i))
-            let cpfpRefundWithConnector = try Self.addInputToRawTx(refundTrio.cpfpRefund.tx, input: connectorInput)
-
-            var directRefundWithConnector: Data? = nil
-            if let directRefund = refundTrio.directRefund, !isZeroNode {
-                directRefundWithConnector = try Self.addInputToRawTx(directRefund.tx, input: connectorInput)
+            cpfpJobs.append(try FrostSigningHelper.buildSigningJob(
+                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                rawTx: refunds.cpfp.tx, sighash: refunds.cpfp.sighash,
+                soCommitments: allCommitments[i].signingNonceCommitments
+            ))
+            if let direct = refunds.direct {
+                directJobs.append(try FrostSigningHelper.buildSigningJob(
+                    leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                    rawTx: direct.tx, sighash: direct.sighash,
+                    soCommitments: allCommitments[i + selectedLeaves.count].signingNonceCommitments
+                ))
             }
-
-            let directFromCpfpRefundWithConnector = try Self.addInputToRawTx(refundTrio.directFromCpfpRefund.tx, input: connectorInput)
-
-            // Generate FROST nonce commitments
-            let signingPubKeyForNonce = try getPublicKeyBytes(privateKeyBytes: signingKey, compressed: true)
-            let keyPackage = KeyPackage(secretKey: signingKey, publicKey: signingPubKeyForNonce, verifyingKey: verifyingKey)
-            let cpfpNonce = try frostNonce(keyPackage: keyPackage)
-            let directNonce = try frostNonce(keyPackage: keyPackage)
-            let directFromCpfpNonce = try frostNonce(keyPackage: keyPackage)
-
-            // Build SigningJob for each refund tx
-            var cpfpSigningJob = Spark_SigningJob()
-            cpfpSigningJob.signingPublicKey = signingPubKey
-            cpfpSigningJob.rawTx = cpfpRefundWithConnector
-            cpfpSigningJob.signingNonceCommitment = Common_SigningCommitment.with {
-                $0.hiding = cpfpNonce.commitment.hiding
-                $0.binding = cpfpNonce.commitment.binding
-            }
-
-            var directFromCpfpSigningJob = Spark_SigningJob()
-            directFromCpfpSigningJob.signingPublicKey = signingPubKey
-            directFromCpfpSigningJob.rawTx = directFromCpfpRefundWithConnector
-            directFromCpfpSigningJob.signingNonceCommitment = Common_SigningCommitment.with {
-                $0.hiding = directFromCpfpNonce.commitment.hiding
-                $0.binding = directFromCpfpNonce.commitment.binding
-            }
-
-            var leafJob = Spark_LeafRefundTxSigningJob()
-            leafJob.leafID = leaf.id
-            leafJob.refundTxSigningJob = cpfpSigningJob
-
-            if let directTx = directRefundWithConnector {
-                var directSigningJob = Spark_SigningJob()
-                directSigningJob.signingPublicKey = signingPubKey
-                directSigningJob.rawTx = directTx
-                directSigningJob.signingNonceCommitment = Common_SigningCommitment.with {
-                    $0.hiding = directNonce.commitment.hiding
-                    $0.binding = directNonce.commitment.binding
-                }
-                leafJob.directRefundTxSigningJob = directSigningJob
-            }
-
-            leafJob.directFromCpfpRefundTxSigningJob = directFromCpfpSigningJob
-
-            signingJobs.append(leafJob)
-
-            leafDataList.append(LeafSigningData(
-                leafId: leaf.id,
-                signingKey: signingKey,
-                verifyingKey: verifyingKey,
-                cpfpRefundTx: cpfpRefundWithConnector,
-                directRefundTx: directRefundWithConnector,
-                directFromCpfpRefundTx: directFromCpfpRefundWithConnector,
-                cpfpNonce: cpfpNonce,
-                directNonce: directNonce,
-                directFromCpfpNonce: directFromCpfpNonce,
-                cpfpNodeTx: cpfpNodeTx,
-                directNodeTx: directNodeTx,
-                connectorOutputIndex: i
+            directFromCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
+                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                rawTx: refunds.directFromCpfp.tx, sighash: refunds.directFromCpfp.sighash,
+                soCommitments: allCommitments[i + 2 * selectedLeaves.count].signingNonceCommitments
             ))
         }
 
-        // Step 3: Call cooperative_exit_v2 with unsigned refund txs
+        // Step 4: Key tweaks handing the leaves to the SSP, encrypted per operator and signed
+        let soListResponse = try await client.get_signing_operator_list(
+            request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata)
+        )
+        let (_, tweakPackage) = try KeyTweakHelper.buildSendPackage(
+            transferID: transferID,
+            leaves: selectedLeaves,
+            receiverPubKey: receiverPubKey,
+            signer: signer,
+            soOperators: soListResponse.signingOperators,
+            signingOperatorConfigs: config.signingOperators,
+            threshold: config.signingThreshold
+        )
+
+        var transferPackage = Spark_TransferPackage()
+        transferPackage.hashVariant = .v2
+        transferPackage.leavesToSend = cpfpJobs
+        transferPackage.directLeavesToSend = directJobs
+        transferPackage.directFromCpfpLeavesToSend = directFromCpfpJobs
+        for (soID, cipher) in tweakPackage.keyTweakPackage {
+            transferPackage.keyTweakPackage[soID] = cipher
+        }
+        transferPackage.userSignature = tweakPackage.signature
+
+        // Step 5: cooperative_exit_v2 with the transfer package. The coordinator no longer accepts
+        // the older form (unsigned jobs plus a separate finalize call).
         var transferRequest = Spark_StartTransferRequest()
         transferRequest.transferID = transferID
         transferRequest.ownerIdentityPublicKey = signer.identityPublicKey
         transferRequest.receiverIdentityPublicKey = receiverPubKey
-        transferRequest.expiryTime = expiryTime
-        transferRequest.leavesToSend = signingJobs
+        transferRequest.expiryTime = Google_Protobuf_Timestamp(date: Date().addingTimeInterval(7 * 24 * 60 * 60 + 300))
+        transferRequest.transferPackage = transferPackage
 
         var exitReq = Spark_CooperativeExitRequest()
         exitReq.transfer = transferRequest
@@ -257,131 +213,11 @@ extension SparkWallet {
         let exitResponse = try await client.cooperative_exit_v2(
             request: ClientRequest(message: exitReq, metadata: metadata)
         )
-
-        // Step 4: Sign FROST with SO signing results and aggregate
-        var cpfpSignatures: [Spark_UserSignedTxSigningJob] = []
-        var directSignatures: [Spark_UserSignedTxSigningJob] = []
-        var directFromCpfpSignatures: [Spark_UserSignedTxSigningJob] = []
-
-        for result in exitResponse.signingResults {
-            guard let leafData = leafDataList.first(where: { $0.leafId == result.leafID }) else {
-                throw SparkError.invalidResponse("Signing result for unknown leaf \(result.leafID)")
-            }
-
-            // Parse connector tx output for multi-input sighash
-            let connectorPrevOut = try Self.parseTxOutput(connectorTxBytes, vout: UInt32(leafData.connectorOutputIndex))
-
-            // Sign CPFP refund
-            let cpfpNodeOutput = try Self.parseTxOutput(leafData.cpfpNodeTx, vout: 0)
-            let cpfpSighash = try computeMultiInputSighashUniffi(
-                tx: leafData.cpfpRefundTx,
-                inputIndex: 0,
-                prevOutScripts: [cpfpNodeOutput.script, connectorPrevOut.script],
-                prevOutValues: [cpfpNodeOutput.value, connectorPrevOut.value]
-            )
-
-            let cpfpAgg = try signAndAggregateFrost(
-                sighash: cpfpSighash,
-                signingKey: leafData.signingKey,
-                verifyingKey: leafData.verifyingKey,
-                nonce: leafData.cpfpNonce,
-                signingResult: result.refundTxSigningResult
-            )
-
-            var cpfpJob = Spark_UserSignedTxSigningJob()
-            cpfpJob.leafID = result.leafID
-            cpfpJob.signingPublicKey = try getPublicKeyBytes(privateKeyBytes: leafData.signingKey, compressed: true)
-            cpfpJob.rawTx = leafData.cpfpRefundTx
-            cpfpJob.userSignature = cpfpAgg
-            cpfpSignatures.append(cpfpJob)
-
-            // Sign direct refund (if exists)
-            if let directRefundTx = leafData.directRefundTx, let directNodeTx = leafData.directNodeTx, result.hasDirectRefundTxSigningResult {
-                let directNodeOutput = try Self.parseTxOutput(directNodeTx, vout: 0)
-                let directSighash = try computeMultiInputSighashUniffi(
-                    tx: directRefundTx,
-                    inputIndex: 0,
-                    prevOutScripts: [directNodeOutput.script, connectorPrevOut.script],
-                    prevOutValues: [directNodeOutput.value, connectorPrevOut.value]
-                )
-
-                let directAgg = try signAndAggregateFrost(
-                    sighash: directSighash,
-                    signingKey: leafData.signingKey,
-                    verifyingKey: leafData.verifyingKey,
-                    nonce: leafData.directNonce,
-                    signingResult: result.directRefundTxSigningResult
-                )
-
-                var directJob = Spark_UserSignedTxSigningJob()
-                directJob.leafID = result.leafID
-                directJob.signingPublicKey = try getPublicKeyBytes(privateKeyBytes: leafData.signingKey, compressed: true)
-                directJob.rawTx = directRefundTx
-                directJob.userSignature = directAgg
-                directSignatures.append(directJob)
-            }
-
-            // Sign directFromCpfp refund
-            let dcfpSighash = try computeMultiInputSighashUniffi(
-                tx: leafData.directFromCpfpRefundTx,
-                inputIndex: 0,
-                prevOutScripts: [cpfpNodeOutput.script, connectorPrevOut.script],
-                prevOutValues: [cpfpNodeOutput.value, connectorPrevOut.value]
-            )
-
-            let dcfpAgg = try signAndAggregateFrost(
-                sighash: dcfpSighash,
-                signingKey: leafData.signingKey,
-                verifyingKey: leafData.verifyingKey,
-                nonce: leafData.directFromCpfpNonce,
-                signingResult: result.directFromCpfpRefundTxSigningResult
-            )
-
-            var dcfpJob = Spark_UserSignedTxSigningJob()
-            dcfpJob.leafID = result.leafID
-            dcfpJob.signingPublicKey = try getPublicKeyBytes(privateKeyBytes: leafData.signingKey, compressed: true)
-            dcfpJob.rawTx = leafData.directFromCpfpRefundTx
-            dcfpJob.userSignature = dcfpAgg
-            directFromCpfpSignatures.append(dcfpJob)
+        guard exitResponse.hasTransfer else {
+            throw SparkError.invalidResponse("cooperative_exit_v2 returned no transfer")
         }
 
-        // Step 5: Prepare key tweaks (transfer leaves to SSP)
-        let soListResponse = try await client.get_signing_operator_list(
-            request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata)
-        )
-        let soOperators = soListResponse.signingOperators
-
-        let (_, tweakPackage) = try KeyTweakHelper.buildSendPackage(
-            transferID: transferID,
-            leaves: selectedLeaves,
-            receiverPubKey: receiverPubKey,
-            signer: signer,
-            soOperators: soOperators,
-            signingOperatorConfigs: config.signingOperators,
-            threshold: config.signingThreshold
-        )
-
-        var transferPackage = Spark_TransferPackage()
-        transferPackage.hashVariant = .v2
-        transferPackage.leavesToSend = cpfpSignatures
-        transferPackage.directLeavesToSend = directSignatures
-        transferPackage.directFromCpfpLeavesToSend = directFromCpfpSignatures
-        for (soID, cipher) in tweakPackage.keyTweakPackage {
-            transferPackage.keyTweakPackage[soID] = cipher
-        }
-        transferPackage.userSignature = tweakPackage.signature
-
-        // Step 6: Finalize transfer with transfer package
-        var finalizeReq = Spark_FinalizeTransferWithTransferPackageRequest()
-        finalizeReq.transferID = exitResponse.transfer.id
-        finalizeReq.ownerIdentityPublicKey = signer.identityPublicKey
-        finalizeReq.transferPackage = transferPackage
-
-        let _ = try await client.finalize_transfer_with_transfer_package(
-            request: ClientRequest(message: finalizeReq, metadata: metadata)
-        )
-
-        // Step 7: Complete coop exit via SSP
+        // Step 6: Complete coop exit via SSP
         let _ = try await sspClient.executeRaw(
             query: GraphQLMutations.completeCoopExit,
             variables: [
@@ -392,52 +228,70 @@ extension SparkWallet {
         return coopExitTxid
     }
 
-    // MARK: - FROST signing helpers
+    // MARK: - Connector refunds
 
-    /// Sign FROST and aggregate with SO signing results
-    func signAndAggregateFrost(
-        sighash: Data,
-        signingKey: Data,
-        verifyingKey: Data,
-        nonce: NonceResult,
-        signingResult: Spark_SigningResult
-    ) throws -> Data {
-        let selfPublicKey = try getPublicKeyBytes(privateKeyBytes: signingKey, compressed: true)
-        let keyPackage = KeyPackage(
-            secretKey: signingKey,
-            publicKey: selfPublicKey,
-            verifyingKey: verifyingKey
+    struct ConnectorRefund: Equatable {
+        let tx: Data
+        let sighash: Data
+    }
+
+    struct ConnectorRefunds: Equatable {
+        let cpfp: ConnectorRefund
+        /// Absent for zero-timelock nodes and leaves without a direct node transaction.
+        let direct: ConnectorRefund?
+        let directFromCpfp: ConnectorRefund
+    }
+
+    /// The leaf's next refund transactions with the connector output appended as a second input,
+    /// and their two-input sighashes (BIP-341, prevouts = node output + connector output). This is
+    /// what the user signs for a cooperative exit; mirrors the reference SDK's
+    /// `createConnectorRefundTxs` + `signRefundsForCoopExit`.
+    static func buildConnectorRefunds(
+        node: Spark_TreeNode,
+        receiverPubKey: Data,
+        connectorTxid: Data,
+        connectorTx: RawTransaction,
+        connectorVout: UInt32,
+        network: String
+    ) throws -> ConnectorRefunds {
+        let (cpfpSequence, directSequence) = try computeNextSequences(from: Data(node.refundTx))
+        let cpfpNodeTx = Data(node.nodeTx)
+        let isZeroNode = try isZeroTimelockNode(cpfpNodeTx)
+        let directNodeTx: Data? = (node.directTx.isEmpty || isZeroNode) ? nil : Data(node.directTx)
+
+        let trio = try constructRefundTxTrio(
+            cpfpNodeTx: cpfpNodeTx,
+            directNodeTx: directNodeTx,
+            vout: 0,
+            receivingPubkey: receiverPubKey,
+            network: network,
+            sequence: cpfpSequence,
+            directSequence: directSequence,
+            feeSats: sparkDefaultFeeSats
         )
+        let connectorOutput = try connectorTx.output(at: connectorVout)
+        let connectorInput = RawTransaction.Input(previousTxid: connectorTxid, previousIndex: connectorVout)
+        let nodeOutput = try RawTransaction.parse(cpfpNodeTx, context: "node tx").output(at: 0)
 
-        // Convert proto commitments to native
-        var nativeCommitments: [String: SigningCommitment] = [:]
-        for (soID, protoCommitment) in signingResult.signingNonceCommitments {
-            nativeCommitments[soID] = SigningCommitment(
-                hiding: protoCommitment.hiding,
-                binding: protoCommitment.binding
+        func withConnector(_ refundTx: Data, spending output: RawTransaction.Output) throws -> ConnectorRefund {
+            let tx = try addInputToRawTx(refundTx, input: connectorInput)
+            let sighash = try computeMultiInputSighashUniffi(
+                tx: tx,
+                inputIndex: 0,
+                prevOutScripts: [output.scriptPubKey, connectorOutput.scriptPubKey],
+                prevOutValues: [output.value, connectorOutput.value]
             )
+            return ConnectorRefund(tx: tx, sighash: sighash)
         }
 
-        let selfSignature = try signFrost(
-            msg: sighash,
-            keyPackage: keyPackage,
-            nonce: nonce.nonce,
-            selfCommitment: nonce.commitment,
-            statechainCommitments: nativeCommitments,
-            adaptorPublicKey: nil
-        )
-
-        return try aggregateFrost(
-            msg: sighash,
-            statechainCommitments: nativeCommitments,
-            selfCommitment: nonce.commitment,
-            statechainSignatures: signingResult.signatureShares,
-            selfSignature: selfSignature,
-            statechainPublicKeys: signingResult.publicKeys,
-            selfPublicKey: selfPublicKey,
-            verifyingKey: verifyingKey,
-            adaptorPublicKey: nil
-        )
+        let cpfp = try withConnector(trio.cpfpRefund.tx, spending: nodeOutput)
+        var direct: ConnectorRefund? = nil
+        if let directRefund = trio.directRefund, let directNodeTx {
+            let directOutput = try RawTransaction.parse(directNodeTx, context: "direct node tx").output(at: 0)
+            direct = try withConnector(directRefund.tx, spending: directOutput)
+        }
+        let directFromCpfp = try withConnector(trio.directFromCpfpRefund.tx, spending: nodeOutput)
+        return ConnectorRefunds(cpfp: cpfp, direct: direct, directFromCpfp: directFromCpfp)
     }
 
     // MARK: - Raw tx helpers (bounds-checked, see RawTransaction)
