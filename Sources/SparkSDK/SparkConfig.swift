@@ -21,15 +21,34 @@ public struct SparkConfig: Sendable {
     public let network: SparkNetwork
     public let signingOperators: [SigningOperatorConfig]
     public let sspURL: String
+    /// FROST signing threshold the operators enforce. Defaults to the reference SDK's value for
+    /// the operator count (2 of 3 on mainnet).
+    public let signingThreshold: UInt32
+    /// Withdraw bond the coordinator is expected to set on token outputs (reference SDK: 10 000).
+    public let expectedWithdrawBondSats: UInt64
+    /// Relative block locktime the coordinator is expected to set on token outputs (reference SDK: 1 000).
+    public let expectedWithdrawRelativeBlockLocktime: UInt64
 
     public init(
         network: SparkNetwork = .mainnet,
         signingOperators: [SigningOperatorConfig]? = nil,
-        sspURL: String? = nil
+        sspURL: String? = nil,
+        signingThreshold: UInt32? = nil,
+        expectedWithdrawBondSats: UInt64 = 10_000,
+        expectedWithdrawRelativeBlockLocktime: UInt64 = 1_000
     ) {
         self.network = network
-        self.signingOperators = signingOperators ?? Self.defaultOperators(for: network)
+        let operators = signingOperators ?? Self.defaultOperators(for: network)
+        self.signingOperators = operators
         self.sspURL = sspURL ?? "https://api.lightspark.com/graphql/spark/2025-03-19"
+        self.signingThreshold = signingThreshold ?? Self.defaultThreshold(operatorCount: operators.count)
+        self.expectedWithdrawBondSats = expectedWithdrawBondSats
+        self.expectedWithdrawRelativeBlockLocktime = expectedWithdrawRelativeBlockLocktime
+    }
+
+    /// The threshold the Spark deployments use for a given operator count (2 of 3, 3 of 5).
+    static func defaultThreshold(operatorCount: Int) -> UInt32 {
+        max(2, (UInt32(max(operatorCount, 0)) + 2) / 2)
     }
 
     public static func defaultOperators(for network: SparkNetwork) -> [SigningOperatorConfig] {

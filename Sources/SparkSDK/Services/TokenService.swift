@@ -455,6 +455,21 @@ extension SparkWallet {
 
         let finalTx = startResponse.finalTokenTransaction
 
+        // The coordinator may only add server-set fields; anything else is refused before the
+        // wallet signs the final hash for each operator.
+        try TokenTransactionValidator.validate(
+            final: finalTx,
+            partial: tokenTransaction,
+            keyshareInfo: startResponse.hasKeyshareInfo ? startResponse.keyshareInfo : nil,
+            expectations: TokenTransactionValidator.Expectations(
+                operatorIdentityPublicKeys: collectOperatorIdentityPublicKeys(),
+                operatorIdentifiers: Set(config.signingOperators.map(\.identifier)),
+                threshold: config.signingThreshold,
+                withdrawBondSats: config.expectedWithdrawBondSats,
+                withdrawRelativeBlockLocktime: config.expectedWithdrawRelativeBlockLocktime
+            )
+        )
+
         // Phase 2: Hash final transaction and create per-operator signatures
         let finalHash = try hashTokenTransactionV2(finalTx, partialHash: false)
         let operatorSignatures = try buildOperatorSignatures(
