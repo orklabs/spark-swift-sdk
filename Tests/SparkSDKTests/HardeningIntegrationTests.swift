@@ -150,15 +150,29 @@ struct HardeningIntegrationTests {
         #expect(after.satsBalance.available == before.satsBalance.available)
     }
 
+    /// Destination: `SPARK_TEST_WITHDRAW_DESTINATION` may be an address, or
+    /// `receiver-static-deposit` to pay the other test wallet's static deposit address so the
+    /// sats stay inside the test setup and can be claimed back with `claimStaticDeposit`.
+    /// Falls back to `SPARK_TEST_STATIC_DEPOSIT_WITHDRAW_ADDRESS`.
     @Test("Small on-chain withdrawal with a verified payout", .timeLimit(.minutes(10)),
           .enabled(if: ProcessInfo.processInfo.environment["SPARK_TEST_ALLOW_WITHDRAW"] == "1"))
     func withdrawal() async throws {
-        guard let destination = TestConfig.staticDepositWithdrawAddress else {
-            Issue.record(Comment(rawValue: "SPARK_TEST_STATIC_DEPOSIT_WITHDRAW_ADDRESS not set"))
-            return
-        }
         let pair = try await Self.makePair()
         defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let destination: String
+        switch ProcessInfo.processInfo.environment["SPARK_TEST_WITHDRAW_DESTINATION"] {
+        case "receiver-static-deposit"?:
+            destination = try await pair.receiver.getStaticDepositAddress().address
+            print("destination: static deposit address of the receiver wallet \(destination)")
+        case let explicit? where !explicit.isEmpty:
+            destination = explicit
+        default:
+            guard let configured = TestConfig.staticDepositWithdrawAddress else {
+                Issue.record(Comment(rawValue: "no withdrawal destination configured"))
+                return
+            }
+            destination = configured
+        }
         let amount: Int64 = Int64(ProcessInfo.processInfo.environment["SPARK_TEST_WITHDRAW_SATS"] ?? "") ?? 3_000
         let maxFee: Int64 = Int64(ProcessInfo.processInfo.environment["SPARK_TEST_WITHDRAW_MAX_FEE_SATS"] ?? "") ?? 2_500
         guard pair.senderSpendable >= amount else {
@@ -170,7 +184,41 @@ struct HardeningIntegrationTests {
         #expect(txid.count == 64)
         print("[\(pair.senderLabel)] withdrew \(amount) sats (fee cap \(maxFee)) to \(destination): txid \(txid)")
         try await Task.sleep(for: .seconds(3))
+        // The exited leaves stay transfer-locked (still owned) until the exit transaction confirms
+        // on-chain; only the spendable balance drops immediately.
         let after = try await pair.sender.getBalance()
-        #expect(after.satsBalance.owned == before.satsBalance.owned - amount)
+        #expect(after.satsBalance.available == before.satsBalance.available - amount)
+        #expect(after.satsBalance.owned >= before.satsBalance.owned - amount)
+        #expect(after.satsBalance.owned <= before.satsBalance.owned)
+    }
+
+    /// Claims confirmed UTXOs sitting at a wallet's static deposit address back into Spark.
+    /// Opt-in (`SPARK_TEST_CLAIM_STATIC=A|B`) because the SSP charges a fee for the claim.
+    @Test("Claim confirmed static deposits back into the wallet", .timeLimit(.minutes(10)),
+          .enabled(if: ["A", "B"].contains(ProcessInfo.processInfo.environment["SPARK_TEST_CLAIM_STATIC"] ?? "")))
+    func claimStaticDeposits() async throws {
+        let which = ProcessInfo.processInfo.environment["SPARK_TEST_CLAIM_STATIC"] ?? "B"
+        let wallet = try await makeWallet(which == "A" ? TestConfig.walletAMnemonic : TestConfig.walletBMnemonic)
+        defer { Task { await wallet.close() } }
+        let address = try await wallet.getStaticDepositAddress().address
+        let utxos = try await wallet.getUtxosForDepositAddress(address: address, excludeClaimed: true)
+        print("[\(which)] static deposit address \(address): \(utxos.count) unclaimed utxo(s)")
+        guard !utxos.isEmpty else {
+            Issue.record(Comment(rawValue: "no unclaimed utxo at \(address) yet (unconfirmed, or already claimed)"))
+            return
+        }
+        let before = try await wallet.getBalance()
+        for utxo in utxos {
+            let quote = try await wallet.getDepositFeeEstimate(transactionId: utxo.txid, outputIndex: utxo.vout)
+            print("  \(utxo.txid):\(utxo.vout) credits \(quote.creditAmountSats) sats after the SSP fee")
+            let transferId = try await wallet.claimStaticDeposit(transactionId: utxo.txid, outputIndex: utxo.vout)
+            #expect(!transferId.isEmpty)
+            print("  claim transfer \(transferId)")
+        }
+        try await Task.sleep(for: .seconds(5))
+        let claimed = try await wallet.claimAllPendingTransfers()
+        let after = try await wallet.getBalance()
+        print("  claimed \(claimed) transfer(s); balance \(before.satsBalance.owned) -> \(after.satsBalance.owned)")
+        #expect(after.satsBalance.owned > before.satsBalance.owned)
     }
 }
