@@ -20,11 +20,12 @@ struct HardeningIntegrationTests {
         let senderSpendable: Int64
     }
 
-    /// Sats in AVAILABLE leaves that can still be moved (refund timelock above the floor).
+    /// Sats the wallet can send right now (renews what the coordinator will renew, skips frozen leaves).
     static func spendable(_ wallet: SparkWallet) async throws -> Int64 {
-        try await wallet.getLeaves()
-            .filter { $0.refundTimelockBlocks > sparkTimeLockInterval }
-            .reduce(0) { $0 + $1.valueSats }
+        let leaves = try await wallet.getSpendableLeaves()
+        let allSpendable = leaves.allSatisfy(\.isSpendable)
+        #expect(allSpendable)
+        return leaves.reduce(0) { $0 + $1.valueSats }
     }
 
     static func makePair() async throws -> Pair {

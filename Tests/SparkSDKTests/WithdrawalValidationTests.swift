@@ -216,6 +216,29 @@ struct SpendableLeafTests {
         #expect(SparkWallet.movableLeaves([SparkLeaf(id: "garbage", treeID: "t", valueSats: 5, status: "AVAILABLE", node: empty)]).isEmpty)
     }
 
+    @Test("SparkLeaf.isSpendable and isRenewable follow the coordinator's floor and renewal range")
+    func leafFlags() {
+        #expect(!leaf("a", sats: 1, timelock: 0).isSpendable)
+        #expect(!leaf("b", sats: 1, timelock: 100).isSpendable)
+        #expect(leaf("c", sats: 1, timelock: 101).isSpendable)
+        #expect(leaf("d", sats: 1, timelock: 2000).isSpendable)
+        #expect(!leaf("a", sats: 1, timelock: 99).isRenewable)
+        #expect(leaf("b", sats: 1, timelock: 100).isRenewable)
+        #expect(leaf("c", sats: 1, timelock: 199).isRenewable)
+        #expect(!leaf("d", sats: 1, timelock: 200).isRenewable)
+        var empty = Spark_TreeNode()
+        empty.id = "garbage"
+        let garbage = SparkLeaf(id: "garbage", treeID: "t", valueSats: 5, status: "AVAILABLE", node: empty)
+        #expect(!garbage.isSpendable)
+        #expect(!garbage.isRenewable)
+        // The public flag and the internal selection filter agree.
+        let leaves = [leaf("x", sats: 1, timelock: 0), leaf("y", sats: 1, timelock: 100), leaf("z", sats: 1, timelock: 150)]
+        let viaFlag = leaves.filter(\.isSpendable).map(\.id)
+        let viaFilter = SparkWallet.movableLeaves(leaves).map(\.id)
+        #expect(viaFilter == viaFlag)
+        #expect(viaFlag == ["z"])
+    }
+
     @Test("Renewal candidates: [100, 200) renewable, below 100 stuck, 200 and above healthy")
     func renewalCandidates() {
         let leaves = [leaf("a", sats: 1, timelock: 0), leaf("b", sats: 1, timelock: 99), leaf("c", sats: 1, timelock: 100),

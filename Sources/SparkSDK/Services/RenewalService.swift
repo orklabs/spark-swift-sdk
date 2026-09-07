@@ -26,6 +26,19 @@ extension SparkLeaf {
         // failure reported per leaf instead of crashing the caller.
         ((try? SparkWallet.parseSequenceFromRawTx(Data(node.refundTx))) ?? 0) & 0xFFFF
     }
+
+    /// Whether the leaf can be transferred, paid or exited right now: its refund timelock is
+    /// above the floor the coordinator enforces. Leaves in the renewable range just above the
+    /// floor are still spendable; `getSpendableLeaves()` renews them first.
+    public var isSpendable: Bool {
+        refundTimelockBlocks > sparkTimeLockInterval
+    }
+
+    /// Whether the coordinator will renew this leaf's timelocks (refund timelock in [100, 200)).
+    /// A leaf below that range is frozen: only a unilateral exit can recover it.
+    public var isRenewable: Bool {
+        refundTimelockBlocks >= sparkTimeLockInterval && refundTimelockBlocks < renewalThreshold
+    }
 }
 
 extension SparkWallet {

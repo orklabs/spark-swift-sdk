@@ -7,10 +7,16 @@ import SwiftProtobuf
 
 extension SparkWallet {
 
-    /// AVAILABLE leaves that can still move off-chain. Leaves the coordinator will renew are
-    /// renewed first (best effort, as the reference SDK's leaf manager does before every spend);
-    /// leaves at the timelock floor are left out so one stuck leaf cannot fail a whole payment.
-    func spendableLeaves() async throws -> [SparkLeaf] {
+    /// AVAILABLE leaves that can be sent right now.
+    ///
+    /// Leaves whose refund timelock is in the coordinator's renewable range are renewed first
+    /// (best effort, as the reference SDK's leaf manager does before every spend). Leaves at the
+    /// timelock floor are left out: the coordinator will neither move nor renew them, so including
+    /// them would only make the whole operation fail. Their sats are reported as
+    /// `SatsBalance.frozen`. Every spend path (`send`, `payLightningInvoice`, `withdraw`,
+    /// `withdrawAll`, swaps) selects from this set, so it is also the right basis for an app's
+    /// "send everything" amount.
+    public func getSpendableLeaves() async throws -> [SparkLeaf] {
         var leaves = try await getLeaves()
         if !Self.renewalCandidates(leaves).renewable.isEmpty {
             _ = try? await renewExhaustedLeaves()
@@ -27,7 +33,7 @@ extension SparkWallet {
     /// Select leaves that exactly cover the target amounts. If no exact match exists,
     /// triggers a leaf swap via SSP to split leaves into the required denominations.
     func selectLeavesWithSwap(amountSats: Int64) async throws -> [SparkLeaf] {
-        let leaves = try await spendableLeaves()
+        let leaves = try await getSpendableLeaves()
 
         // First try exact selection (leaves that sum exactly to the target)
         if let exact = Self.tryExactSelection(leaves, amountSats: amountSats) {
@@ -75,7 +81,7 @@ extension SparkWallet {
     /// Returns newly claimed leaves after the swap.
     func requestLeavesSwap(targetAmounts: [Int64]) async throws -> [SparkLeaf] {
         let totalTarget = targetAmounts.reduce(0, +)
-        let leaves = try await spendableLeaves()
+        let leaves = try await getSpendableLeaves()
 
         // Select leaves covering the total target (smallest first)
         let sorted = leaves.sorted { $0.valueSats < $1.valueSats }

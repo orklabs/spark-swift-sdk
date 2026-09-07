@@ -53,6 +53,9 @@ migration note.
 - `SatsBalance.frozen`: sats in AVAILABLE leaves at the timelock floor. They are no longer counted
   in `available`, which now means "can be sent right now", so sending the full `available`
   balance always succeeds.
+- `getSpendableLeaves()`: the leaves every spend path selects from (renews what the coordinator
+  will renew, excludes frozen leaves), plus `SparkLeaf.isSpendable` and `isRenewable`. Use it, or
+  `satsBalance.available`, as the basis for a "send everything" amount.
 - `send(receiverSparkAddress:amountSats:)` with network-checked Spark address decoding.
 - `SparkConfig.signingThreshold`, `expectedWithdrawBondSats`, `expectedWithdrawRelativeBlockLocktime`.
 - `SparkError` cases: `invalidArgument`, `malformedTransaction`, `invalidAddress`,
