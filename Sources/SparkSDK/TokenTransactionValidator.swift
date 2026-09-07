@@ -38,6 +38,18 @@ enum TokenTransactionValidator {
             throw fail("operator identity public keys changed")
         }
 
+        try validateInputs(final: final, partial: partial, fail: fail)
+        try validateOutputs(final: final, partial: partial, expectations: expectations, fail: fail)
+        if let keyshareInfo {
+            try validateKeyshare(keyshareInfo, expectations: expectations, fail: fail)
+        }
+    }
+
+    private static func validateInputs(
+        final: SparkToken_TokenTransaction,
+        partial: SparkToken_TokenTransaction,
+        fail: (String) -> SparkError
+    ) throws {
         switch (final.tokenInputs, partial.tokenInputs) {
         case (.mintInput(let f), .mintInput(let p)):
             guard !f.issuerPublicKey.isEmpty, f.issuerPublicKey == p.issuerPublicKey else { throw fail("mint issuer changed") }
@@ -66,7 +78,14 @@ enum TokenTransactionValidator {
         default:
             throw fail("transaction type changed or missing")
         }
+    }
 
+    private static func validateOutputs(
+        final: SparkToken_TokenTransaction,
+        partial: SparkToken_TokenTransaction,
+        expectations: Expectations,
+        fail: (String) -> SparkError
+    ) throws {
         guard final.tokenOutputs.count == partial.tokenOutputs.count else {
             throw fail("output count changed (\(final.tokenOutputs.count) vs \(partial.tokenOutputs.count))")
         }
@@ -92,20 +111,24 @@ enum TokenTransactionValidator {
                 }
             }
         }
+    }
 
-        if let keyshareInfo {
-            guard keyshareInfo.threshold == expectations.threshold else {
-                throw fail("keyshare threshold \(keyshareInfo.threshold) differs from expected \(expectations.threshold)")
-            }
-            guard keyshareInfo.ownerIdentifiers.count == expectations.operatorIdentifiers.count else {
-                throw fail("keyshare operator count \(keyshareInfo.ownerIdentifiers.count) differs from configured \(expectations.operatorIdentifiers.count)")
-            }
-            guard Set(keyshareInfo.ownerIdentifiers).count == keyshareInfo.ownerIdentifiers.count else {
-                throw fail("duplicate keyshare owner identifiers")
-            }
-            for identifier in keyshareInfo.ownerIdentifiers where !expectations.operatorIdentifiers.contains(identifier) {
-                throw fail("keyshare owner \(identifier) is not a configured operator")
-            }
+    private static func validateKeyshare(
+        _ keyshareInfo: Spark_SigningKeyshare,
+        expectations: Expectations,
+        fail: (String) -> SparkError
+    ) throws {
+        guard keyshareInfo.threshold == expectations.threshold else {
+            throw fail("keyshare threshold \(keyshareInfo.threshold) differs from expected \(expectations.threshold)")
+        }
+        guard keyshareInfo.ownerIdentifiers.count == expectations.operatorIdentifiers.count else {
+            throw fail("keyshare operator count \(keyshareInfo.ownerIdentifiers.count) differs from configured \(expectations.operatorIdentifiers.count)")
+        }
+        guard Set(keyshareInfo.ownerIdentifiers).count == keyshareInfo.ownerIdentifiers.count else {
+            throw fail("duplicate keyshare owner identifiers")
+        }
+        for identifier in keyshareInfo.ownerIdentifiers where !expectations.operatorIdentifiers.contains(identifier) {
+            throw fail("keyshare owner \(identifier) is not a configured operator")
         }
     }
 }

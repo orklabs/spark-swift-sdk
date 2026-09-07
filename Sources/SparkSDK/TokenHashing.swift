@@ -5,6 +5,9 @@ import CryptoKit
 
 /// Hash a V2 token transaction. When `partialHash` is true, server-set fields
 /// (output id, revocation commitment, withdraw bond/locktime, expiry) are omitted.
+/// Mirrors the reference SDK's hashTokenTransactionV2 field by field; kept as one function so
+/// the two stay easy to diff.
+// swiftlint:disable:next cyclomatic_complexity function_body_length
 func hashTokenTransactionV2(
     _ tx: SparkToken_TokenTransaction,
     partialHash: Bool

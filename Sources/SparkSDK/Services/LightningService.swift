@@ -218,89 +218,18 @@ extension SparkWallet {
             throw SparkError.invalidResponse("Got \(htlcCommitments.count) signing commitments, need \(3 * selectedLeaves.count)")
         }
 
-        var htlcCpfpJobs: [Spark_UserSignedTxSigningJob] = []
-        var htlcDirectJobs: [Spark_UserSignedTxSigningJob] = []
-        var htlcDirectFromCpfpJobs: [Spark_UserSignedTxSigningJob] = []
-
-        for i in 0..<selectedLeaves.count {
-            let leaf = selectedLeaves[i]
-            let node = leaf.node
-            let signingKey = try signer.deriveLeafSigningKey(leaf.id)
-            let verifyingKey = Data(node.verifyingPublicKey)
-
-            let cpfpCommitments = htlcCommitments[i].signingNonceCommitments
-            let directCommitments = htlcCommitments[i + selectedLeaves.count].signingNonceCommitments
-            let directFromCpfpCommitments = htlcCommitments[i + 2 * selectedLeaves.count].signingNonceCommitments
-
-            let (cpfpSeq, _) = try Self.computeNextSequences(from: Data(node.refundTx))
-            let bit30 = cpfpSeq & (1 << 30)
-            let nextTimelock = cpfpSeq & 0xFFFF
-
-            // HTLC sequences (matching JS SDK getNextHTLCTransactionSequence)
-            let htlcNextSequence = bit30 | (nextTimelock + htlcTimelockOffset)
-            let htlcDirectSequence = bit30 | (nextTimelock + directHtlcTimelockOffset)
-
-            // CPFP HTLC refund (no fee applied)
-            let cpfpHtlc = try constructHtlcTransaction(
-                nodeTx: Data(node.nodeTx), vout: 0,
-                sequence: htlcNextSequence,
-                paymentHash: paymentHash,
-                hashlockPubkey: receiverPubKey,
-                seqlockPubkey: senderIdentityPubKey,
-                htlcSequence: lightningHTLCSequence,
-                applyFee: false, feeSats: 0,
-                network: networkStr
-            )
-            htlcCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
-                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
-                rawTx: cpfpHtlc.tx, sighash: cpfpHtlc.sighash,
-                soCommitments: cpfpCommitments
-            ))
-
-            // Direct HTLC refund (if directTx exists)
-            if !node.directTx.isEmpty {
-                let directHtlc = try constructHtlcTransaction(
-                    nodeTx: Data(node.directTx), vout: 0,
-                    sequence: htlcDirectSequence,
-                    paymentHash: paymentHash,
-                    hashlockPubkey: receiverPubKey,
-                    seqlockPubkey: senderIdentityPubKey,
-                    htlcSequence: lightningHTLCSequence,
-                    applyFee: true, feeSats: sparkDefaultFeeSats,
-                    network: networkStr
-                )
-                htlcDirectJobs.append(try FrostSigningHelper.buildSigningJob(
-                    leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
-                    rawTx: directHtlc.tx, sighash: directHtlc.sighash,
-                    soCommitments: directCommitments
-                ))
-            }
-
-            // DirectFromCpfp HTLC refund (always, from cpfp node tx)
-            let directFromCpfpHtlc = try constructHtlcTransaction(
-                nodeTx: Data(node.nodeTx), vout: 0,
-                sequence: htlcDirectSequence,
-                paymentHash: paymentHash,
-                hashlockPubkey: receiverPubKey,
-                seqlockPubkey: senderIdentityPubKey,
-                htlcSequence: lightningHTLCSequence,
-                applyFee: true, feeSats: sparkDefaultFeeSats,
-                network: networkStr
-            )
-            htlcDirectFromCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
-                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
-                rawTx: directFromCpfpHtlc.tx, sighash: directFromCpfpHtlc.sighash,
-                soCommitments: directFromCpfpCommitments
-            ))
-        }
+        let htlcJobs = try buildHtlcSigningJobs(
+            selectedLeaves: selectedLeaves, paymentHash: paymentHash, receiverPubKey: receiverPubKey,
+            senderIdentityPubKey: senderIdentityPubKey, htlcCommitments: htlcCommitments, networkStr: networkStr
+        )
 
         // Build TransferPackage
         var transferPackage = Spark_TransferPackage()
         transferPackage.userSignature = packageSignature
         transferPackage.hashVariant = .v2
-        transferPackage.leavesToSend = htlcCpfpJobs
-        transferPackage.directLeavesToSend = htlcDirectJobs
-        transferPackage.directFromCpfpLeavesToSend = htlcDirectFromCpfpJobs
+        transferPackage.leavesToSend = htlcJobs.cpfp
+        transferPackage.directLeavesToSend = htlcJobs.direct
+        transferPackage.directFromCpfpLeavesToSend = htlcJobs.directFromCpfp
         for (soID, cipher) in keyTweakPackage {
             transferPackage.keyTweakPackage[soID] = cipher
         }
@@ -318,28 +247,10 @@ extension SparkWallet {
             throw SparkError.invalidResponse("Got \(swapCommitments.count) signing commitments, need \(selectedLeaves.count)")
         }
 
-        var swapCpfpJobs: [Spark_UserSignedTxSigningJob] = []
-
-        for i in 0..<selectedLeaves.count {
-            let leaf = selectedLeaves[i]
-            let node = leaf.node
-            let signingKey = try signer.deriveLeafSigningKey(leaf.id)
-            let verifyingKey = Data(node.verifyingPublicKey)
-
-            let cpfpCommitments = swapCommitments[i].signingNonceCommitments
-
-            let (nextSequence, _) = try Self.computeNextSequences(from: Data(node.refundTx))
-
-            let cpfpRefund = try constructRefundTx(
-                tx: Data(node.nodeTx), vout: 0,
-                pubkey: receiverPubKey, network: networkStr, sequence: nextSequence
-            )
-            swapCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
-                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
-                rawTx: cpfpRefund.tx, sighash: cpfpRefund.sighash,
-                soCommitments: cpfpCommitments
-            ))
-        }
+        let swapCpfpJobs = try buildSwapRefundJobs(
+            selectedLeaves: selectedLeaves, receiverPubKey: receiverPubKey,
+            swapCommitments: swapCommitments, networkStr: networkStr
+        )
 
         // ── Step 4: Single call to initiate_preimage_swap_v3 ──
 
@@ -423,6 +334,125 @@ extension SparkWallet {
         }
 
         return id
+    }
+
+    /// HTLC refund signing jobs (cpfp, direct, directFromCpfp) for a lightning send, one set per leaf.
+    private func buildHtlcSigningJobs(
+        selectedLeaves: [SparkLeaf],
+        paymentHash: Data,
+        receiverPubKey: Data,
+        senderIdentityPubKey: Data,
+        htlcCommitments: [Spark_RequestedSigningCommitments],
+        networkStr: String
+    ) throws -> (cpfp: [Spark_UserSignedTxSigningJob], direct: [Spark_UserSignedTxSigningJob], directFromCpfp: [Spark_UserSignedTxSigningJob]) {
+        var htlcCpfpJobs: [Spark_UserSignedTxSigningJob] = []
+        var htlcDirectJobs: [Spark_UserSignedTxSigningJob] = []
+        var htlcDirectFromCpfpJobs: [Spark_UserSignedTxSigningJob] = []
+
+        for i in 0..<selectedLeaves.count {
+            let leaf = selectedLeaves[i]
+            let node = leaf.node
+            let signingKey = try signer.deriveLeafSigningKey(leaf.id)
+            let verifyingKey = Data(node.verifyingPublicKey)
+
+            let cpfpCommitments = htlcCommitments[i].signingNonceCommitments
+            let directCommitments = htlcCommitments[i + selectedLeaves.count].signingNonceCommitments
+            let directFromCpfpCommitments = htlcCommitments[i + 2 * selectedLeaves.count].signingNonceCommitments
+
+            let (cpfpSeq, _) = try Self.computeNextSequences(from: Data(node.refundTx))
+            let bit30 = cpfpSeq & (1 << 30)
+            let nextTimelock = cpfpSeq & 0xFFFF
+
+            // HTLC sequences (matching JS SDK getNextHTLCTransactionSequence)
+            let htlcNextSequence = bit30 | (nextTimelock + htlcTimelockOffset)
+            let htlcDirectSequence = bit30 | (nextTimelock + directHtlcTimelockOffset)
+
+            // CPFP HTLC refund (no fee applied)
+            let cpfpHtlc = try constructHtlcTransaction(
+                nodeTx: Data(node.nodeTx), vout: 0,
+                sequence: htlcNextSequence,
+                paymentHash: paymentHash,
+                hashlockPubkey: receiverPubKey,
+                seqlockPubkey: senderIdentityPubKey,
+                htlcSequence: lightningHTLCSequence,
+                applyFee: false, feeSats: 0,
+                network: networkStr
+            )
+            htlcCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
+                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                rawTx: cpfpHtlc.tx, sighash: cpfpHtlc.sighash,
+                soCommitments: cpfpCommitments
+            ))
+
+            // Direct HTLC refund (if directTx exists)
+            if !node.directTx.isEmpty {
+                let directHtlc = try constructHtlcTransaction(
+                    nodeTx: Data(node.directTx), vout: 0,
+                    sequence: htlcDirectSequence,
+                    paymentHash: paymentHash,
+                    hashlockPubkey: receiverPubKey,
+                    seqlockPubkey: senderIdentityPubKey,
+                    htlcSequence: lightningHTLCSequence,
+                    applyFee: true, feeSats: sparkDefaultFeeSats,
+                    network: networkStr
+                )
+                htlcDirectJobs.append(try FrostSigningHelper.buildSigningJob(
+                    leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                    rawTx: directHtlc.tx, sighash: directHtlc.sighash,
+                    soCommitments: directCommitments
+                ))
+            }
+
+            // DirectFromCpfp HTLC refund (always, from cpfp node tx)
+            let directFromCpfpHtlc = try constructHtlcTransaction(
+                nodeTx: Data(node.nodeTx), vout: 0,
+                sequence: htlcDirectSequence,
+                paymentHash: paymentHash,
+                hashlockPubkey: receiverPubKey,
+                seqlockPubkey: senderIdentityPubKey,
+                htlcSequence: lightningHTLCSequence,
+                applyFee: true, feeSats: sparkDefaultFeeSats,
+                network: networkStr
+            )
+            htlcDirectFromCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
+                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                rawTx: directFromCpfpHtlc.tx, sighash: directFromCpfpHtlc.sighash,
+                soCommitments: directFromCpfpCommitments
+            ))
+        }
+        return (htlcCpfpJobs, htlcDirectJobs, htlcDirectFromCpfpJobs)
+    }
+
+    /// Regular cpfp refund signing jobs for the swap transfer field of a lightning send.
+    private func buildSwapRefundJobs(
+        selectedLeaves: [SparkLeaf],
+        receiverPubKey: Data,
+        swapCommitments: [Spark_RequestedSigningCommitments],
+        networkStr: String
+    ) throws -> [Spark_UserSignedTxSigningJob] {
+        var swapCpfpJobs: [Spark_UserSignedTxSigningJob] = []
+
+        for i in 0..<selectedLeaves.count {
+            let leaf = selectedLeaves[i]
+            let node = leaf.node
+            let signingKey = try signer.deriveLeafSigningKey(leaf.id)
+            let verifyingKey = Data(node.verifyingPublicKey)
+
+            let cpfpCommitments = swapCommitments[i].signingNonceCommitments
+
+            let (nextSequence, _) = try Self.computeNextSequences(from: Data(node.refundTx))
+
+            let cpfpRefund = try constructRefundTx(
+                tx: Data(node.nodeTx), vout: 0,
+                pubkey: receiverPubKey, network: networkStr, sequence: nextSequence
+            )
+            swapCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
+                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
+                rawTx: cpfpRefund.tx, sighash: cpfpRefund.sighash,
+                soCommitments: cpfpCommitments
+            ))
+        }
+        return swapCpfpJobs
     }
 
     /// Get fee estimate for outbound lightning payment

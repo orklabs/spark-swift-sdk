@@ -818,7 +818,7 @@ struct DebugTests {
             let dir = t.senderIdentityPublicKey == wallet.identityPublicKeyHex ? "SENT" : "RECV"
             print("  \(dateFormatter.string(from: t.createdAt)) | \(dir) | \(t.totalValueSats) sats | \(t.status) | \(t.type) | \(t.id)")
         }
-        #expect(transfers.count > 0)
+        #expect(!transfers.isEmpty)
 
         // Test getTransfer with first transfer's ID
         let first = transfers[0]

@@ -14,6 +14,7 @@ struct ConsolidationDiag {
         defer { Task { await wallet.close() } }
 
         let result = try await wallet.consolidateLeaves()
+    // swiftlint:disable:next line_length
         print("CONSOL: \(result.leavesBefore) -> \(result.leavesAfter) leaves, \(result.totalSatsBefore) -> \(result.totalSatsAfter) sats, fee \(result.feeSats), rounds \(result.rounds), skipped \(result.skippedLeaves)")
 
         let snap = try await wallet.getRecoverySnapshot()

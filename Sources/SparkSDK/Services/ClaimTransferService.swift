@@ -115,7 +115,7 @@ extension SparkWallet {
             var currentTimelock = rawSequence & 0xFFFF
             let remainder = currentTimelock % sparkTimeLockInterval
             if remainder != 0 {
-                currentTimelock = currentTimelock - remainder
+                currentTimelock -= remainder
             }
             let bit30 = rawSequence & (1 << 30)
             let cpfpSequence = bit30 | (currentTimelock & 0xFFFF)

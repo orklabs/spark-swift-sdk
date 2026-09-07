@@ -85,7 +85,7 @@ struct PreflightTests {
                   identity:  \(wallet.identityPublicKeyHex)
                   address:   \(wallet.getSparkAddress())
                   available: \(balance.satsBalance.available) sats   owned: \(balance.satsBalance.owned)   incoming: \(balance.satsBalance.incoming)
-                  leaves:    \(leaves.count) \(leaves.prefix(12).map { "\($0.valueSats)@tl\($0.refundTimelockBlocks)/seq=\(String((try? SparkWallet.parseSequenceFromRawTx(Data($0.node.refundTx))) ?? 0, radix: 16))/rt=\($0.node.refundTx.count)" }.joined(separator: " "))\(leaves.count > 12 ? " …" : "")
+                  leaves:    \(leaves.count) \(leafSummary(leaves))
                   timelocks: \(low) below renewal threshold, \(exhausted) exhausted
                   tokens:    \(balance.tokenBalances.map { "\($0.tokenMetadata.tokenTicker)=\($0.availableToSendBalance)" }.joined(separator: " "))
                 """)
@@ -124,6 +124,15 @@ struct PreflightTests {
         }
         print("\n=== PREFLIGHT REPORT ===\n" + report.joined(separator: "\n") + "\n=== END PREFLIGHT ===\n")
     }
+}
+
+/// "value@tl<timelock>/seq=<hex>/rt=<refund tx bytes>" for the first dozen leaves.
+private func leafSummary(_ leaves: [SparkLeaf]) -> String {
+    let shown = leaves.prefix(12).map { leaf -> String in
+        let sequence = (try? SparkWallet.parseSequenceFromRawTx(Data(leaf.node.refundTx))) ?? 0
+        return "\(leaf.valueSats)@tl\(leaf.refundTimelockBlocks)/seq=\(String(sequence, radix: 16))/rt=\(leaf.node.refundTx.count)"
+    }
+    return shown.joined(separator: " ") + (leaves.count > 12 ? " …" : "")
 }
 
 enum PreflightConfig {

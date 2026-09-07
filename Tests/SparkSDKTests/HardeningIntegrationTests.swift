@@ -1,3 +1,4 @@
+// swiftlint:disable line_length — carries a BOLT-11 specification vector
 import Foundation
 import Testing
 @testable import SparkSDK

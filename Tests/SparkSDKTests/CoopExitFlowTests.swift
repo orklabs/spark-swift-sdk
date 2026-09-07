@@ -74,9 +74,17 @@ struct ConnectorRefundTests {
     @Test("No direct refund for zero-timelock nodes or leaves without a direct node transaction")
     func directRefundRules() throws {
         let zeroNode = node(nodeTimelock: 0, refundTimelock: 2000, withDirect: true)
-        #expect(try SparkWallet.buildConnectorRefunds(node: zeroNode, receiverPubKey: receiver, connectorTxid: connectorTx.txid, connectorTx: connectorTx, connectorVout: 0, network: "mainnet").direct == nil)
+        let zeroRefunds = try SparkWallet.buildConnectorRefunds(
+            node: zeroNode, receiverPubKey: receiver, connectorTxid: connectorTx.txid,
+            connectorTx: connectorTx, connectorVout: 0, network: "mainnet"
+        )
+        #expect(zeroRefunds.direct == nil)
         let noDirect = node(nodeTimelock: 1000, refundTimelock: 2000, withDirect: false)
-        #expect(try SparkWallet.buildConnectorRefunds(node: noDirect, receiverPubKey: receiver, connectorTxid: connectorTx.txid, connectorTx: connectorTx, connectorVout: 0, network: "mainnet").direct == nil)
+        let noDirectRefunds = try SparkWallet.buildConnectorRefunds(
+            node: noDirect, receiverPubKey: receiver, connectorTxid: connectorTx.txid,
+            connectorTx: connectorTx, connectorVout: 0, network: "mainnet"
+        )
+        #expect(noDirectRefunds.direct == nil)
         // A leaf at the timelock floor cannot be exited cooperatively.
         let floor = node(nodeTimelock: 1000, refundTimelock: 100, withDirect: false)
         #expect(throws: SparkError.self) {
