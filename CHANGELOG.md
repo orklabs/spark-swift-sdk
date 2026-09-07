@@ -13,6 +13,12 @@ migration note.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.2.0] — 2026-09-07
+
 ### Security
 - `withdraw` verifies the SSP's cooperative-exit response before signing: the raw exit
   transaction must hash to the reported txid, pay the destination at least `amount - fee`, and
@@ -112,5 +118,6 @@ Initial public release.
 - FROST threshold signing via `spark_frostFFI.xcframework` (Rust UniFFI).
 - Test suite: BIP-39 vectors, key derivation, token validation, full integration coverage.
 
-[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/orklabs/spark-swift-sdk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orklabs/spark-swift-sdk/releases/tag/v0.1.0
