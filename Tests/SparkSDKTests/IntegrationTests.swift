@@ -448,7 +448,7 @@ struct LightningTests {
             amountSats: amountSats, memo: "integration test"
         )
         let paymentID = try await walletA.payLightningInvoice(
-            paymentRequest: invoice.paymentRequest
+            paymentRequest: invoice.paymentRequest, maxFeeSats: 50
         )
         #expect(!paymentID.isEmpty)
         print("Payment ID: \(paymentID)")
@@ -475,7 +475,7 @@ struct LightningTests {
             return
         }
         let bolt11 = try await resolveLightningAddress(externalAddress, amountSats: 10)
-        let paymentID = try await wallet.payLightningInvoice(paymentRequest: bolt11)
+        let paymentID = try await wallet.payLightningInvoice(paymentRequest: bolt11, maxFeeSats: 50)
         #expect(!paymentID.isEmpty)
         print("External payment ID: \(paymentID)")
     }
@@ -1157,6 +1157,7 @@ struct IdempotencyTests {
         // First call — should succeed
         let paymentId = try await walletA.payLightningInvoice(
             paymentRequest: invoice.paymentRequest,
+            maxFeeSats: 50,
             idempotencyKey: idempotencyKey
         )
         #expect(!paymentId.isEmpty)
@@ -1271,7 +1272,7 @@ struct InvoiceMatchingTests {
 
         // --- Step 2: WalletA pays the invoice ---
         let paymentId = try await walletA.payLightningInvoice(
-            paymentRequest: invoice.paymentRequest
+            paymentRequest: invoice.paymentRequest, maxFeeSats: 50
         )
         print("Payment ID: \(paymentId)")
 
@@ -1377,7 +1378,7 @@ struct FullFlowTests {
         #expect(invoice.amountSats == 100)
 
         let payID = try await walletA.payLightningInvoice(
-            paymentRequest: invoice.paymentRequest
+            paymentRequest: invoice.paymentRequest, maxFeeSats: 50
         )
         #expect(!payID.isEmpty)
         print("Payment sent: \(payID)")
@@ -1422,7 +1423,7 @@ struct FullFlowTests {
         }
         print("\n--- Phase 3: Lightning A -> \(externalAddress) (10 sats) ---")
         let bolt11 = try await resolveLightningAddress(externalAddress, amountSats: 10)
-        let extPayID = try await walletA.payLightningInvoice(paymentRequest: bolt11)
+        let extPayID = try await walletA.payLightningInvoice(paymentRequest: bolt11, maxFeeSats: 50)
         #expect(!extPayID.isEmpty)
         print("External payment: \(extPayID)")
 

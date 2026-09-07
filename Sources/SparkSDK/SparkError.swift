@@ -18,10 +18,16 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
     case malformedTransaction(String)
     /// A Bitcoin address is malformed or belongs to another network.
     case invalidAddress(String)
+    /// A BOLT-11 invoice is malformed or belongs to another network.
+    case invalidInvoice(String)
     /// A response from the SSP or a coordinator failed client-side validation. Nothing was signed.
     case untrustedResponse(String)
     /// A quoted fee exceeds the limit the caller allowed.
     case feeExceedsLimit(feeSats: Int64, maxFeeSats: Int64)
+    /// The coordinator locked leaves for a lightning payment but the SSP request failed.
+    /// Retry `payLightningInvoice` with the same `transferId` to resume, or reconcile via
+    /// `getTransferFromSsp`.
+    case lightningSendIncomplete(transferId: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -53,10 +59,14 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
             return "Malformed transaction: \(msg)"
         case .invalidAddress(let msg):
             return "Invalid address: \(msg)"
+        case .invalidInvoice(let msg):
+            return "Invalid invoice: \(msg)"
         case .untrustedResponse(let msg):
             return "Response failed validation: \(msg)"
         case .feeExceedsLimit(let fee, let max):
             return "Quoted fee of \(fee) sats exceeds the allowed maximum of \(max) sats"
+        case .lightningSendIncomplete(let transferId, let reason):
+            return "Lightning send incomplete for transfer \(transferId): \(reason)"
         }
     }
 }

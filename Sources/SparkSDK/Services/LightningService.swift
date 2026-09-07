@@ -14,6 +14,15 @@ extension SparkWallet {
         memo: String? = nil,
         expirySecs: Int? = nil
     ) async throws -> LightningInvoice {
+        guard amountSats >= 0 else {
+            throw SparkError.invalidArgument("amountSats must not be negative, got \(amountSats)")
+        }
+        if let expirySecs, expirySecs <= 0 {
+            throw SparkError.invalidArgument("expirySecs must be positive, got \(expirySecs)")
+        }
+        if let memo, memo.utf8.count > 639 {
+            throw SparkError.invalidArgument("memo must be at most 639 bytes")
+        }
         let preimage = try randomSecretKeyBytes()
         let paymentHash = Data(CryptoKit.SHA256.hash(data: preimage))
         let paymentHashHex = paymentHash.hexString
@@ -38,6 +47,16 @@ extension SparkWallet {
               let expiresAtStr = invoice["expires_at"] as? String else {
             throw SparkError.invalidResponse("Invalid lightning receive response")
         }
+
+        // The invoice we hand out must be the one we asked for: our payment hash, our amount,
+        // our network. Checked before any preimage share leaves the device.
+        let decodedInvoice = try LightningValidator.verifyCreatedInvoice(
+            encodedInvoice: encodedInvoice,
+            reportedPaymentHashHex: invoice["payment_hash"] as? String,
+            expectedPaymentHash: paymentHash,
+            expectedAmountSats: amountSats,
+            network: config.network
+        )
 
         // Split preimage and store encrypted shares with SOs using config-based identifiers/keys
         let soConfigs = config.signingOperators
@@ -69,7 +88,9 @@ extension SparkWallet {
             }
 
             let shareBytes = try secretShareProto.serializedData()
-            let identityPubKey = Data(hexString: soConfig.identityPublicKeyHex)!
+            guard let identityPubKey = Data(hexString: soConfig.identityPublicKeyHex), !identityPubKey.isEmpty else {
+                throw SparkError.invalidArgument("operator \(soConfig.identifier) has no identity public key configured")
+            }
             let encrypted = try encryptEcies(msg: shareBytes, publicKey: identityPubKey)
             storeRequest.encryptedPreimageShares[soConfig.identifier] = encrypted
         }
@@ -89,7 +110,7 @@ extension SparkWallet {
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let expiresAt = formatter.date(from: expiresAtStr) ?? Date().addingTimeInterval(3600)
+        let expiresAt = formatter.date(from: expiresAtStr) ?? decodedInvoice.expiresAt
 
         return LightningInvoice(
             paymentRequest: encodedInvoice,
@@ -102,32 +123,56 @@ extension SparkWallet {
     /// Pay a Lightning invoice via single-call initiate_preimage_swap_v3 with TransferPackage
     /// (matching the JS reference SDK approach).
     ///
-    /// - Parameter idempotencyKey: Optional key for deduplication. If the same key is used
-    ///   for multiple calls, the server returns the same result instead of creating duplicates.
+    /// - Parameters:
+    ///   - paymentRequest: BOLT-11 invoice. Must be for the wallet's network.
+    ///   - maxFeeSats: Highest routing fee the caller accepts. The SSP's fee estimate is fetched
+    ///     first and the payment is refused with `SparkError.feeExceedsLimit` if it is higher.
+    ///   - amountSats: Amount to pay for an amountless invoice. Must be omitted (or equal) for an
+    ///     invoice that carries an amount.
+    ///   - idempotencyKey: Optional key for deduplication. If the same key is used for multiple
+    ///     calls, the server returns the same result instead of creating duplicates.
+    ///   - transferId: Optional UUID to make the whole send resumable. On
+    ///     `SparkError.lightningSendIncomplete` call again with the same id: the coordinator
+    ///     returns the transfer it already holds instead of locking more leaves.
+    /// - Returns: The SSP lightning send request id.
     public func payLightningInvoice(
         paymentRequest: String,
+        maxFeeSats: Int64,
         amountSats: Int64? = nil,
-        idempotencyKey: String? = nil
+        idempotencyKey: String? = nil,
+        transferId: String? = nil
     ) async throws -> String {
-        let invoiceInfo = try Self.decodeBolt11PaymentHash(paymentRequest)
-        let paymentHash = invoiceInfo.paymentHash
-        let invoiceAmountSats = amountSats ?? invoiceInfo.amountSats
-        guard let invoiceAmountSats else {
-            throw SparkError.invalidResponse("Invoice has no amount and amountSats not provided")
+        guard maxFeeSats >= 0 else {
+            throw SparkError.invalidArgument("maxFeeSats must not be negative, got \(maxFeeSats)")
         }
+        let invoice = try Bolt11Invoice.decode(paymentRequest)
+        guard invoice.belongs(to: config.network) else {
+            throw SparkError.invalidInvoice("invoice is for \(invoice.network), wallet is on \(config.network)")
+        }
+        let paymentHash = invoice.paymentHash
+        let invoiceAmountSats = try LightningValidator.resolvePaymentAmountSats(
+            invoiceAmountMsat: invoice.amountMsat, requestedAmountSats: amountSats
+        )
+        let resumeTransferId = try LightningValidator.normalizeTransferId(transferId)
 
-        // Get fee estimate from SSP
+        // Get fee estimate from SSP and refuse anything above the caller's cap.
         let feeEstimate = try await getLightningSendFeeEstimate(
-            encodedInvoice: paymentRequest, amountSats: invoiceInfo.amountSats == nil ? amountSats : nil
+            encodedInvoice: paymentRequest, amountSats: invoice.amountMsat == nil ? invoiceAmountSats : nil
         )
         let feeSats = UInt64(max(feeEstimate, 1))
+        guard Int64(feeSats) <= maxFeeSats else {
+            throw SparkError.feeExceedsLimit(feeSats: Int64(feeSats), maxFeeSats: maxFeeSats)
+        }
 
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         let networkStr = config.networkString
 
         // Select leaves covering invoice amount + fee (with swap if needed)
-        let totalNeeded = invoiceAmountSats + Int64(feeSats)
+        let (totalNeeded, overflow) = invoiceAmountSats.addingReportingOverflow(Int64(feeSats))
+        guard !overflow else {
+            throw SparkError.invalidArgument("amount plus fee overflows")
+        }
         let selectedLeaves = try await selectLeavesWithSwap(amountSats: totalNeeded)
         let leafIDs = selectedLeaves.map(\.id)
 
@@ -141,7 +186,7 @@ extension SparkWallet {
         let receiverPubKey = config.sspIdentityPublicKey
         // sender identity public key (for HTLC seqlock destination)
         let senderIdentityPubKey = signer.identityPublicKey
-        let transferID = UUID().uuidString.lowercased()
+        let transferID = resumeTransferId ?? UUID().uuidString.lowercased()
 
         // Single shared expiry time — 16 days from now (matching JS SDK)
         let expiryTime = Google_Protobuf_Timestamp(date: Date().addingTimeInterval(16 * 24 * 60 * 60))
@@ -322,9 +367,11 @@ extension SparkWallet {
         transferRequest.transferPackage = transferPackage
         swapRequest.transferRequest = transferRequest
 
+        // A caller-supplied transfer id doubles as the coordinator idempotency key, so a retry
+        // after a partial failure resumes the existing swap instead of starting a second one.
         let swapMetadata: Metadata
-        if let idempotencyKey {
-            swapMetadata = metadataWithIdempotencyKey(idempotencyKey, base: metadata)
+        if let coordinatorIdempotencyKey = idempotencyKey ?? resumeTransferId {
+            swapMetadata = metadataWithIdempotencyKey(coordinatorIdempotencyKey, base: metadata)
         } else {
             swapMetadata = metadata
         }
@@ -346,15 +393,26 @@ extension SparkWallet {
             sspVariables["user_outbound_transfer_external_id"] = swapResponse.transfer.id
         }
 
-        let sspResponse = try await sspClient.executeRaw(
-            query: GraphQLMutations.requestLightningSend,
-            variables: sspVariables
-        )
+        // From here on the coordinator holds the leaves for this transfer. Surface the transfer
+        // id on failure so the app can resume (same `transferId`) or reconcile via the SSP.
+        let sspResponse: [String: Any]
+        do {
+            sspResponse = try await sspClient.executeRaw(
+                query: GraphQLMutations.requestLightningSend,
+                variables: sspVariables
+            )
+        } catch {
+            throw SparkError.lightningSendIncomplete(
+                transferId: swapResponse.transfer.id, reason: String(describing: error)
+            )
+        }
 
         guard let send = sspResponse["request_lightning_send"] as? [String: Any],
               let request = send["request"] as? [String: Any],
               let id = request["id"] as? String else {
-            throw SparkError.invalidResponse("Invalid lightning send response")
+            throw SparkError.lightningSendIncomplete(
+                transferId: swapResponse.transfer.id, reason: "invalid lightning send response from the SSP"
+            )
         }
 
         return id
@@ -380,122 +438,8 @@ extension SparkWallet {
         return (originalValue + 999) / 1000
     }
 
-    /// Decode BOLT11 invoice to extract payment hash and amount
-    static func decodeBolt11PaymentHash(_ invoice: String) throws -> (paymentHash: Data, amountSats: Int64?) {
-        let lower = invoice.lowercased()
-        guard lower.hasPrefix("lnbc") || lower.hasPrefix("lntb") || lower.hasPrefix("lnbcrt") else {
-            throw SparkError.invalidResponse("Not a valid BOLT11 invoice")
-        }
-
-        guard let separatorIndex = lower.lastIndex(of: "1") else {
-            throw SparkError.invalidResponse("Invalid BOLT11 format")
-        }
-
-        let hrp = String(lower[lower.startIndex..<separatorIndex])
-        let dataStr = String(lower[lower.index(after: separatorIndex)...])
-
-        guard dataStr.count > 6 else {
-            throw SparkError.invalidResponse("BOLT11 data too short")
-        }
-        let dataWithoutChecksum = String(dataStr.dropLast(6))
-
-        let bech32Chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-        let bech32Values: [Character: UInt8] = Dictionary(uniqueKeysWithValues:
-            bech32Chars.enumerated().map { (Character(String($0.element)), UInt8($0.offset)) }
-        )
-
-        var values: [UInt8] = []
-        for ch in dataWithoutChecksum {
-            guard let val = bech32Values[ch] else {
-                throw SparkError.invalidResponse("Invalid bech32 character: \(ch)")
-            }
-            values.append(val)
-        }
-
-        guard values.count > 7 else {
-            throw SparkError.invalidResponse("BOLT11 data too short for timestamp")
-        }
-
-        var pos = 7 // skip timestamp
-
-        var paymentHash: Data?
-        while pos + 3 <= values.count {
-            let fieldType = values[pos]
-            let dataLength = Int(values[pos + 1]) * 32 + Int(values[pos + 2])
-            pos += 3
-
-            guard pos + dataLength <= values.count else { break }
-
-            if fieldType == 1 { // payment hash (p)
-                paymentHash = Self.convertBech32Bits(Array(values[pos..<pos + dataLength]), fromBits: 5, toBits: 8, pad: false)
-            }
-
-            pos += dataLength
-        }
-
-        guard let hash = paymentHash, hash.count == 32 else {
-            throw SparkError.invalidResponse("Could not extract payment hash from invoice")
-        }
-
-        var amountSats: Int64? = nil
-        let amountPart: String
-        if hrp.hasPrefix("lnbcrt") {
-            amountPart = String(hrp.dropFirst(6))
-        } else if hrp.hasPrefix("lnbc") {
-            amountPart = String(hrp.dropFirst(4))
-        } else if hrp.hasPrefix("lntb") {
-            amountPart = String(hrp.dropFirst(4))
-        } else {
-            amountPart = ""
-        }
-
-        if !amountPart.isEmpty {
-            let multiplierChar = amountPart.last!
-            let numberStr = String(amountPart.dropLast())
-            if let number = Int64(numberStr) {
-                switch multiplierChar {
-                case "m": amountSats = number * 100_000   // milli-BTC
-                case "u": amountSats = number * 100       // micro-BTC
-                case "n": amountSats = (number + 9) / 10  // nano-BTC (ceiling)
-                case "p": amountSats = (number + 9999) / 10000 // pico-BTC
-                default:
-                    if let fullNumber = Int64(amountPart) {
-                        amountSats = fullNumber * 100_000_000 // BTC
-                    }
-                }
-            }
-        }
-
-        return (hash, amountSats)
-    }
-
     /// nSequence of the first input of a raw Bitcoin transaction (where Spark keeps leaf timelocks).
     static func parseSequenceFromRawTx(_ rawTx: Data) throws -> UInt32 {
         try RawTransaction.parse(rawTx, context: "leaf tx").firstInputSequence
-    }
-
-    /// Convert between bit widths (bech32 5-bit to 8-bit)
-    private static func convertBech32Bits(_ data: [UInt8], fromBits: Int, toBits: Int, pad: Bool) -> Data? {
-        var acc: Int = 0
-        var bits: Int = 0
-        var result: [UInt8] = []
-        let maxv = (1 << toBits) - 1
-
-        for value in data {
-            acc = (acc << fromBits) | Int(value)
-            bits += fromBits
-            while bits >= toBits {
-                bits -= toBits
-                result.append(UInt8((acc >> bits) & maxv))
-            }
-        }
-
-        if pad && bits > 0 {
-            result.append(UInt8((acc << (toBits - bits)) & maxv))
-        } else if bits >= fromBits || ((acc << (toBits - bits)) & maxv) != 0 {
-            if !pad { /* ignore trailing bits */ }
-        }
-
-        return Data(result)
     }
 }
