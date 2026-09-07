@@ -199,7 +199,8 @@ extension SparkWallet {
             receiverPubKey: receiverPubKey,
             signer: signer,
             soOperators: soOperators,
-            signingOperatorConfigs: config.signingOperators
+            signingOperatorConfigs: config.signingOperators,
+            threshold: config.signingThreshold
         )
         let keyTweakPackage = tweakPackage.keyTweakPackage
         let packageSignature = tweakPackage.signature
@@ -213,6 +214,9 @@ extension SparkWallet {
             request: ClientRequest(message: htlcCommitmentsReq, metadata: metadata)
         )
         let htlcCommitments = htlcCommitmentsResp.signingCommitments
+        guard htlcCommitments.count >= 3 * selectedLeaves.count else {
+            throw SparkError.invalidResponse("Got \(htlcCommitments.count) signing commitments, need \(3 * selectedLeaves.count)")
+        }
 
         var htlcCpfpJobs: [Spark_UserSignedTxSigningJob] = []
         var htlcDirectJobs: [Spark_UserSignedTxSigningJob] = []
@@ -310,6 +314,9 @@ extension SparkWallet {
             request: ClientRequest(message: swapCommitmentsReq, metadata: metadata)
         )
         let swapCommitments = swapCommitmentsResp.signingCommitments
+        guard swapCommitments.count >= selectedLeaves.count else {
+            throw SparkError.invalidResponse("Got \(swapCommitments.count) signing commitments, need \(selectedLeaves.count)")
+        }
 
         var swapCpfpJobs: [Spark_UserSignedTxSigningJob] = []
 

@@ -110,6 +110,9 @@ extension SparkWallet {
             request: ClientRequest(message: commitmentsRequest, metadata: metadata)
         )
         let allCommitments = commitmentsResponse.signingCommitments
+        guard allCommitments.count >= leaves.count else {
+            throw SparkError.invalidResponse("Got \(allCommitments.count) signing commitments, need \(leaves.count)")
+        }
 
         // Build transfer package (only cpfp refund jobs — direct/directFromCpfp cleared for swaps)
         var cpfpRefundJobs: [Spark_UserSignedTxSigningJob] = []
@@ -197,7 +200,8 @@ extension SparkWallet {
             receiverPubKey: receiverPubKey,
             signer: signer,
             soOperators: soOperators,
-            signingOperatorConfigs: config.signingOperators
+            signingOperatorConfigs: config.signingOperators,
+            threshold: config.signingThreshold
         )
 
         var transferPackage = Spark_TransferPackage()

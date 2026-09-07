@@ -357,7 +357,8 @@ extension SparkWallet {
             receiverPubKey: receiverPubKey,
             signer: signer,
             soOperators: soOperators,
-            signingOperatorConfigs: config.signingOperators
+            signingOperatorConfigs: config.signingOperators,
+            threshold: config.signingThreshold
         )
 
         var transferPackage = Spark_TransferPackage()

@@ -4,10 +4,33 @@ import GRPCCore
 import SwiftProtobuf
 
 extension SparkWallet {
+    /// Send sats to another Spark wallet identified by its bech32m Spark address
+    /// (`spark1...` on mainnet, `sparkrt1...` on regtest). The address must be for the wallet's
+    /// network.
+    public func send(
+        receiverSparkAddress: String,
+        amountSats: Int64
+    ) async throws -> SparkTransfer {
+        let receiver = try SparkAddress.decode(receiverSparkAddress, network: config.network)
+        return try await send(receiverIdentityPublicKey: receiver, amountSats: amountSats)
+    }
+
+    /// Validate the arguments of a Spark transfer before any leaf is selected or swapped.
+    static func validateSendArguments(receiverIdentityPublicKey: Data, amountSats: Int64) throws {
+        guard amountSats > 0 else {
+            throw SparkError.invalidArgument("amountSats must be positive, got \(amountSats)")
+        }
+        guard receiverIdentityPublicKey.count == 33,
+              receiverIdentityPublicKey.first == 0x02 || receiverIdentityPublicKey.first == 0x03 else {
+            throw SparkError.invalidArgument("receiverIdentityPublicKey must be a 33-byte compressed secp256k1 public key")
+        }
+    }
+
     public func send(
         receiverIdentityPublicKey: Data,
         amountSats: Int64
     ) async throws -> SparkTransfer {
+        try Self.validateSendArguments(receiverIdentityPublicKey: receiverIdentityPublicKey, amountSats: amountSats)
         let selectedLeaves = try await selectLeavesWithSwap(amountSats: amountSats)
 
         let client = try await getCoordinatorClient()
@@ -28,6 +51,11 @@ extension SparkWallet {
             request: ClientRequest(message: commitmentsRequest, metadata: metadata)
         )
         let allCommitments = commitmentsResponse.signingCommitments
+        guard allCommitments.count >= 3 * selectedLeaves.count else {
+            throw SparkError.invalidResponse(
+                "Got \(allCommitments.count) signing commitments, need \(3 * selectedLeaves.count)"
+            )
+        }
 
         var cpfpRefundJobs: [Spark_UserSignedTxSigningJob] = []
         var directRefundJobs: [Spark_UserSignedTxSigningJob] = []
@@ -89,7 +117,8 @@ extension SparkWallet {
             receiverPubKey: receiverIdentityPublicKey,
             signer: signer,
             soOperators: soOperators,
-            signingOperatorConfigs: config.signingOperators
+            signingOperatorConfigs: config.signingOperators,
+            threshold: config.signingThreshold
         )
 
         var transferPackage = Spark_TransferPackage()

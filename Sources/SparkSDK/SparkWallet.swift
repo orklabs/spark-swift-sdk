@@ -46,9 +46,13 @@ public final class SparkWallet: Sendable {
             Self.makeComponents(config: config, signer: self.signer)
     }
 
-    /// Export account key material for caching (64 bytes).
-    public func exportAccountKey() -> Data {
-        (signer as! SparkSigner).exportAccountKey()
+    /// Export account key material for caching (64 bytes). Only available when the wallet was
+    /// created from a mnemonic or an account key; a custom signer keeps its own material.
+    public func exportAccountKey() throws -> Data {
+        guard let signer = signer as? SparkSigner else {
+            throw SparkError.invalidArgument("exportAccountKey is only available for wallets created from a mnemonic or account key")
+        }
+        return signer.exportAccountKey()
     }
 
     public init(config: SparkConfig = SparkConfig(), signer: SparkSignerProtocol) {

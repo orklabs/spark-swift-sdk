@@ -36,34 +36,42 @@ extension SparkWallet {
     }
 
     /// Claim an on-chain deposit after it has been confirmed.
-    /// Automatically matches the tx outputs against unused deposit addresses.
+    /// The transaction's outputs are matched against the wallet's unused deposit addresses, so
+    /// the claim is built for the leaf that actually received the funds.
     /// - Parameter txID: The on-chain transaction ID (hex string)
-    /// - Parameter vout: The output index (default 0)
-    public func claimDeposit(txID: String, vout: UInt32 = 0) async throws {
+    /// - Parameter vout: The output index. Pass `nil` (the default) to locate the output that
+    ///   pays one of this wallet's deposit addresses; an explicit index must pay one of them.
+    public func claimDeposit(txID: String, vout: UInt32? = nil) async throws {
+        let txidBytes = try Self.txidBytes(fromDisplayHex: txID)
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         let networkStr = config.networkString
 
-        // Fetch raw tx from electrs
+        // Fetch raw tx from electrs and make sure it is the transaction we asked for.
         let rawTx = try await fetchRawTransaction(txID: txID)
+        guard try RawTransaction.parse(rawTx, context: "deposit tx").txid == txidBytes else {
+            throw SparkError.untrustedResponse("block explorer returned a transaction that does not hash to \(txID)")
+        }
 
-        // Query unused deposit addresses to find the matching one
+        // Query unused deposit addresses and find the output that pays one of them
         var queryReq = Spark_QueryUnusedDepositAddressesRequest()
         queryReq.identityPublicKey = signer.identityPublicKey
         queryReq.network = config.networkProto
         let queryResp = try await client.query_unused_deposit_addresses(
             request: ClientRequest(message: queryReq, metadata: metadata)
         )
-
-        // Find the deposit address that matches this transaction
-        guard let depositInfo = queryResp.depositAddresses.first(where: { deposit in
-            // Match by checking if the tx pays to this deposit address
-            !deposit.leafID.isEmpty
-        }) else {
+        let candidates = queryResp.depositAddresses.filter { !$0.leafID.isEmpty }
+        let match = try DepositMatcher.match(
+            rawTx: rawTx,
+            candidateAddresses: candidates.map(\.depositAddress),
+            requestedVout: vout,
+            network: config.network
+        )
+        guard let depositInfo = candidates.first(where: { $0.depositAddress == match.address }) else {
             throw SparkError.invalidResponse("No unused deposit address found. Generate one first with getDepositAddress().")
         }
+        let vout = match.vout
 
-        // Use the first unused deposit address (or match by address if multiple)
         let leafId = depositInfo.leafID
         let verifyingKey = Data(depositInfo.verifyingPublicKey)
 
@@ -101,6 +109,9 @@ extension SparkWallet {
             request: ClientRequest(message: commitmentsReq, metadata: metadata)
         )
         let allCommitments = commitmentsResp.signingCommitments
+        guard allCommitments.count >= 3 else {
+            throw SparkError.invalidResponse("Got \(allCommitments.count) signing commitments, need 3")
+        }
 
         // Build signing jobs
         let rootJob = try FrostSigningHelper.buildSigningJob(
@@ -123,9 +134,6 @@ extension SparkWallet {
             rawTx: refundTrio.directFromCpfpRefund.tx, sighash: refundTrio.directFromCpfpRefund.sighash,
             soCommitments: allCommitments[2].signingNonceCommitments
         )
-
-        // Convert txid hex to bytes (reversed for protobuf)
-        let txidBytes = try Self.txidBytes(fromDisplayHex: txID)
 
         var utxo = Spark_UTXO()
         utxo.rawTx = rawTx

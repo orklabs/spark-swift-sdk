@@ -45,9 +45,11 @@ extension SparkWallet {
         let soListResponse = try await client.get_signing_operator_list(
             request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata)
         )
-        let soOperators = soListResponse.signingOperators
-        let soCount = UInt32(soOperators.count)
-        let threshold = max(2, (soCount + 2) / 2)
+        let targets = try KeyTweakHelper.matchOperators(
+            server: soListResponse.signingOperators, config: config.signingOperators
+        )
+        let soCount = UInt32(targets.count)
+        let threshold = config.signingThreshold
 
         let transferLeaves = transfer.leaves
 
@@ -59,14 +61,19 @@ extension SparkWallet {
             request: ClientRequest(message: commitmentsRequest, metadata: metadata)
         )
         let allCommitments = commitmentsResponse.signingCommitments
+        guard allCommitments.count >= 3 * transferLeaves.count else {
+            throw SparkError.invalidResponse(
+                "Got \(allCommitments.count) signing commitments, need \(3 * transferLeaves.count)"
+            )
+        }
 
         var cpfpRefundJobs: [Spark_UserSignedTxSigningJob] = []
         var directRefundJobs: [Spark_UserSignedTxSigningJob] = []
         var directFromCpfpRefundJobs: [Spark_UserSignedTxSigningJob] = []
 
         var perSoTweaks: [String: Spark_ClaimLeafKeyTweaks] = [:]
-        for soID in soOperators.keys {
-            perSoTweaks[soID] = Spark_ClaimLeafKeyTweaks()
+        for target in targets {
+            perSoTweaks[target.soID] = Spark_ClaimLeafKeyTweaks()
         }
 
         for i in 0..<transferLeaves.count {
@@ -155,15 +162,16 @@ extension SparkWallet {
             ))
 
             // Build pubkey shares tweak map
+            let shareByTarget = try KeyTweakHelper.shares(vssShares, for: targets)
             var pubkeyBySOID: [String: Data] = [:]
-            for (soID, soInfo) in soOperators {
-                let matchedShare = vssShares.first { $0.index == soInfo.index + 1 }!
-                pubkeyBySOID[soID] = try getPublicKeyBytes(privateKeyBytes: matchedShare.share, compressed: true)
+            for target in targets {
+                pubkeyBySOID[target.soID] = try getPublicKeyBytes(privateKeyBytes: shareByTarget[target.soID]!.share, compressed: true)
             }
 
             // Build per-SO key tweak entries
-            for (soID, soInfo) in soOperators {
-                let share = vssShares.first { $0.index == soInfo.index + 1 }!
+            for target in targets {
+                let soID = target.soID
+                let share = shareByTarget[soID]!
 
                 var secretShareProto = Spark_SecretShare()
                 secretShareProto.secretShare = share.share
@@ -185,8 +193,7 @@ extension SparkWallet {
         let claimPackageResult = try KeyTweakHelper.encryptAndSign(
             transferID: transfer.id,
             perSoTweaks: perSoTweaks,
-            soOperators: soOperators,
-            signingOperatorConfigs: config.signingOperators,
+            targets: targets,
             signer: signer,
             tag: "claim"
         )

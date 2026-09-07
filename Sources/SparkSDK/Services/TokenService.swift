@@ -29,8 +29,8 @@ extension SparkWallet {
 
         let selected = try Self.selectTokenOutputs(outputs, amount: tokenAmount, strategy: strategy)
 
-        // Decode receiver's Spark address to get their identity public key
-        let receiverData = try Self.decodeSparkAddressPublicKey(receiverSparkAddress)
+        // Decode receiver's Spark address (must be for this network) to get their identity public key
+        let receiverData = try SparkAddress.decode(receiverSparkAddress, network: config.network)
 
         let tx = try buildTransferTokenTransaction(
             selectedOutputs: selected,
@@ -664,26 +664,6 @@ extension SparkWallet {
         var ts = Google_Protobuf_Timestamp(date: Date())
         ts.nanos = (ts.nanos / 1000) * 1000
         return ts
-    }
-
-    // MARK: - Internal: Spark Address Decoding
-
-    /// Decode a Spark address (spark1... or sparkrt1...) to extract the identity public key.
-    static func decodeSparkAddressPublicKey(_ sparkAddress: String) throws -> Data {
-        let (_, data) = try Bech32m.decodeBech32m(sparkAddress)
-        guard let payload = Bech32m.fromWords(data) else {
-            throw SparkError.invalidResponse("Invalid Spark address encoding")
-        }
-        // Payload is protobuf: field 1 (tag=10), length, then pubkey bytes
-        guard payload.count >= 2,
-              payload[0] == 10 else { // tag for field 1, wire type 2
-            throw SparkError.invalidResponse("Invalid Spark address payload")
-        }
-        let keyLen = Int(payload[1])
-        guard payload.count >= 2 + keyLen else {
-            throw SparkError.invalidResponse("Spark address payload too short")
-        }
-        return payload.subdata(in: 2..<(2 + keyLen))
     }
 
     // MARK: - Internal: Operator Keys
