@@ -229,6 +229,16 @@ transaction must spend it. A response that fails throws `SparkError.untrustedRes
 leaves are handed over. Destination addresses may be P2PKH, P2SH, P2WPKH, P2WSH or P2TR and
 must belong to the wallet's network.
 
+To send everything, use `withdrawAll`. It claims pending transfers, renews what the operators
+will renew, exits every spendable leaf, and tells you what stayed behind:
+
+```swift
+let quote = try await wallet.quoteWithdrawAll(onChainAddress: "bc1q...")
+// quote.spendableSats, quote.quotedFeeSats, quote.frozenSats, quote.frozenFraction
+let result = try await wallet.withdrawAll(onChainAddress: "bc1q...", maxFeeSats: quote.quotedFeeSats)
+// result.txid, result.payoutSats, result.feeSats, result.frozenSats
+```
+
 The exited leaves stay transfer-locked, and therefore in `satsBalance.owned`, until the exit
 transaction confirms on-chain; `satsBalance.available` drops immediately. `satsBalance.frozen`
 reports sats in leaves at the timelock floor, which the operators will neither move nor renew

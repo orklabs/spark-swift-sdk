@@ -193,6 +193,50 @@ struct HardeningIntegrationTests {
         #expect(after.satsBalance.owned <= before.satsBalance.owned)
     }
 
+    /// Drains the sender wallet with `withdrawAll`. Opt-in (`SPARK_TEST_ALLOW_WITHDRAW_ALL=1`); the
+    /// destination follows `SPARK_TEST_WITHDRAW_DESTINATION` like the partial withdrawal test.
+    @Test("withdrawAll drains every spendable sat with a verified payout and reports what stays", .timeLimit(.minutes(10)),
+          .enabled(if: ProcessInfo.processInfo.environment["SPARK_TEST_ALLOW_WITHDRAW_ALL"] == "1"))
+    func withdrawAll() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let destination: String
+        switch ProcessInfo.processInfo.environment["SPARK_TEST_WITHDRAW_DESTINATION"] {
+        case "receiver-static-deposit"?:
+            destination = try await pair.receiver.getStaticDepositAddress().address
+        case let explicit? where !explicit.isEmpty:
+            destination = explicit
+        default:
+            guard let configured = TestConfig.staticDepositWithdrawAddress else {
+                Issue.record(Comment(rawValue: "no withdrawal destination configured"))
+                return
+            }
+            destination = configured
+        }
+
+        let quote = try await pair.sender.quoteWithdrawAll(onChainAddress: destination)
+        print("[\(pair.senderLabel)] quote: spendable \(quote.spendableSats) fee \(quote.quotedFeeSats) payout≈\(quote.estimatedPayoutSats) frozen \(quote.frozenSats) (\(Int(quote.frozenFraction * 1000) / 10)%) locked \(quote.lockedSats) incoming \(quote.incomingSats) leaves \(quote.leafCount)")
+        #expect(quote.spendableSats == pair.senderSpendable)
+        guard quote.coversFee else {
+            Issue.record(Comment(rawValue: "fee \(quote.quotedFeeSats) not covered by \(quote.spendableSats) spendable sats"))
+            return
+        }
+
+        let result = try await pair.sender.withdrawAll(onChainAddress: destination)
+        print("[\(pair.senderLabel)] withdrawAll: txid \(result.txid) sent \(result.sentSats) payout \(result.payoutSats) fee \(result.feeSats) frozen \(result.frozenSats) locked \(result.lockedSats) unclaimed \(result.unclaimedSats)")
+        #expect(result.txid.count == 64)
+        #expect(result.sentSats == quote.spendableSats)
+        #expect(result.payoutSats >= quote.spendableSats - quote.quotedFeeSats)
+        #expect(result.payoutSats < result.sentSats)
+        #expect(result.frozenSats == quote.frozenSats)
+
+        try await Task.sleep(for: .seconds(3))
+        let after = try await pair.sender.getBalance().satsBalance
+        #expect(after.available == 0)
+        #expect(after.frozen == result.frozenSats)
+        #expect(after.owned >= result.frozenSats)
+    }
+
     /// Claims confirmed UTXOs sitting at a wallet's static deposit address back into Spark.
     /// Opt-in (`SPARK_TEST_CLAIM_STATIC=A|B`) because the SSP charges a fee for the claim.
     @Test("Claim confirmed static deposits back into the wallet", .timeLimit(.minutes(10)),

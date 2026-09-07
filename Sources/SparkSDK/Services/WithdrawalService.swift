@@ -37,7 +37,7 @@ extension SparkWallet {
     ///
     /// The SSP's fee is deducted from `amountSats`: the recipient receives `amountSats` minus the
     /// fee. Leaves are swapped to denominations that sum to exactly `amountSats` first, so no more
-    /// than the requested amount ever leaves the wallet.
+    /// than the requested amount ever leaves the wallet. To send everything use `withdrawAll`.
     ///
     /// Before anything is signed the SSP's response is verified: the exit transaction must hash
     /// to the txid it reports, pay `onChainAddress` at least `amountSats - fee`, and the connector
@@ -63,24 +63,104 @@ extension SparkWallet {
         // Fail fast on a malformed or wrong-network destination, before any leaf is moved.
         _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
 
-        let client = try await getCoordinatorClient()
-        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
-        let networkStr = config.networkString
-
         // Select leaves that sum to exactly the requested amount (swapping via the SSP if
         // needed), so `withdraw_all` below cannot send more than was asked for.
         let selectedLeaves = try await selectLeavesWithSwap(amountSats: amountSats)
-        let leafIds = selectedLeaves.map(\.id)
         let selectedTotal = selectedLeaves.reduce(0 as Int64) { $0 + $1.valueSats }
         guard selectedTotal == amountSats else {
             throw SparkError.invalidResponse("Selected leaves sum to \(selectedTotal) sats, expected exactly \(amountSats)")
         }
 
         // Bound the fee before asking the SSP to build the exit.
-        let quote = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leafIds)
+        let quote = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: selectedLeaves.map(\.id))
         let feeCap = try CoopExitValidator.resolveFeeCap(
             quotedFeeSats: quote.feeSats, maxFeeSats: maxFeeSats, amountSats: amountSats
         )
+        return try await performCooperativeExit(
+            leaves: selectedLeaves, amountSats: amountSats, feeCap: feeCap, onChainAddress: onChainAddress
+        ).txid
+    }
+
+    /// Everything `withdrawAll` would do, without doing it: claims pending inbound transfers,
+    /// renews renewable leaves, and quotes the SSP fee for every spendable leaf. Use it to show
+    /// the user what will move, what it costs, and what stays behind (`frozenSats`).
+    public func quoteWithdrawAll(onChainAddress: String) async throws -> WithdrawAllQuote {
+        _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
+        _ = try? await claimAllPendingTransfers()
+        let leaves = try await getSpendableLeaves()
+        let balance = try await getBalance().satsBalance
+        let spendable = leaves.reduce(0 as Int64) { $0 + $1.valueSats }
+        var quotedFee: Int64 = 0
+        if spendable > 0 {
+            quotedFee = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leaves.map(\.id)).feeSats
+        }
+        return WithdrawAllQuote(
+            spendableSats: spendable,
+            quotedFeeSats: quotedFee,
+            frozenSats: balance.frozen,
+            lockedSats: max(0, balance.owned - balance.available - balance.frozen),
+            incomingSats: balance.incoming,
+            leafCount: leaves.count
+        )
+    }
+
+    /// Send every spendable sat to `onChainAddress` in one cooperative exit.
+    ///
+    /// Pending inbound transfers are claimed first and renewable leaves renewed, then every
+    /// spendable leaf is exited; the SSP's fee comes out of that amount. Leaves at the timelock
+    /// floor cannot be included: they are reported in the result as `frozenSats`, as are sats
+    /// locked by in-flight operations and inbound sats that could not be claimed. The same
+    /// response verification and fee bound as `withdraw` apply.
+    ///
+    /// - Parameters:
+    ///   - onChainAddress: Destination Bitcoin address on the wallet's network.
+    ///   - maxFeeSats: Highest fee the caller accepts; `nil` uses the SSP's own quote.
+    /// - Throws: `SparkError.insufficientBalance` when nothing is spendable,
+    ///   `SparkError.feeExceedsLimit` when the fee would consume the whole balance or exceed the cap.
+    public func withdrawAll(onChainAddress: String, maxFeeSats: Int64? = nil) async throws -> WithdrawAllResult {
+        _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
+        _ = try? await claimAllPendingTransfers()
+        let leaves = try await getSpendableLeaves()
+        let balance = try await getBalance().satsBalance
+        let sendSats = leaves.reduce(0 as Int64) { $0 + $1.valueSats }
+        guard sendSats > 0 else {
+            throw SparkError.insufficientBalance(need: 1, have: 0)
+        }
+        let quote = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leaves.map(\.id))
+        let feeCap = try CoopExitValidator.resolveFeeCap(
+            quotedFeeSats: quote.feeSats, maxFeeSats: maxFeeSats, amountSats: sendSats
+        )
+        let exit = try await performCooperativeExit(
+            leaves: leaves, amountSats: sendSats, feeCap: feeCap, onChainAddress: onChainAddress
+        )
+        return WithdrawAllResult(
+            txid: exit.txid,
+            sentSats: sendSats,
+            payoutSats: exit.payoutSats,
+            frozenSats: balance.frozen,
+            lockedSats: max(0, balance.owned - balance.available - balance.frozen),
+            unclaimedSats: balance.incoming
+        )
+    }
+
+    struct CooperativeExit {
+        let txid: String
+        let payoutSats: Int64
+    }
+
+    /// The cooperative exit proper: request the exit from the SSP, verify what it built, sign the
+    /// connector refunds, hand the leaves over in one transfer package, complete via the SSP.
+    /// `leaves` must sum to `amountSats`; the payout must be at least `amountSats - feeCap`.
+    private func performCooperativeExit(
+        leaves selectedLeaves: [SparkLeaf],
+        amountSats: Int64,
+        feeCap: Int64,
+        onChainAddress: String
+    ) async throws -> CooperativeExit {
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+        let networkStr = config.networkString
+        let leafIds = selectedLeaves.map(\.id)
         let minimumPayoutSats = amountSats - feeCap
 
         // Step 1: Request coop exit from SSP — get the exit and connector transactions
@@ -225,7 +305,7 @@ extension SparkWallet {
             ] as [String: any Sendable]
         )
 
-        return coopExitTxid
+        return CooperativeExit(txid: coopExitTxid, payoutSats: Int64(clamping: validated.payoutSats))
     }
 
     // MARK: - Connector refunds

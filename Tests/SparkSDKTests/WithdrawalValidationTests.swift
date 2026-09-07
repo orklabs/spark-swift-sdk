@@ -248,3 +248,33 @@ struct SpendableLeafTests {
         #expect(stuck.map(\.id) == ["a", "b"])
     }
 }
+
+@Suite("Withdraw-all quote and result")
+struct WithdrawAllTypesTests {
+    @Test("Quote derives payout, frozen share and fee coverage")
+    func quote() {
+        let q = WithdrawAllQuote(spendableSats: 9_700, quotedFeeSats: 1_950, frozenSats: 300, lockedSats: 0, incomingSats: 0, leafCount: 4)
+        #expect(q.estimatedPayoutSats == 7_750)
+        #expect(abs(q.frozenFraction - 0.03) < 1e-9)
+        #expect(q.coversFee)
+
+        let tiny = WithdrawAllQuote(spendableSats: 1_000, quotedFeeSats: 1_950, frozenSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 1)
+        #expect(!tiny.coversFee)
+        #expect(tiny.estimatedPayoutSats < 0)
+        #expect(tiny.frozenFraction == 0)
+
+        let onlyFrozen = WithdrawAllQuote(spendableSats: 0, quotedFeeSats: 0, frozenSats: 66, lockedSats: 0, incomingSats: 0, leafCount: 0)
+        #expect(onlyFrozen.frozenFraction == 1)
+        #expect(!onlyFrozen.coversFee)
+
+        let empty = WithdrawAllQuote(spendableSats: 0, quotedFeeSats: 0, frozenSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 0)
+        #expect(empty.frozenFraction == 0)
+        #expect(!empty.coversFee)
+    }
+
+    @Test("Result reports the fee the SSP actually took")
+    func result() {
+        let r = WithdrawAllResult(txid: "ab", sentSats: 5_000, payoutSats: 3_290, frozenSats: 66, lockedSats: 0, unclaimedSats: 0)
+        #expect(r.feeSats == 1_710)
+    }
+}

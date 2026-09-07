@@ -53,6 +53,11 @@ migration note.
 - `SatsBalance.frozen`: sats in AVAILABLE leaves at the timelock floor. They are no longer counted
   in `available`, which now means "can be sent right now", so sending the full `available`
   balance always succeeds.
+- `withdrawAll(onChainAddress:maxFeeSats:)` and `quoteWithdrawAll(onChainAddress:)`: claim pending
+  transfers, renew renewable leaves, and exit every spendable leaf in one cooperative exit. The
+  result reports the verified payout, the fee the SSP took, and the frozen, locked and unclaimed
+  sats that stayed behind; the quote reports the same up front with `frozenFraction` for
+  product decisions.
 - `getSpendableLeaves()`: the leaves every spend path selects from (renews what the coordinator
   will renew, excludes frozen leaves), plus `SparkLeaf.isSpendable` and `isRenewable`. Use it, or
   `satsBalance.available`, as the basis for a "send everything" amount.

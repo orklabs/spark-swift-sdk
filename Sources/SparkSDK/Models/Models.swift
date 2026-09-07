@@ -66,6 +66,52 @@ public struct FeeQuote: Sendable {
     public let feeRateSatsPerVbyte: Int64
 }
 
+/// What `withdrawAll` would do right now. Produced by `quoteWithdrawAll` after pending inbound
+/// transfers were claimed and renewable leaves renewed.
+public struct WithdrawAllQuote: Sendable, Equatable {
+    /// Sats that would be handed to the SSP: every spendable leaf.
+    public let spendableSats: Int64
+    /// The SSP's fee quote (fast exit) for those leaves. Zero when there is nothing to send.
+    public let quotedFeeSats: Int64
+    /// Sats in leaves at the timelock floor. They stay behind; only a unilateral exit moves them.
+    public let frozenSats: Int64
+    /// Sats in leaves locked by an in-flight swap or exit. Withdraw again once they settle.
+    public let lockedSats: Int64
+    /// Inbound sats that are still unclaimed after the claim attempt.
+    public let incomingSats: Int64
+    /// Number of leaves that would be exited.
+    public let leafCount: Int
+
+    /// What the destination would receive if the SSP charges exactly its quote.
+    public var estimatedPayoutSats: Int64 { spendableSats - quotedFeeSats }
+    /// Share of the wallet's own sats (spendable + frozen) that cannot leave off-chain, 0...1.
+    public var frozenFraction: Double {
+        let total = spendableSats + frozenSats
+        return total > 0 ? Double(frozenSats) / Double(total) : 0
+    }
+    /// Whether the quoted fee leaves anything to pay out.
+    public var coversFee: Bool { spendableSats > quotedFeeSats && quotedFeeSats >= 0 }
+}
+
+/// Outcome of `withdrawAll`.
+public struct WithdrawAllResult: Sendable, Equatable {
+    /// L1 transaction id of the cooperative exit.
+    public let txid: String
+    /// Sats handed to the SSP: every spendable sat at drain time.
+    public let sentSats: Int64
+    /// Sats the verified exit transaction pays to the destination.
+    public let payoutSats: Int64
+    /// Sats left in frozen leaves; only a unilateral exit can recover them.
+    public let frozenSats: Int64
+    /// Sats left in leaves locked by an in-flight operation.
+    public let lockedSats: Int64
+    /// Inbound sats that could not be claimed before the drain.
+    public let unclaimedSats: Int64
+
+    /// SSP fee actually taken.
+    public var feeSats: Int64 { sentSats - payoutSats }
+}
+
 public struct UnusedDepositAddress: Sendable {
     public let address: String
     public let leafId: String
