@@ -32,8 +32,12 @@ extension SparkWallet {
         return claimed
     }
 
-    /// Claim a single pending transfer using the single-call claim_transfer with ClaimPackage
+    /// Claim a single pending transfer using the single-call claim_transfer with ClaimPackage.
+    /// The sender's signature on every leaf is verified first; a transfer that fails
+    /// verification is refused before any secret is decrypted or any refund is signed.
     func claimTransfer(_ transfer: Spark_Transfer) async throws {
+        try TransferLeafVerifier.verify(transfer: transfer, receiverIdentityPublicKey: signer.identityPublicKey)
+
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         let networkStr = config.networkString
