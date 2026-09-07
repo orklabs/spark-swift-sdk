@@ -50,6 +50,9 @@ migration note.
   "transfer_package is required for cooperative exit". Verified on mainnet.
 
 ### Added
+- `SatsBalance.frozen`: sats in AVAILABLE leaves at the timelock floor. They are no longer counted
+  in `available`, which now means "can be sent right now", so sending the full `available`
+  balance always succeeds.
 - `send(receiverSparkAddress:amountSats:)` with network-checked Spark address decoding.
 - `SparkConfig.signingThreshold`, `expectedWithdrawBondSats`, `expectedWithdrawRelativeBlockLocktime`.
 - `SparkError` cases: `invalidArgument`, `malformedTransaction`, `invalidAddress`,

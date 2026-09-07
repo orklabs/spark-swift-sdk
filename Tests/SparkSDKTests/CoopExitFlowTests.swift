@@ -88,3 +88,35 @@ struct ConnectorRefundTests {
         }
     }
 }
+
+@Suite("Balance summary")
+struct BalanceSummaryTests {
+    private func treeNode(_ id: String, status: String, value: UInt64, refundTimelock: UInt32) -> Spark_TreeNode {
+        var node = Spark_TreeNode()
+        node.id = id
+        node.status = status
+        node.value = value
+        node.refundTx = nodeTx(timelock: refundTimelock)
+        return node
+    }
+
+    @Test("Available excludes floor-timelock leaves, which are reported as frozen; locked adds to owned only")
+    func summary() {
+        let nodes: [String: Spark_TreeNode] = [
+            "a": treeNode("a", status: "AVAILABLE", value: 8192, refundTimelock: 1600),
+            "b": treeNode("b", status: "AVAILABLE", value: 32, refundTimelock: 0),
+            "c": treeNode("c", status: "AVAILABLE", value: 2, refundTimelock: 100),
+            "d": treeNode("d", status: "TRANSFER_LOCKED", value: 500, refundTimelock: 2000),
+            "e": treeNode("e", status: "CREATING", value: 700, refundTimelock: 2000),
+            "f": treeNode("f", status: "SPLIT_LOCKED", value: 9, refundTimelock: 2000),
+            "g": treeNode("g", status: "AVAILABLE", value: 64, refundTimelock: 200),
+        ]
+        let s = SparkWallet.summarizeNodes(nodes)
+        #expect(s.available == 8192 + 64)
+        #expect(s.frozen == 32 + 2)
+        #expect(s.owned == 8192 + 32 + 2 + 500 + 9 + 64)
+        #expect(s.creating == 700)
+        #expect(Set(s.leaves.map(\.id)) == ["a", "b", "c", "g"])
+        #expect(SparkWallet.summarizeNodes([:]) == SparkWallet.NodeSummary())
+    }
+}

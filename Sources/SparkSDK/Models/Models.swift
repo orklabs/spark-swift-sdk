@@ -1,12 +1,16 @@
 import Foundation
 
 public struct SatsBalance: Sendable {
-    /// Immediately spendable satoshis
+    /// Satoshis that can be sent right now: AVAILABLE leaves whose refund timelock is above the
+    /// floor the coordinator enforces.
     public let available: Int64
-    /// All satoshis owned (available + locked in outgoing transfers/swaps)
+    /// All satoshis owned (available + frozen + locked in outgoing transfers/swaps)
     public let owned: Int64
     /// Pending inbound transfers not yet claimed
     public let incoming: Int64
+    /// Satoshis in AVAILABLE leaves at the timelock floor. The coordinator will neither move nor
+    /// renew them; only a unilateral on-chain exit can recover them.
+    public let frozen: Int64
 }
 
 public struct WalletBalance: Sendable {
