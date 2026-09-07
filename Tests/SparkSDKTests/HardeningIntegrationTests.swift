@@ -201,8 +201,17 @@ struct HardeningIntegrationTests {
         let wallet = try await makeWallet(which == "A" ? TestConfig.walletAMnemonic : TestConfig.walletBMnemonic)
         defer { Task { await wallet.close() } }
         let address = try await wallet.getStaticDepositAddress().address
-        let utxos = try await wallet.getUtxosForDepositAddress(address: address, excludeClaimed: true)
+        var utxos = try await wallet.getUtxosForDepositAddress(address: address, excludeClaimed: true)
         print("[\(which)] static deposit address \(address): \(utxos.count) unclaimed utxo(s)")
+        // SPARK_TEST_CLAIM_STATIC_TXID=<txid>:<vout> names a deposit the operators have not
+        // indexed yet, so the SSP quote can be tried directly.
+        if utxos.isEmpty, let explicit = ProcessInfo.processInfo.environment["SPARK_TEST_CLAIM_STATIC_TXID"] {
+            let parts = explicit.split(separator: ":")
+            if parts.count == 2, let vout = UInt32(parts[1]) {
+                utxos = [DepositUtxo(txid: String(parts[0]), vout: vout)]
+                print("  using explicit utxo \(explicit)")
+            }
+        }
         guard !utxos.isEmpty else {
             Issue.record(Comment(rawValue: "no unclaimed utxo at \(address) yet (unconfirmed, or already claimed)"))
             return
