@@ -28,8 +28,8 @@ public func encodeBech32mTokenIdentifier(_ rawIdentifier: Data, network: SparkNe
         throw SparkError.invalidResponse("Token identifier must be 32 bytes, got \(rawIdentifier.count)")
     }
     let hrp = TokenIdentifierPrefix.prefix(for: network)
-    let words = Bech32m.toWords(rawIdentifier)
-    return Bech32m.encode(hrp: hrp, data: words, limit: 500)
+    let words = Bech32.toWords(rawIdentifier)
+    return Bech32m.encode(hrp: hrp, data: words)
 }
 
 /// Decode a Bech32m token identifier back to raw 32 bytes.
@@ -47,7 +47,7 @@ public func decodeBech32mTokenIdentifier(_ bech32mIdentifier: Bech32mTokenIdenti
         throw SparkError.invalidResponse("Unknown token identifier prefix: '\(hrp)'")
     }
 
-    guard let rawBytes = Bech32m.fromWords(data) else {
+    guard let rawBytes = Bech32.fromWords(data) else {
         throw SparkError.invalidResponse("Failed to decode token identifier words")
     }
 

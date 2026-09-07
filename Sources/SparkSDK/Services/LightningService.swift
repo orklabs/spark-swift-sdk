@@ -61,7 +61,7 @@ extension SparkWallet {
         // Split preimage and store encrypted shares with SOs using config-based identifiers/keys
         let soConfigs = config.signingOperators
         let numOperators = UInt32(soConfigs.count)
-        let threshold = (numOperators + 2) / 2
+        let threshold = config.signingThreshold
 
         let shares = try splitSecretWithProofsUniffi(
             secret: preimage, threshold: threshold, numShares: numOperators

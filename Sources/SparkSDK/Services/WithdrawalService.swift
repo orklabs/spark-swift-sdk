@@ -64,7 +64,7 @@ extension SparkWallet {
         _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
 
         // Select leaves that sum to exactly the requested amount (swapping via the SSP if
-        // needed), so `withdraw_all` below cannot send more than was asked for.
+        // needed): the SSP exits the full value of the leaves it is given.
         let selectedLeaves = try await selectLeavesWithSwap(amountSats: amountSats)
         let selectedTotal = selectedLeaves.reduce(0 as Int64) { $0 + $1.valueSats }
         guard selectedTotal == amountSats else {
@@ -85,22 +85,14 @@ extension SparkWallet {
     /// renews renewable leaves, and quotes the SSP fee for every spendable leaf. Use it to show
     /// the user what will move, what it costs, and what stays behind (`frozenSats`).
     public func quoteWithdrawAll(onChainAddress: String) async throws -> WithdrawAllQuote {
-        _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
-        _ = try? await claimAllPendingTransfers()
-        let leaves = try await getSpendableLeaves()
-        let balance = try await getBalance().satsBalance
-        let spendable = leaves.reduce(0 as Int64) { $0 + $1.valueSats }
-        var quotedFee: Int64 = 0
-        if spendable > 0 {
-            quotedFee = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leaves.map(\.id)).feeSats
-        }
+        let plan = try await drainPlan(onChainAddress: onChainAddress)
         return WithdrawAllQuote(
-            spendableSats: spendable,
-            quotedFeeSats: quotedFee,
-            frozenSats: balance.frozen,
-            lockedSats: max(0, balance.owned - balance.available - balance.frozen),
-            incomingSats: balance.incoming,
-            leafCount: leaves.count
+            spendableSats: plan.spendableSats,
+            quotedFeeSats: plan.quotedFeeSats,
+            frozenSats: plan.balance.frozen,
+            lockedSats: plan.balance.locked,
+            incomingSats: plan.balance.incoming,
+            leafCount: plan.leaves.count
         )
     }
 
@@ -118,29 +110,46 @@ extension SparkWallet {
     /// - Throws: `SparkError.insufficientBalance` when nothing is spendable,
     ///   `SparkError.feeExceedsLimit` when the fee would consume the whole balance or exceed the cap.
     public func withdrawAll(onChainAddress: String, maxFeeSats: Int64? = nil) async throws -> WithdrawAllResult {
+        let plan = try await drainPlan(onChainAddress: onChainAddress)
+        guard plan.spendableSats > 0 else {
+            throw SparkError.insufficientBalance(need: 1, have: 0)
+        }
+        let feeCap = try CoopExitValidator.resolveFeeCap(
+            quotedFeeSats: plan.quotedFeeSats, maxFeeSats: maxFeeSats, amountSats: plan.spendableSats
+        )
+        let exit = try await performCooperativeExit(
+            leaves: plan.leaves, amountSats: plan.spendableSats, feeCap: feeCap, onChainAddress: onChainAddress
+        )
+        return WithdrawAllResult(
+            txid: exit.txid,
+            sentSats: plan.spendableSats,
+            payoutSats: exit.payoutSats,
+            frozenSats: plan.balance.frozen,
+            lockedSats: plan.balance.locked,
+            unclaimedSats: plan.balance.incoming
+        )
+    }
+
+    private struct DrainPlan {
+        let leaves: [SparkLeaf]
+        let balance: SatsBalance
+        let spendableSats: Int64
+        let quotedFeeSats: Int64
+    }
+
+    /// Shared prelude of `quoteWithdrawAll` and `withdrawAll`: validate the destination, claim
+    /// what is pending, renew what the coordinator will renew, and quote the fee for the rest.
+    private func drainPlan(onChainAddress: String) async throws -> DrainPlan {
         _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
         _ = try? await claimAllPendingTransfers()
         let leaves = try await getSpendableLeaves()
         let balance = try await getBalance().satsBalance
-        let sendSats = leaves.reduce(0 as Int64) { $0 + $1.valueSats }
-        guard sendSats > 0 else {
-            throw SparkError.insufficientBalance(need: 1, have: 0)
+        let spendable = leaves.reduce(0 as Int64) { $0 + $1.valueSats }
+        var quotedFee: Int64 = 0
+        if spendable > 0 {
+            quotedFee = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leaves.map(\.id)).feeSats
         }
-        let quote = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leaves.map(\.id))
-        let feeCap = try CoopExitValidator.resolveFeeCap(
-            quotedFeeSats: quote.feeSats, maxFeeSats: maxFeeSats, amountSats: sendSats
-        )
-        let exit = try await performCooperativeExit(
-            leaves: leaves, amountSats: sendSats, feeCap: feeCap, onChainAddress: onChainAddress
-        )
-        return WithdrawAllResult(
-            txid: exit.txid,
-            sentSats: sendSats,
-            payoutSats: exit.payoutSats,
-            frozenSats: balance.frozen,
-            lockedSats: max(0, balance.owned - balance.available - balance.frozen),
-            unclaimedSats: balance.incoming
-        )
+        return DrainPlan(leaves: leaves, balance: balance, spendableSats: spendable, quotedFeeSats: quotedFee)
     }
 
     struct CooperativeExit {

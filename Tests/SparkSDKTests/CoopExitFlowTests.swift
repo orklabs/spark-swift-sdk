@@ -125,6 +125,7 @@ struct BalanceSummaryTests {
         #expect(s.owned == 8192 + 32 + 2 + 500 + 9 + 64)
         #expect(s.creating == 700)
         #expect(Set(s.leaves.map(\.id)) == ["a", "b", "c", "g"])
-        #expect(SparkWallet.summarizeNodes([:]) == SparkWallet.NodeSummary())
+        let empty = SparkWallet.summarizeNodes([:])
+        #expect(empty.available == 0 && empty.owned == 0 && empty.frozen == 0 && empty.creating == 0 && empty.leaves.isEmpty)
     }
 }

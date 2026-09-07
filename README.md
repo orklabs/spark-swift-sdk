@@ -122,7 +122,7 @@ let balance = try await wallet.getBalance()
 print("Available: \(balance.satsBalance.available) sats")
 
 let transferId = try await wallet.send(
-    receiverIdentityPublicKey: recipientPubKeyHex,
+    receiverSparkAddress: "spark1...",
     amountSats: 500
 )
 ```

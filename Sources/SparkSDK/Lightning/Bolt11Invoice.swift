@@ -31,13 +31,6 @@ struct Bolt11Invoice: Sendable, Equatable {
         Date(timeIntervalSince1970: TimeInterval(timestamp) + TimeInterval(expirySeconds))
     }
 
-    /// Amount in whole satoshis, rounded up. `nil` for an amountless invoice.
-    var amountSatsRoundedUp: Int64? {
-        guard let amountMsat else { return nil }
-        let sats = (amountMsat + 999) / 1000
-        return sats > UInt64(Int64.max) ? Int64.max : Int64(sats)
-    }
-
     /// Whether this invoice belongs to the wallet's network.
     func belongs(to network: SparkNetwork) -> Bool {
         switch (self.network, network) {
@@ -244,8 +237,8 @@ enum LightningValidator {
             throw SparkError.untrustedResponse("SSP reported payment hash \(reportedPaymentHashHex) does not match ours \(expectedPaymentHash.hexString)")
         }
         if expectedAmountSats == 0 {
-            guard invoice.amountMsat == nil else {
-                throw SparkError.untrustedResponse("SSP invoice carries an amount (\(invoice.amountMsat!) msat) but an amountless invoice was requested")
+            if let amountMsat = invoice.amountMsat {
+                throw SparkError.untrustedResponse("SSP invoice carries an amount (\(amountMsat) msat) but an amountless invoice was requested")
             }
         } else {
             let expectedMsat = UInt64(expectedAmountSats).multipliedReportingOverflow(by: 1000)

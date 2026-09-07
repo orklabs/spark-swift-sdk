@@ -103,29 +103,3 @@ func mainnetDefaultAccount() throws {
     let keys1 = try KeyDerivation(mnemonic: mnemonic, account: 1)
     #expect(keys1.identityPublicKey.hexString == wallet.identityPublicKeyHex)
 }
-
-@Test func testLeafSelection() async throws {
-    let leaves = [
-        SparkLeaf(id: "1", treeID: "t1", valueSats: 100, status: "AVAILABLE",
-                  node: Spark_TreeNode()),
-        SparkLeaf(id: "2", treeID: "t2", valueSats: 500, status: "AVAILABLE",
-                  node: Spark_TreeNode()),
-        SparkLeaf(id: "3", treeID: "t3", valueSats: 200, status: "AVAILABLE",
-                  node: Spark_TreeNode()),
-    ]
-
-    let selected = try SparkWallet.selectLeaves(leaves, amountSats: 600)
-    #expect(selected.count == 2)
-    #expect(selected[0].valueSats == 500)
-    #expect(selected[1].valueSats == 200)
-
-    do {
-        let _ = try SparkWallet.selectLeaves(leaves, amountSats: 1000)
-        Issue.record("Should have thrown")
-    } catch let error as SparkError {
-        if case .insufficientBalance(let need, let have) = error {
-            #expect(need == 1000)
-            #expect(have == 800)
-        }
-    }
-}

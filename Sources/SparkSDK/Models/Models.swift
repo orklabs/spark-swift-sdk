@@ -11,6 +11,9 @@ public struct SatsBalance: Sendable {
     /// Satoshis in AVAILABLE leaves at the timelock floor. The coordinator will neither move nor
     /// renew them; only a unilateral on-chain exit can recover them.
     public let frozen: Int64
+
+    /// Satoshis locked by an in-flight transfer, swap, renewal or exit.
+    public var locked: Int64 { max(0, owned - available - frozen) }
 }
 
 public struct WalletBalance: Sendable {

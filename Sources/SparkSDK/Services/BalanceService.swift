@@ -37,16 +37,12 @@ extension SparkWallet {
         return WalletBalance(satsBalance: satsBalance, tokenBalances: tokenBalances, leaves: leaves)
     }
 
-    struct NodeSummary: Equatable {
+    struct NodeSummary {
         var available: Int64 = 0
         var owned: Int64 = 0
         var frozen: Int64 = 0
         var creating: Int64 = 0
         var leaves: [SparkLeaf] = []
-        static func == (a: NodeSummary, b: NodeSummary) -> Bool {
-            a.available == b.available && a.owned == b.owned && a.frozen == b.frozen && a.creating == b.creating
-                && a.leaves.map(\.id).sorted() == b.leaves.map(\.id).sorted()
-        }
     }
 
     /// Pure classification of the coordinator's nodes into the balance figures.

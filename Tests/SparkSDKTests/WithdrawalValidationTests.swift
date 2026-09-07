@@ -175,9 +175,8 @@ struct WithdrawalValidationTests {
             SparkLeaf(id: id, treeID: "t", valueSats: sats, status: "AVAILABLE", node: Spark_TreeNode())
         }
         let leaves = [leaf("a", 100_000), leaf("b", 8_192), leaf("c", 1_024), leaf("d", 512)]
-        // The old greedy `selectLeaves` would hand the 100k leaf to the SSP for a 1k withdrawal.
-        #expect(try SparkWallet.selectLeaves(leaves, amountSats: 1_000).map(\.id) == ["a"])
-        // Exact selection either finds the exact denominations or reports that a swap is needed.
+        // Exact selection either finds the exact denominations or reports that a swap is needed;
+        // a 1k withdrawal can never be served by the 100k leaf.
         #expect(SparkWallet.tryExactSelection(leaves, amountSats: 1_000) == nil)
         #expect(SparkWallet.tryExactSelection(leaves, amountSats: 1_536)?.map(\.id) == ["c", "d"])
         #expect(SparkWallet.tryExactSelection(leaves, amountSats: 109_728)?.map(\.id) == ["a", "b", "c", "d"])

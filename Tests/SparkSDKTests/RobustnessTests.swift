@@ -56,8 +56,8 @@ struct RobustnessTests {
         let shares = try splitSecretWithProofsUniffi(secret: secret, threshold: 2, numShares: 3)
         let mapped = try KeyTweakHelper.shares(shares, for: targets)
         #expect(mapped.count == 3)
-        #expect(mapped["op1"]?.index == 1)
-        #expect(mapped["op3"]?.index == 3)
+        #expect(mapped.map(\.target.soID) == ["op1", "op2", "op3"])
+        #expect(mapped.map(\.share.index) == [1, 2, 3])
         #expect(throws: SparkError.self) { _ = try KeyTweakHelper.shares(Array(shares.dropLast()), for: targets) }
     }
 
@@ -103,13 +103,13 @@ struct RobustnessTests {
 
         // Legacy prefixes are still accepted.
         let payload = Data([0x0a, 33]) + key
-        let legacy = Bech32m.encode(hrp: "sp", data: Bech32m.toWords(payload))
+        let legacy = Bech32m.encode(hrp: "sp", data: Bech32.toWords(payload))
         #expect(try SparkAddress.decode(legacy, network: .mainnet) == key)
 
         // Wrong checksum variant, wrong payload, garbage.
-        #expect(throws: SparkError.self) { _ = try SparkAddress.decode(Bech32.encode(hrp: "spark", data: Bech32m.toWords(payload), encoding: .bech32), network: .mainnet) }
-        #expect(throws: SparkError.self) { _ = try SparkAddress.decode(Bech32m.encode(hrp: "spark", data: Bech32m.toWords(Data([0x0a, 32]) + key.prefix(32))), network: .mainnet) }
-        #expect(throws: SparkError.self) { _ = try SparkAddress.decode(Bech32m.encode(hrp: "spark", data: Bech32m.toWords(Data([0x0a, 33, 0x04]) + key.dropFirst())), network: .mainnet) }
+        #expect(throws: SparkError.self) { _ = try SparkAddress.decode(Bech32.encode(hrp: "spark", data: Bech32.toWords(payload), encoding: .bech32), network: .mainnet) }
+        #expect(throws: SparkError.self) { _ = try SparkAddress.decode(Bech32m.encode(hrp: "spark", data: Bech32.toWords(Data([0x0a, 32]) + key.prefix(32))), network: .mainnet) }
+        #expect(throws: SparkError.self) { _ = try SparkAddress.decode(Bech32m.encode(hrp: "spark", data: Bech32.toWords(Data([0x0a, 33, 0x04]) + key.dropFirst())), network: .mainnet) }
         #expect(throws: SparkError.self) { _ = try SparkAddress.decode("spark1garbage", network: .mainnet) }
         #expect(throws: SparkError.self) { _ = try SparkAddress.decode("", network: .mainnet) }
 

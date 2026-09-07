@@ -162,16 +162,15 @@ extension SparkWallet {
             ))
 
             // Build pubkey shares tweak map
-            let shareByTarget = try KeyTweakHelper.shares(vssShares, for: targets)
+            let sharesByTarget = try KeyTweakHelper.shares(vssShares, for: targets)
             var pubkeyBySOID: [String: Data] = [:]
-            for target in targets {
-                pubkeyBySOID[target.soID] = try getPublicKeyBytes(privateKeyBytes: shareByTarget[target.soID]!.share, compressed: true)
+            for (target, share) in sharesByTarget {
+                pubkeyBySOID[target.soID] = try getPublicKeyBytes(privateKeyBytes: share.share, compressed: true)
             }
 
             // Build per-SO key tweak entries
-            for target in targets {
+            for (target, share) in sharesByTarget {
                 let soID = target.soID
-                let share = shareByTarget[soID]!
 
                 var secretShareProto = Spark_SecretShare()
                 secretShareProto.secretShare = share.share

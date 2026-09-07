@@ -24,7 +24,6 @@ struct Bolt11InvoiceTests {
         let donation = try Bolt11Invoice.decode(Self.donation)
         #expect(donation.network == .mainnet)
         #expect(donation.amountMsat == nil)
-        #expect(donation.amountSatsRoundedUp == nil)
         #expect(donation.paymentHash.hexString == Self.specPaymentHash)
         #expect(donation.timestamp == Self.specTimestamp)
         #expect(donation.expirySeconds == 3600)
@@ -33,14 +32,13 @@ struct Bolt11InvoiceTests {
 
         let coffee = try Bolt11Invoice.decode(Self.coffee2500u)
         #expect(coffee.amountMsat == 250_000_000)
-        #expect(coffee.amountSatsRoundedUp == 250_000)
+        #expect(try LightningValidator.resolvePaymentAmountSats(invoiceAmountMsat: coffee.amountMsat, requestedAmountSats: nil) == 250_000)
         #expect(coffee.expirySeconds == 60)
         #expect(coffee.description == "1 cup coffee")
         #expect(coffee.expiresAt == Date(timeIntervalSince1970: TimeInterval(Self.specTimestamp + 60)))
 
         let list = try Bolt11Invoice.decode(Self.list20m)
         #expect(list.amountMsat == 2_000_000_000)
-        #expect(list.amountSatsRoundedUp == 2_000_000)
         #expect(list.paymentHash.hexString == Self.specPaymentHash)
 
         let testnet = try Bolt11Invoice.decode(Self.testnet20m)
@@ -49,7 +47,7 @@ struct Bolt11InvoiceTests {
 
         let pico = try Bolt11Invoice.decode(Self.pico)
         #expect(pico.amountMsat == 967_878_534)
-        #expect(pico.amountSatsRoundedUp == 967_879)
+        #expect(try LightningValidator.resolvePaymentAmountSats(invoiceAmountMsat: pico.amountMsat, requestedAmountSats: nil) == 967_879)
         #expect(pico.paymentHash.hexString == "462264ede7e14047e9b249da94fefc47f41f7d02ee9b091815a5506bc8abf75f")
         #expect(pico.timestamp == 1_572_468_703)
         #expect(pico.expirySeconds == 604_800)

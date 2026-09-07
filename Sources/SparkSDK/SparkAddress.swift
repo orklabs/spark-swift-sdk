@@ -3,21 +3,23 @@ import Foundation
 /// Spark addresses: a bech32m encoding of the protobuf `SparkAddress { identity_public_key = 1 }`
 /// payload under a network-specific human-readable part.
 enum SparkAddress {
-    /// Current prefixes, plus the legacy ones the reference SDK still accepts.
-    private static let prefixes: [SparkNetwork: (current: String, legacy: String)] = [
-        .mainnet: ("spark", "sp"),
-        .regtest: ("sparkrt", "sprt"),
-    ]
+    /// Current prefix plus the legacy one the reference SDK still accepts.
+    private static func prefixes(for network: SparkNetwork) -> (current: String, legacy: String) {
+        switch network {
+        case .mainnet: return ("spark", "sp")
+        case .regtest: return ("sparkrt", "sprt")
+        }
+    }
 
     static func hrp(for network: SparkNetwork) -> String {
-        prefixes[network]!.current
+        prefixes(for: network).current
     }
 
     static func encode(identityPublicKey: Data, network: SparkNetwork) -> String {
         // Protobuf wire encoding: field 1, wire type 2 (tag 0x0a), single-byte length, bytes.
         var payload = Data([0x0a, UInt8(identityPublicKey.count)])
         payload.append(identityPublicKey)
-        return Bech32m.encode(hrp: hrp(for: network), data: Bech32m.toWords(payload))
+        return Bech32m.encode(hrp: hrp(for: network), data: Bech32.toWords(payload))
     }
 
     /// The identity public key an address encodes. Throws `SparkError.invalidAddress` for a
@@ -31,11 +33,11 @@ enum SparkAddress {
         } catch let error as SparkError {
             throw SparkError.invalidAddress("'\(trimmed)': \(error.localizedDescription)")
         }
-        let allowed = prefixes[network]!
+        let allowed = prefixes(for: network)
         guard hrp == allowed.current || hrp == allowed.legacy else {
             throw SparkError.invalidAddress("'\(trimmed)' is not a \(network) Spark address (prefix '\(hrp)')")
         }
-        guard let payload = Bech32m.fromWords(words) else {
+        guard let payload = Bech32.fromWords(words) else {
             throw SparkError.invalidAddress("'\(trimmed)' has an invalid payload encoding")
         }
         // field 1 (identity_public_key), length-delimited, 33-byte compressed key

@@ -152,8 +152,8 @@ enum Bech32 {
 
 /// Bech32m-only conveniences for Spark addresses and token identifiers.
 enum Bech32m {
-    /// Encode data as a bech32m string. Spark payloads have no length limit.
-    static func encode(hrp: String, data: [UInt8], limit: Int = 1024) -> String {
+    /// Encode 5-bit words with the bech32m checksum. Spark payloads have no length limit.
+    static func encode(hrp: String, data: [UInt8]) -> String {
         Bech32.encode(hrp: hrp, data: data, encoding: .bech32m)
     }
 
@@ -164,17 +164,5 @@ enum Bech32m {
             throw SparkError.invalidResponse("Invalid bech32m checksum")
         }
         return (hrp, data)
-    }
-
-    static func convertBits(_ data: [UInt8], fromBits: Int, toBits: Int, pad: Bool) -> [UInt8]? {
-        Bech32.convertBits(data, fromBits: fromBits, toBits: toBits, pad: pad)
-    }
-
-    static func toWords(_ data: Data) -> [UInt8] {
-        Bech32.toWords(data)
-    }
-
-    static func fromWords(_ words: [UInt8]) -> Data? {
-        Bech32.fromWords(words)
     }
 }

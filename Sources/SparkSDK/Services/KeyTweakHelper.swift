@@ -96,14 +96,13 @@ enum KeyTweakHelper {
             sigPayload.append(secretCipher)
             let tweakSig = try signer.signCompactWithIdentityKey(Data(CryptoKit.SHA256.hash(data: sigPayload)))
 
-            let shareByTarget = try shares(vssShares, for: targets)
+            let sharesByTarget = try shares(vssShares, for: targets)
             var pubkeyBySOID: [String: Data] = [:]
-            for target in targets {
-                pubkeyBySOID[target.soID] = try getPublicKeyBytes(privateKeyBytes: shareByTarget[target.soID]!.share, compressed: true)
+            for (target, share) in sharesByTarget {
+                pubkeyBySOID[target.soID] = try getPublicKeyBytes(privateKeyBytes: share.share, compressed: true)
             }
 
-            for target in targets {
-                let share = shareByTarget[target.soID]!
+            for (target, share) in sharesByTarget {
                 var secretShareProto = Spark_SecretShare()
                 secretShareProto.secretShare = share.share
                 for proof in share.proofs {
@@ -132,19 +131,17 @@ enum KeyTweakHelper {
         return (perSoTweaks, package)
     }
 
-    /// Map each operator to its VSS share by share index.
+    /// Pair each operator with its VSS share by share index, in target order.
     static func shares(
         _ vssShares: [VerifiableSecretShareResult],
         for targets: [OperatorTarget]
-    ) throws -> [String: VerifiableSecretShareResult] {
-        var result: [String: VerifiableSecretShareResult] = [:]
-        for target in targets {
+    ) throws -> [(target: OperatorTarget, share: VerifiableSecretShareResult)] {
+        try targets.map { target in
             guard let share = vssShares.first(where: { $0.index == target.shareIndex }) else {
                 throw SparkError.frostSigningFailed("no secret share produced for operator \(target.soID) (index \(target.shareIndex))")
             }
-            result[target.soID] = share
+            return (target, share)
         }
-        return result
     }
 
     /// Encrypt per-SO tweak data to each operator's configured identity key and sign the package.

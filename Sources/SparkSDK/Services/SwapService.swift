@@ -27,7 +27,7 @@ extension SparkWallet {
 
     /// Leaves whose refund timelock is above the floor and can therefore be transferred.
     static func movableLeaves(_ leaves: [SparkLeaf]) -> [SparkLeaf] {
-        leaves.filter { timelockCanDecrement(Data($0.node.refundTx)) }
+        leaves.filter(\.isSpendable)
     }
 
     /// Select leaves that exactly cover the target amounts. If no exact match exists,

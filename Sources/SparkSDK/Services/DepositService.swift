@@ -70,7 +70,7 @@ extension SparkWallet {
         guard let depositInfo = candidates.first(where: { $0.depositAddress == match.address }) else {
             throw SparkError.invalidResponse("No unused deposit address found. Generate one first with getDepositAddress().")
         }
-        let vout = match.vout
+        let outputIndex = match.vout
 
         let leafId = depositInfo.leafID
         let verifyingKey = Data(depositInfo.verifyingPublicKey)
@@ -81,7 +81,7 @@ extension SparkWallet {
         // Create the CPFP root node transaction spending the deposit UTXO
         // Root node tx uses sequence=0, direct uses DIRECT_TIMELOCK_OFFSET
         let rootNodeTx = try constructNodeTxPair(
-            parentTx: rawTx, vout: vout,
+            parentTx: rawTx, vout: outputIndex,
             address: depositInfo.depositAddress,
             sequence: initialRootNodeSequence,
             directSequence: 50, // DIRECT_TIMELOCK_OFFSET
@@ -137,7 +137,7 @@ extension SparkWallet {
 
         var utxo = Spark_UTXO()
         utxo.rawTx = rawTx
-        utxo.vout = vout
+        utxo.vout = outputIndex
         utxo.network = config.networkProto
         utxo.txid = txidBytes
 

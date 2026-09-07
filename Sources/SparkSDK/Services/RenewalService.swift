@@ -19,8 +19,8 @@ public struct SparkLeafRenewal: Sendable {
 }
 
 extension SparkLeaf {
-    /// Remaining refund-tx timelock in blocks. Below 200 the leaf needs
-    /// renewal; at or below 100 it cannot move at all until renewed.
+    /// Remaining refund-tx timelock in blocks. Below 200 the leaf should be renewed; at or
+    /// below 100 it cannot move; below 100 the coordinator will not renew it either (frozen).
     public var refundTimelockBlocks: UInt32 {
         // Unparseable refund tx → 0 ("exhausted"): never spent, renewal attempted and its
         // failure reported per leaf instead of crashing the caller.

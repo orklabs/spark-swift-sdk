@@ -155,20 +155,6 @@ extension SparkWallet {
         )
     }
 
-    static func selectLeaves(_ leaves: [SparkLeaf], amountSats: Int64) throws -> [SparkLeaf] {
-        let sorted = leaves.sorted { $0.valueSats > $1.valueSats }
-        var selected: [SparkLeaf] = []
-        var total: Int64 = 0
-        for leaf in sorted {
-            selected.append(leaf)
-            total += leaf.valueSats
-            if total >= amountSats {
-                return selected
-            }
-        }
-        throw SparkError.insufficientBalance(need: amountSats, have: total)
-    }
-
     /// Compute next cpfp and direct sequences from a refund tx.
     static func computeNextSequences(from refundTxData: Data) throws -> (cpfp: UInt32, direct: UInt32) {
         let rawSequence = try parseSequenceFromRawTx(refundTxData)

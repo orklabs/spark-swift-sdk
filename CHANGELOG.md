@@ -48,7 +48,6 @@ Nothing yet.
   one stuck leaf cannot fail a payment other leaves could cover. `renewExhaustedLeaves` reports
   leaves below the coordinator's renewal minimum (100) without a round trip; those can only be
   recovered by a unilateral exit.
-
 - `withdraw` speaks the cooperative-exit protocol the coordinator requires today: the
   connector-input refund transactions are FROST-signed by the user and sent together with the
   key-tweak package in a single `cooperative_exit_v2` call. The previous two-step form (unsigned
