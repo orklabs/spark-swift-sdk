@@ -34,25 +34,56 @@ extension SparkWallet {
     }
 
     /// Withdraw funds to an on-chain Bitcoin address via cooperative exit.
-    /// Fee is deducted from the withdrawal amount.
+    ///
+    /// The SSP's fee is deducted from `amountSats`: the recipient receives `amountSats` minus the
+    /// fee. Leaves are swapped to denominations that sum to exactly `amountSats` first, so no more
+    /// than the requested amount ever leaves the wallet.
+    ///
+    /// Before anything is signed the SSP's response is verified: the exit transaction must hash
+    /// to the txid it reports, pay `onChainAddress` at least `amountSats - fee`, and the connector
+    /// transaction must spend it. A response that fails these checks throws
+    /// `SparkError.untrustedResponse` and no leaves are handed over.
+    ///
     /// - Parameters:
-    ///   - onChainAddress: Bitcoin address to withdraw to
-    ///   - amountSats: Amount in sats to withdraw (fee will be deducted from this)
-    /// - Returns: The L1 transaction ID
+    ///   - onChainAddress: Destination Bitcoin address on the wallet's network (P2PKH, P2SH,
+    ///     P2WPKH, P2WSH or P2TR).
+    ///   - amountSats: Amount in sats to withdraw, fee included.
+    ///   - maxFeeSats: Highest fee the caller accepts. When `nil` the SSP's fee quote for the
+    ///     selected leaves is used as the bound. Throws `SparkError.feeExceedsLimit` if the quote
+    ///     is above the cap.
+    /// - Returns: The L1 transaction ID of the cooperative exit.
     public func withdraw(
         onChainAddress: String,
-        amountSats: Int64
+        amountSats: Int64,
+        maxFeeSats: Int64? = nil
     ) async throws -> String {
+        guard amountSats > 0 else {
+            throw SparkError.invalidArgument("withdrawal amount must be positive, got \(amountSats)")
+        }
+        // Fail fast on a malformed or wrong-network destination, before any leaf is moved.
+        _ = try BitcoinAddress.scriptPubKey(for: onChainAddress, network: config.network)
+
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         let networkStr = config.networkString
 
-        // Select leaves
-        let leaves = try await getLeaves()
-        let selectedLeaves = try Self.selectLeaves(leaves, amountSats: amountSats)
+        // Select leaves that sum to exactly the requested amount (swapping via the SSP if
+        // needed), so `withdraw_all` below cannot send more than was asked for.
+        let selectedLeaves = try await selectLeavesWithSwap(amountSats: amountSats)
         let leafIds = selectedLeaves.map(\.id)
+        let selectedTotal = selectedLeaves.reduce(0 as Int64) { $0 + $1.valueSats }
+        guard selectedTotal == amountSats else {
+            throw SparkError.invalidResponse("Selected leaves sum to \(selectedTotal) sats, expected exactly \(amountSats)")
+        }
 
-        // Step 1: Request coop exit from SSP — get connector tx
+        // Bound the fee before asking the SSP to build the exit.
+        let quote = try await getWithdrawalFeeEstimate(onChainAddress: onChainAddress, leafIds: leafIds)
+        let feeCap = try CoopExitValidator.resolveFeeCap(
+            quotedFeeSats: quote.feeSats, maxFeeSats: maxFeeSats, amountSats: amountSats
+        )
+        let minimumPayoutSats = amountSats - feeCap
+
+        // Step 1: Request coop exit from SSP — get the exit and connector transactions
         let transferID = UUID().uuidString.lowercased()
 
         let sspResponse = try await sspClient.executeRaw(
@@ -69,16 +100,26 @@ extension SparkWallet {
         guard let exitData = sspResponse["request_coop_exit"] as? [String: Any],
               let request = exitData["request"] as? [String: Any],
               let connectorTxHex = request["raw_connector_transaction"] as? String,
+              let coopExitTxHex = request["raw_coop_exit_transaction"] as? String,
               let coopExitTxid = request["coop_exit_txid"] as? String else {
             throw SparkError.invalidResponse("Invalid coop exit response")
         }
 
+        // Verify what the SSP built before signing anything.
+        let validated = try CoopExitValidator.validate(
+            rawCoopExitTransactionHex: coopExitTxHex,
+            rawConnectorTransactionHex: connectorTxHex,
+            coopExitTxidHex: coopExitTxid,
+            payoutAddress: onChainAddress,
+            minimumPayoutSats: minimumPayoutSats,
+            leafCount: selectedLeaves.count,
+            network: config.network
+        )
         guard let connectorTxBytes = Data(hexString: connectorTxHex) else {
             throw SparkError.invalidResponse("Invalid connector tx hex")
         }
-
-        // Parse connector tx to get connector outputs and txid
-        let connectorTxId = try Self.computeTxId(connectorTxBytes)
+        let connectorTxId = validated.connectorTx.txid
+        let coopExitTxidBytes = validated.exitTxid
 
         // Step 2: Build LeafRefundTxSigningJobs with connector inputs
         let receiverPubKey = config.sspIdentityPublicKey
@@ -200,8 +241,6 @@ extension SparkWallet {
         }
 
         // Step 3: Call cooperative_exit_v2 with unsigned refund txs
-        let coopExitTxidBytes = Data(Data(hexString: coopExitTxid)!.reversed())
-
         var transferRequest = Spark_StartTransferRequest()
         transferRequest.transferID = transferID
         transferRequest.ownerIdentityPublicKey = signer.identityPublicKey

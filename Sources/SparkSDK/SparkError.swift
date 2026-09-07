@@ -18,6 +18,10 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
     case malformedTransaction(String)
     /// A Bitcoin address is malformed or belongs to another network.
     case invalidAddress(String)
+    /// A response from the SSP or a coordinator failed client-side validation. Nothing was signed.
+    case untrustedResponse(String)
+    /// A quoted fee exceeds the limit the caller allowed.
+    case feeExceedsLimit(feeSats: Int64, maxFeeSats: Int64)
 
     public var errorDescription: String? {
         switch self {
@@ -49,6 +53,10 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
             return "Malformed transaction: \(msg)"
         case .invalidAddress(let msg):
             return "Invalid address: \(msg)"
+        case .untrustedResponse(let msg):
+            return "Response failed validation: \(msg)"
+        case .feeExceedsLimit(let fee, let max):
+            return "Quoted fee of \(fee) sats exceeds the allowed maximum of \(max) sats"
         }
     }
 }
