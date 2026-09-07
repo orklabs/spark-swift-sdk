@@ -77,14 +77,16 @@ func seedDeterministic() throws {
     #expect(roundtrip == data)
 }
 
-@Test(.disabled("Reference vector needs to be regenerated against the current SparkHasher implementation."))
+@Test("Tagged hash matches an independent implementation of the reference SDK's hashstructure")
 func testTaggedHash() async throws {
-    // Cross-check against TypeScript SDK reference vector
+    // Vector computed with a separate Python implementation of the TS SDK's Hasher:
+    // tagHash = sha256(concat(8-byte BE len + component)); sha256(tagHash || tagHash || values),
+    // each value 8-byte BE length-prefixed, maps as (count as uint64, then sorted key/value pairs).
     var hasher = SparkHasher(tag: ["spark", "transfer", "signing payload"])
     hasher.addBytes(Data(hexString: "deadbeef")!)
-    hasher.addMapStringToBytes(["op1": Data(hexString: "cafe")!, "op2": Data(hexString: "babe")!])
+    hasher.addMapStringToBytes(["op2": Data(hexString: "babe")!, "op1": Data(hexString: "cafe")!])
     let result = hasher.hash()
-    #expect(result.hexString == "86195fe19925ed8c84d0633c49862cd503217548fe1e4482081864764953cfc1")
+    #expect(result.hexString == "079a10347594aef138bac8153d261ba95406af52148d8368f8b81bd2f3f28c49")
 }
 
 @Test("Mainnet defaults to account 1, matching TypeScript SDK")
