@@ -7,7 +7,7 @@ private let renewalInitialSequence: UInt32 = 2000
 /// Renew when the refund timelock drops below this — prevents it going under
 /// 100 after the next transfer, which would freeze the leaf and interfere
 /// with watchtowers (matches JS doesTxnNeedRenewed).
-private let renewalThreshold: UInt32 = 200
+let renewalThreshold: UInt32 = 200
 
 /// Outcome of a renewal sweep. Renewals are per-leaf and best-effort: one
 /// failing leaf never aborts the rest.
@@ -44,9 +44,14 @@ extension SparkWallet {
     ///   refund to 2000)
     public func renewExhaustedLeaves() async throws -> SparkLeafRenewal {
         let leaves = try await getLeaves()
-        let needing = leaves.filter { $0.refundTimelockBlocks < renewalThreshold }
+        let (needing, stuck) = Self.renewalCandidates(leaves)
+        // The coordinator refuses to renew a leaf whose refund timelock is already below one
+        // interval (100 blocks); report those without a round trip.
+        var failures = stuck.map {
+            "\($0.id): refund timelock \($0.refundTimelockBlocks) is below the coordinator's renewal minimum of \(sparkTimeLockInterval); only a unilateral exit can recover it"
+        }
         guard !needing.isEmpty else {
-            return SparkLeafRenewal(checked: leaves.count, renewed: 0, failures: [])
+            return SparkLeafRenewal(checked: leaves.count, renewed: 0, failures: failures)
         }
 
         // Parents provide the prev-out context for the new node txs.
@@ -66,7 +71,6 @@ extension SparkWallet {
         }
 
         var renewed = 0
-        var failures: [String] = []
         for leaf in needing {
             do {
                 try await renewLeaf(leaf.node, parents: parents)
@@ -76,6 +80,21 @@ extension SparkWallet {
             }
         }
         return SparkLeafRenewal(checked: leaves.count, renewed: renewed, failures: failures)
+    }
+
+    /// Split AVAILABLE leaves into those the coordinator will renew (refund timelock in
+    /// [100, 200)) and those it will not (below 100), which only a unilateral exit can recover.
+    static func renewalCandidates(_ leaves: [SparkLeaf]) -> (renewable: [SparkLeaf], stuck: [SparkLeaf]) {
+        var renewable: [SparkLeaf] = []
+        var stuck: [SparkLeaf] = []
+        for leaf in leaves where leaf.refundTimelockBlocks < renewalThreshold {
+            if leaf.refundTimelockBlocks >= sparkTimeLockInterval {
+                renewable.append(leaf)
+            } else {
+                stuck.append(leaf)
+            }
+        }
+        return (renewable, stuck)
     }
 
     private func renewLeaf(_ node: Spark_TreeNode, parents: [String: Spark_TreeNode]) async throws {

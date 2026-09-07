@@ -37,6 +37,11 @@ migration note.
   (`SparkError.invalidMnemonic`); pass `validateMnemonic: false` to opt out.
 - Raw transactions from operators, the SSP and the block explorer are parsed with bounds checks
   (`SparkError.malformedTransaction`) instead of unchecked indexing that could crash the app.
+- Spending paths (`send`, `payLightningInvoice`, `withdraw`, swaps) renew leaves whose refund
+  timelock is in [100, 200) before selecting, and never select leaves at the timelock floor, so
+  one stuck leaf cannot fail a payment other leaves could cover. `renewExhaustedLeaves` reports
+  leaves below the coordinator's renewal minimum (100) without a round trip; those can only be
+  recovered by a unilateral exit.
 
 ### Added
 - `send(receiverSparkAddress:amountSats:)` with network-checked Spark address decoding.

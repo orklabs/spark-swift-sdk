@@ -188,3 +188,40 @@ struct WithdrawalValidationTests {
         }
     }
 }
+
+@Suite("Spendable leaf selection")
+struct SpendableLeafTests {
+    private func leaf(_ id: String, sats: Int64, timelock: UInt32) -> SparkLeaf {
+        let refund = RawTransaction(
+            version: 2,
+            inputs: [RawTransaction.Input(previousTxid: Data(repeating: 1, count: 32), previousIndex: 0, sequence: (1 << 30) | timelock)],
+            outputs: [RawTransaction.Output(value: UInt64(sats), scriptPubKey: Data([0x51, 0x20]) + Data(repeating: 2, count: 32))],
+            locktime: 0, hasWitnessSerialization: false
+        )
+        var node = Spark_TreeNode()
+        node.id = id
+        node.refundTx = refund.serialized(includeWitness: true)
+        return SparkLeaf(id: id, treeID: "t", valueSats: sats, status: "AVAILABLE", node: node)
+    }
+
+    @Test("Leaves at or below the timelock floor are never selected for spending")
+    func floorLeavesExcluded() {
+        let leaves = [leaf("stuck0", sats: 8, timelock: 0), leaf("stuck100", sats: 8, timelock: 100),
+                      leaf("ok200", sats: 8, timelock: 200), leaf("ok2000", sats: 2, timelock: 2000)]
+        #expect(SparkWallet.movableLeaves(leaves).map(\.id) == ["ok200", "ok2000"])
+        // The greedy exact selection over movable leaves finds the healthy 8 + 2 for a 10-sat send.
+        #expect(SparkWallet.tryExactSelection(SparkWallet.movableLeaves(leaves), amountSats: 10)?.map(\.id) == ["ok200", "ok2000"])
+        var empty = Spark_TreeNode()
+        empty.id = "garbage"
+        #expect(SparkWallet.movableLeaves([SparkLeaf(id: "garbage", treeID: "t", valueSats: 5, status: "AVAILABLE", node: empty)]).isEmpty)
+    }
+
+    @Test("Renewal candidates: [100, 200) renewable, below 100 stuck, 200 and above healthy")
+    func renewalCandidates() {
+        let leaves = [leaf("a", sats: 1, timelock: 0), leaf("b", sats: 1, timelock: 99), leaf("c", sats: 1, timelock: 100),
+                      leaf("d", sats: 1, timelock: 199), leaf("e", sats: 1, timelock: 200), leaf("f", sats: 1, timelock: 2000)]
+        let (renewable, stuck) = SparkWallet.renewalCandidates(leaves)
+        #expect(renewable.map(\.id) == ["c", "d"])
+        #expect(stuck.map(\.id) == ["a", "b"])
+    }
+}
