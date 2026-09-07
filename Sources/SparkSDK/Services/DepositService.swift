@@ -125,7 +125,7 @@ extension SparkWallet {
         )
 
         // Convert txid hex to bytes (reversed for protobuf)
-        let txidBytes = Data(Data(hexString: txID)!.reversed())
+        let txidBytes = try Self.txidBytes(fromDisplayHex: txID)
 
         var utxo = Spark_UTXO()
         utxo.rawTx = rawTx
@@ -323,7 +323,7 @@ extension SparkWallet {
 
         // Fetch the raw tx to determine the output value
         let rawTx = try await fetchRawTransaction(txID: transactionId)
-        let output = Self.parseTxOutput(rawTx, vout: outputIndex)
+        let output = try Self.parseTxOutput(rawTx, vout: outputIndex)
         let totalAmount = Int64(output.value)
         let fee = totalAmount - quote.creditAmountSats
 
@@ -383,7 +383,7 @@ extension SparkWallet {
 
         // Fetch the deposit tx to know the output value
         let rawDepositTx = try await fetchRawTransaction(txID: depositTransactionId)
-        let depositOutput = Self.parseTxOutput(rawDepositTx, vout: outputIndex)
+        let depositOutput = try Self.parseTxOutput(rawDepositTx, vout: outputIndex)
         let totalAmount = depositOutput.value
         let creditAmountSats = Int64(totalAmount) - Int64(fee)
         guard creditAmountSats > 0 else {
@@ -396,7 +396,7 @@ extension SparkWallet {
             outputIndex: outputIndex,
             destinationAddress: destinationAddress,
             amountSats: UInt64(creditAmountSats),
-            network: config.networkString
+            network: config.network
         )
 
         // Compute sighash for the spend tx
@@ -439,7 +439,7 @@ extension SparkWallet {
         }
 
         // UTXO (txid in internal byte order)
-        let txidBytes = Data(Data(hexString: depositTransactionId)!.reversed())
+        let txidBytes = try Self.txidBytes(fromDisplayHex: depositTransactionId)
         var utxo = Spark_UTXO()
         utxo.txid = txidBytes
         utxo.vout = outputIndex
@@ -490,7 +490,7 @@ extension SparkWallet {
         )
 
         // Add witness to spend tx
-        let signedTx = Self.addWitnessToTx(spendTx, witness: aggregatedSig)
+        let signedTx = try Self.addWitnessToTx(spendTx, witness: aggregatedSig)
         return signedTx.hexString
     }
 
@@ -534,130 +534,43 @@ extension SparkWallet {
 
     // MARK: - Internal helpers
 
-    /// Build a simple 1-input 1-output spend transaction (version 3, no witness)
+    /// Parse a display-order (big-endian hex) txid into the internal byte order used on the wire.
+    static func txidBytes(fromDisplayHex hex: String) throws -> Data {
+        guard hex.count == 64, let bytes = Data(hexString: hex) else {
+            throw SparkError.invalidResponse("Invalid transaction id: \(hex)")
+        }
+        return Data(bytes.reversed())
+    }
+
+    /// Build a simple 1-input 1-output spend transaction (version 3, witness serialisation with
+    /// an empty witness; the signature is attached by `addWitnessToTx`).
     static func constructSpendTx(
         depositTxId: String,
         outputIndex: UInt32,
         destinationAddress: String,
         amountSats: UInt64,
-        network: String
+        network: SparkNetwork
     ) throws -> Data {
-        var tx = Data()
-
-        // Version 3
-        var version: UInt32 = 3
-        tx.append(Data(bytes: &version, count: 4))
-
-        // Segwit marker + flag
-        tx.append(contentsOf: [0x00, 0x01])
-
-        // 1 input
-        tx.append(UInt8(1))
-
-        // Input: txid (reversed) + vout + empty scriptSig + sequence
-        let txidBytes = Data(Data(hexString: depositTxId)!.reversed())
-        tx.append(txidBytes)
-        var voutLE = outputIndex.littleEndian
-        tx.append(Data(bytes: &voutLE, count: 4))
-        tx.append(UInt8(0)) // scriptSig length = 0
-        var seq: UInt32 = 0xFFFFFFFF
-        tx.append(Data(bytes: &seq, count: 4))
-
-        // 1 output
-        tx.append(UInt8(1))
-
-        // Output value
-        var amountLE = amountSats.littleEndian
-        tx.append(Data(bytes: &amountLE, count: 8))
-
-        // Output script - decode bech32/bech32m address to scriptPubKey
-        let scriptPubKey = try decodeAddressToScript(destinationAddress, network: network)
-        tx.append(encodeVarInt(UInt64(scriptPubKey.count)))
-        tx.append(scriptPubKey)
-
-        // Witness placeholder (empty for now, will be filled after signing)
-        tx.append(UInt8(0)) // 0 witness items
-
-        // Locktime
-        var locktime: UInt32 = 0
-        tx.append(Data(bytes: &locktime, count: 4))
-
-        return tx
+        let scriptPubKey = try BitcoinAddress.scriptPubKey(for: destinationAddress, network: network)
+        let tx = RawTransaction(
+            version: 3,
+            inputs: [RawTransaction.Input(previousTxid: try txidBytes(fromDisplayHex: depositTxId), previousIndex: outputIndex)],
+            outputs: [RawTransaction.Output(value: amountSats, scriptPubKey: scriptPubKey)],
+            locktime: 0,
+            hasWitnessSerialization: true
+        )
+        return tx.serialized(includeWitness: true)
     }
 
-    /// Decode a Bitcoin address (bech32/bech32m) to its scriptPubKey
-    static func decodeAddressToScript(_ address: String, network: String) throws -> Data {
-        // Try bech32m first (P2TR), then bech32 (P2WPKH/P2WSH)
-        let lower = address.lowercased()
-
-        let expectedPrefix: String
-        switch network {
-        case "mainnet": expectedPrefix = "bc"
-        case "regtest": expectedPrefix = "bcrt"
-        default: expectedPrefix = "tb"
+    /// Attach a single-item witness (a schnorr signature) to the first input of a segwit tx.
+    static func addWitnessToTx(_ rawTx: Data, witness: Data) throws -> Data {
+        var tx = try RawTransaction.parse(rawTx, context: "spend tx")
+        guard !tx.inputs.isEmpty else {
+            throw SparkError.malformedTransaction("spend tx has no inputs")
         }
-
-        guard lower.hasPrefix(expectedPrefix) else {
-            throw SparkError.invalidResponse("Address doesn't match network")
-        }
-
-        let (witnessVersion, programData) = try Bech32m.decode(address)
-
-        var script = Data()
-        if witnessVersion == 0 {
-            script.append(UInt8(0x00)) // OP_0
-        } else {
-            script.append(UInt8(0x50 + witnessVersion)) // OP_1..OP_16
-        }
-        script.append(UInt8(programData.count))
-        script.append(programData)
-        return script
-    }
-
-    /// Add a schnorr witness (single signature) to a 1-input segwit tx
-    static func addWitnessToTx(_ rawTx: Data, witness: Data) -> Data {
-        // Find witness section: after outputs, before locktime
-        var offset = 4 // version
-        let hasWitness = rawTx.count > 5 && rawTx[offset] == 0x00 && rawTx[offset + 1] == 0x01
-        if hasWitness { offset += 2 }
-
-        // Skip inputs
-        let (inputCount, inputCountLen) = readVarInt(rawTx, at: offset)
-        offset += inputCountLen
-        for _ in 0..<inputCount {
-            offset += 36
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen + Int(scriptLen) + 4
-        }
-
-        // Skip outputs
-        let (outputCount, outputCountLen) = readVarInt(rawTx, at: offset)
-        offset += outputCountLen
-        for _ in 0..<outputCount {
-            offset += 8
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen + Int(scriptLen)
-        }
-
-        // Build new tx with witness replaced
-        var result = Data()
-        // version + marker + flag
-        result.append(rawTx[0..<4])
-        result.append(contentsOf: [0x00, 0x01])
-
-        // inputs + outputs (from after marker/flag or version to witness section)
-        let inputOutputStart = hasWitness ? 6 : 4
-        result.append(rawTx[inputOutputStart..<offset])
-
-        // Witness: 1 item (schnorr signature)
-        result.append(UInt8(1)) // witness item count
-        result.append(encodeVarInt(UInt64(witness.count)))
-        result.append(witness)
-
-        // Locktime (last 4 bytes)
-        result.append(rawTx[(rawTx.count - 4)...])
-
-        return result
+        tx.hasWitnessSerialization = true
+        tx.inputs[0].witness = [witness]
+        return tx.serialized(includeWitness: true)
     }
 
     // MARK: - Internal helpers

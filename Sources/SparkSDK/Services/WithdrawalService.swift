@@ -78,7 +78,7 @@ extension SparkWallet {
         }
 
         // Parse connector tx to get connector outputs and txid
-        let connectorTxId = Self.computeTxId(connectorTxBytes)
+        let connectorTxId = try Self.computeTxId(connectorTxBytes)
 
         // Step 2: Build LeafRefundTxSigningJobs with connector inputs
         let receiverPubKey = config.sspIdentityPublicKey
@@ -115,7 +115,7 @@ extension SparkWallet {
             let cpfpNodeTx = Data(node.nodeTx)
             let directNodeTx = node.directTx.isEmpty ? nil : Data(node.directTx)
 
-            let isZeroNode = Self.isZeroTimelockNode(cpfpNodeTx)
+            let isZeroNode = try Self.isZeroTimelockNode(cpfpNodeTx)
 
             // Build refund txs (single input)
             let refundTrio = try constructRefundTxTrio(
@@ -130,15 +130,15 @@ extension SparkWallet {
             )
 
             // Add connector input to each refund tx
-            let connectorInput = Self.makeConnectorInputBytes(txId: connectorTxId, vout: UInt32(i))
-            let cpfpRefundWithConnector = Self.addInputToRawTx(refundTrio.cpfpRefund.tx, input: connectorInput)
+            let connectorInput = RawTransaction.Input(previousTxid: connectorTxId, previousIndex: UInt32(i))
+            let cpfpRefundWithConnector = try Self.addInputToRawTx(refundTrio.cpfpRefund.tx, input: connectorInput)
 
             var directRefundWithConnector: Data? = nil
             if let directRefund = refundTrio.directRefund, !isZeroNode {
-                directRefundWithConnector = Self.addInputToRawTx(directRefund.tx, input: connectorInput)
+                directRefundWithConnector = try Self.addInputToRawTx(directRefund.tx, input: connectorInput)
             }
 
-            let directFromCpfpRefundWithConnector = Self.addInputToRawTx(refundTrio.directFromCpfpRefund.tx, input: connectorInput)
+            let directFromCpfpRefundWithConnector = try Self.addInputToRawTx(refundTrio.directFromCpfpRefund.tx, input: connectorInput)
 
             // Generate FROST nonce commitments
             let signingPubKeyForNonce = try getPublicKeyBytes(privateKeyBytes: signingKey, compressed: true)
@@ -230,10 +230,10 @@ extension SparkWallet {
             }
 
             // Parse connector tx output for multi-input sighash
-            let connectorPrevOut = Self.parseTxOutput(connectorTxBytes, vout: UInt32(leafData.connectorOutputIndex))
+            let connectorPrevOut = try Self.parseTxOutput(connectorTxBytes, vout: UInt32(leafData.connectorOutputIndex))
 
             // Sign CPFP refund
-            let cpfpNodeOutput = Self.parseTxOutput(leafData.cpfpNodeTx, vout: 0)
+            let cpfpNodeOutput = try Self.parseTxOutput(leafData.cpfpNodeTx, vout: 0)
             let cpfpSighash = try computeMultiInputSighashUniffi(
                 tx: leafData.cpfpRefundTx,
                 inputIndex: 0,
@@ -258,7 +258,7 @@ extension SparkWallet {
 
             // Sign direct refund (if exists)
             if let directRefundTx = leafData.directRefundTx, let directNodeTx = leafData.directNodeTx, result.hasDirectRefundTxSigningResult {
-                let directNodeOutput = Self.parseTxOutput(directNodeTx, vout: 0)
+                let directNodeOutput = try Self.parseTxOutput(directNodeTx, vout: 0)
                 let directSighash = try computeMultiInputSighashUniffi(
                     tx: directRefundTx,
                     inputIndex: 0,
@@ -400,239 +400,29 @@ extension SparkWallet {
         )
     }
 
-    // MARK: - Raw tx helpers
+    // MARK: - Raw tx helpers (bounds-checked, see RawTransaction)
 
-    /// Compute txid from raw transaction bytes (double SHA-256)
-    /// Returns bytes in internal byte order (reversed from display hex)
-    static func computeTxId(_ rawTx: Data) -> Data {
-        // Strip witness data if present to get the txid serialization
-        let strippedTx = stripWitness(rawTx)
-        let hash1 = Data(CryptoKit.SHA256.hash(data: strippedTx))
-        let hash2 = Data(CryptoKit.SHA256.hash(data: hash1))
-        // Return in internal byte order (used as prevout hash in inputs)
-        return hash2
+    /// Transaction id in internal byte order (the form used in input prevouts).
+    static func computeTxId(_ rawTx: Data) throws -> Data {
+        try RawTransaction.parse(rawTx).txid
     }
 
-    /// Strip witness data from a segwit transaction to get legacy serialization
-    static func stripWitness(_ rawTx: Data) -> Data {
-        var offset = 4 // skip version
-        let hasWitness = rawTx.count > 5 && rawTx[offset] == 0x00 && rawTx[offset + 1] == 0x01
-        if !hasWitness { return rawTx }
-
-        var result = Data()
-        result.append(rawTx[0..<4]) // version
-
-        offset += 2 // skip marker + flag
-
-        // Parse inputs
-        let (inputCount, inputCountLen) = readVarInt(rawTx, at: offset)
-        let inputCountStart = offset
-        offset += inputCountLen
-
-        // Skip all inputs
-        for _ in 0..<inputCount {
-            offset += 36 // txid + vout
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen + Int(scriptLen) + 4 // script + sequence
-        }
-
-        // Parse outputs
-        let (outputCount, outputCountLen) = readVarInt(rawTx, at: offset)
-        offset += outputCountLen
-        for _ in 0..<outputCount {
-            offset += 8 // value
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen + Int(scriptLen)
-        }
-
-        let afterOutputs = offset
-
-        // result = version + inputs + outputs + locktime
-        result.append(rawTx[inputCountStart..<afterOutputs])
-        result.append(rawTx[(rawTx.count - 4)...]) // locktime
-
-        return result
+    /// Parse a tx output (script + value) at a given vout.
+    static func parseTxOutput(_ rawTx: Data, vout: UInt32) throws -> (script: Data, value: UInt64) {
+        let output = try RawTransaction.parse(rawTx).output(at: vout)
+        return (script: output.scriptPubKey, value: output.value)
     }
 
-    /// Parse a tx output (script + value) at a given vout
-    static func parseTxOutput(_ rawTx: Data, vout: UInt32) -> (script: Data, value: UInt64) {
-        var offset = 4 // skip version
-        if rawTx.count > 5 && rawTx[offset] == 0x00 && rawTx[offset + 1] == 0x01 {
-            offset += 2 // skip segwit marker + flag
-        }
-
-        // Skip inputs
-        let (inputCount, inputCountLen) = readVarInt(rawTx, at: offset)
-        offset += inputCountLen
-        for _ in 0..<inputCount {
-            offset += 36
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen + Int(scriptLen) + 4
-        }
-
-        // Parse outputs
-        let (_, outputCountLen) = readVarInt(rawTx, at: offset)
-        offset += outputCountLen
-
-        for i in 0..<(vout + 1) {
-            let value = rawTx.subdata(in: offset..<(offset + 8))
-                .withUnsafeBytes { $0.load(as: UInt64.self).littleEndian }
-            offset += 8
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen
-            let script = rawTx.subdata(in: offset..<(offset + Int(scriptLen)))
-            offset += Int(scriptLen)
-
-            if i == vout {
-                return (script: script, value: value)
-            }
-        }
-
-        fatalError("vout \(vout) not found in transaction")
+    /// Check if a node tx has zero timelock (sequence & 0xFFFF == 0)
+    static func isZeroTimelockNode(_ nodeTx: Data) throws -> Bool {
+        (try parseSequenceFromRawTx(nodeTx) & 0xFFFF) == 0
     }
 
-    /// Check if a node tx has zero timelock (sequence == 0)
-    static func isZeroTimelockNode(_ nodeTx: Data) -> Bool {
-        let seq = parseSequenceFromRawTx(nodeTx)
-        return (seq & 0xFFFF) == 0
-    }
-
-    /// Create raw bytes for a connector input (txid + vout + empty script + sequence)
-    static func makeConnectorInputBytes(txId: Data, vout: UInt32) -> Data {
-        var input = Data()
-        // txid is already in internal byte order (reversed from display)
-        input.append(txId)
-        // vout (LE)
-        var voutLE = vout.littleEndian
-        input.append(Data(bytes: &voutLE, count: 4))
-        // scriptSig length = 0
-        input.append(UInt8(0))
-        // sequence = 0xFFFFFFFF
-        var seq: UInt32 = 0xFFFFFFFF
-        input.append(Data(bytes: &seq, count: 4))
-        return input
-    }
-
-    /// Add an input to a raw (non-witness) transaction
-    static func addInputToRawTx(_ rawTx: Data, input: Data) -> Data {
-        var offset = 4 // skip version
-
-        // Check for segwit marker
-        let hasWitness = rawTx.count > 5 && rawTx[offset] == 0x00 && rawTx[offset + 1] == 0x01
-        if hasWitness {
-            offset += 2
-        }
-
-        // Read input count
-        let (inputCount, inputCountLen) = readVarInt(rawTx, at: offset)
-        let inputCountOffset = offset
-        offset += inputCountLen
-
-        // Find the end of all inputs
-        for _ in 0..<inputCount {
-            offset += 36 // txid + vout
-            let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: offset)
-            offset += scriptLenLen + Int(scriptLen) + 4 // script + sequence
-        }
-        let afterInputs = offset
-
-        // Build new tx
-        var result = Data()
-
-        if hasWitness {
-            // version + marker + flag
-            result.append(rawTx[0..<4])
-            result.append(contentsOf: [0x00, 0x01])
-        } else {
-            result.append(rawTx[0..<4]) // version
-        }
-
-        // New input count
-        result.append(encodeVarInt(inputCount + 1))
-        // Existing inputs (skip old input count bytes)
-        result.append(rawTx[(inputCountOffset + inputCountLen)..<afterInputs])
-        // New connector input
-        result.append(input)
-
-        if hasWitness {
-            // outputs section
-            let outputsStart = afterInputs
-            // Find end of outputs
-            var outOffset = outputsStart
-            let (outputCount, outputCountLen) = readVarInt(rawTx, at: outOffset)
-            outOffset += outputCountLen
-            for _ in 0..<outputCount {
-                outOffset += 8
-                let (scriptLen, scriptLenLen) = readVarInt(rawTx, at: outOffset)
-                outOffset += scriptLenLen + Int(scriptLen)
-            }
-            let afterOutputs = outOffset
-
-            result.append(rawTx[outputsStart..<afterOutputs])
-
-            // Existing witness data
-            for _ in 0..<inputCount {
-                let (witnessCount, witnessCountLen) = readVarInt(rawTx, at: outOffset)
-                let witnessStart = outOffset
-                outOffset += witnessCountLen
-                for _ in 0..<witnessCount {
-                    let (itemLen, itemLenLen) = readVarInt(rawTx, at: outOffset)
-                    outOffset += itemLenLen + Int(itemLen)
-                }
-                result.append(rawTx[witnessStart..<outOffset])
-            }
-            // Empty witness for new input
-            result.append(UInt8(0x00))
-
-            // locktime
-            result.append(rawTx[(rawTx.count - 4)...])
-        } else {
-            // Rest of tx (outputs + locktime)
-            result.append(rawTx[afterInputs...])
-        }
-
-        return result
-    }
-
-    /// Read a Bitcoin varint from data at offset. Returns (value, bytesRead)
-    static func readVarInt(_ data: Data, at offset: Int) -> (UInt64, Int) {
-        let first = data[offset]
-        if first < 0xFD {
-            return (UInt64(first), 1)
-        } else if first == 0xFD {
-            let val = data.subdata(in: (offset + 1)..<(offset + 3))
-                .withUnsafeBytes { $0.load(as: UInt16.self).littleEndian }
-            return (UInt64(val), 3)
-        } else if first == 0xFE {
-            let val = data.subdata(in: (offset + 1)..<(offset + 5))
-                .withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            return (UInt64(val), 5)
-        } else {
-            let val = data.subdata(in: (offset + 1)..<(offset + 9))
-                .withUnsafeBytes { $0.load(as: UInt64.self).littleEndian }
-            return (val, 9)
-        }
-    }
-
-    /// Encode an integer as a Bitcoin varint
-    static func encodeVarInt(_ value: UInt64) -> Data {
-        if value < 0xFD {
-            return Data([UInt8(value)])
-        } else if value <= 0xFFFF {
-            var result = Data([0xFD])
-            var val = UInt16(value).littleEndian
-            result.append(Data(bytes: &val, count: 2))
-            return result
-        } else if value <= 0xFFFFFFFF {
-            var result = Data([0xFE])
-            var val = UInt32(value).littleEndian
-            result.append(Data(bytes: &val, count: 4))
-            return result
-        } else {
-            var result = Data([0xFF])
-            var val = value.littleEndian
-            result.append(Data(bytes: &val, count: 8))
-            return result
-        }
+    /// Append an input to a raw transaction, preserving its serialisation format. A witness
+    /// transaction gets an empty witness stack for the new input.
+    static func addInputToRawTx(_ rawTx: Data, input: RawTransaction.Input) throws -> Data {
+        var tx = try RawTransaction.parse(rawTx, context: "refund tx")
+        tx.inputs.append(input)
+        return tx.serialized(includeWitness: true)
     }
 }

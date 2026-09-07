@@ -93,11 +93,11 @@ extension SparkWallet {
             let nodeRefundTx = Data(node.refundTx)
             let rawSequence: UInt32
             if !intermediateRefundTx.isEmpty {
-                rawSequence = Self.parseSequenceFromRawTx(intermediateRefundTx)
+                rawSequence = try Self.parseSequenceFromRawTx(intermediateRefundTx)
             } else if !nodeRefundTx.isEmpty {
-                rawSequence = Self.parseSequenceFromRawTx(nodeRefundTx)
+                rawSequence = try Self.parseSequenceFromRawTx(nodeRefundTx)
             } else {
-                rawSequence = Self.parseSequenceFromRawTx(Data(node.nodeTx))
+                rawSequence = try Self.parseSequenceFromRawTx(Data(node.nodeTx))
             }
 
             // Enforce timelocks: round down to nearest interval (matching JS SDK)

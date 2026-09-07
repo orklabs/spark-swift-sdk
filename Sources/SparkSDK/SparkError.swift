@@ -12,6 +12,12 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
     case insufficientTokenBalance(token: String, need: String, have: String)
     case tokenValidationFailed(String)
     case leafTimelockExhausted(String)
+    /// A caller-supplied argument is invalid (non-positive amount, bad key, ...).
+    case invalidArgument(String)
+    /// Transaction bytes from an operator, the SSP, or a block explorer could not be parsed.
+    case malformedTransaction(String)
+    /// A Bitcoin address is malformed or belongs to another network.
+    case invalidAddress(String)
 
     public var errorDescription: String? {
         switch self {
@@ -37,6 +43,12 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
             return "Token validation failed: \(msg)"
         case .leafTimelockExhausted(let msg):
             return msg
+        case .invalidArgument(let msg):
+            return "Invalid argument: \(msg)"
+        case .malformedTransaction(let msg):
+            return "Malformed transaction: \(msg)"
+        case .invalidAddress(let msg):
+            return "Invalid address: \(msg)"
         }
     }
 }

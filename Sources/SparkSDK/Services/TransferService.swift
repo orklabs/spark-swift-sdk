@@ -142,7 +142,7 @@ extension SparkWallet {
 
     /// Compute next cpfp and direct sequences from a refund tx.
     static func computeNextSequences(from refundTxData: Data) throws -> (cpfp: UInt32, direct: UInt32) {
-        let rawSequence = parseSequenceFromRawTx(refundTxData)
+        let rawSequence = try parseSequenceFromRawTx(refundTxData)
         let currentTimelock = rawSequence & 0xFFFF
         let bit30 = rawSequence & (1 << 30)
         // A leaf at the timelock floor cannot be moved again until it is
@@ -163,6 +163,9 @@ extension SparkWallet {
     /// the leaf can be transferred/swapped without operator renewal. Strictly
     /// greater: the coordinator rejects decrements that reach zero.
     static func timelockCanDecrement(_ refundTxData: Data) -> Bool {
-        (parseSequenceFromRawTx(refundTxData) & 0xFFFF) > sparkTimeLockInterval
+        // An unparseable refund tx is treated as exhausted: the leaf is skipped rather than
+        // crashing the caller or being handed to the coordinator with a bogus sequence.
+        guard let sequence = try? parseSequenceFromRawTx(refundTxData) else { return false }
+        return (sequence & 0xFFFF) > sparkTimeLockInterval
     }
 }

@@ -22,7 +22,9 @@ extension SparkLeaf {
     /// Remaining refund-tx timelock in blocks. Below 200 the leaf needs
     /// renewal; at or below 100 it cannot move at all until renewed.
     public var refundTimelockBlocks: UInt32 {
-        SparkWallet.parseSequenceFromRawTx(Data(node.refundTx)) & 0xFFFF
+        // Unparseable refund tx → 0 ("exhausted"): never spent, renewal attempted and its
+        // failure reported per leaf instead of crashing the caller.
+        ((try? SparkWallet.parseSequenceFromRawTx(Data(node.refundTx))) ?? 0) & 0xFFFF
     }
 }
 
@@ -77,7 +79,7 @@ extension SparkWallet {
     }
 
     private func renewLeaf(_ node: Spark_TreeNode, parents: [String: Spark_TreeNode]) async throws {
-        let nodeTimelock = Self.parseSequenceFromRawTx(Data(node.nodeTx)) & 0xFFFF
+        let nodeTimelock = try Self.parseSequenceFromRawTx(Data(node.nodeTx)) & 0xFFFF
         if nodeTimelock == 0 {
             try await renewZeroTimelockNode(node)
             return
@@ -98,12 +100,12 @@ extension SparkWallet {
     private func renewRefundTimelock(_ node: Spark_TreeNode, parent: Spark_TreeNode) async throws {
         let context = try RenewalContext(node: node, signer: signer)
         let parentTx = Data(parent.nodeTx)
-        let address = try Self.p2trAddress(
-            pkScript: Self.parseTxOutput(parentTx, vout: 0).script,
-            network: config.networkString
+        let address = try BitcoinAddress.p2trAddress(
+            scriptPubKey: try Self.parseTxOutput(parentTx, vout: 0).script,
+            network: config.network
         )
 
-        let nodeSequence = Self.parseSequenceFromRawTx(Data(node.nodeTx))
+        let nodeSequence = try Self.parseSequenceFromRawTx(Data(node.nodeTx))
         let bit30 = nodeSequence & (1 << 30)
         let nodeTimelock = nodeSequence & 0xFFFF
         guard nodeTimelock >= sparkTimeLockInterval else {
@@ -159,9 +161,9 @@ extension SparkWallet {
     private func renewNodeTimelock(_ node: Spark_TreeNode, parent: Spark_TreeNode) async throws {
         let context = try RenewalContext(node: node, signer: signer)
         let parentTx = Data(parent.nodeTx)
-        let address = try Self.p2trAddress(
-            pkScript: Self.parseTxOutput(parentTx, vout: 0).script,
-            network: config.networkString
+        let address = try BitcoinAddress.p2trAddress(
+            scriptPubKey: try Self.parseTxOutput(parentTx, vout: 0).script,
+            network: config.network
         )
 
         // Split node: spends the parent output with zero timelock.
@@ -172,9 +174,9 @@ extension SparkWallet {
             feeSats: sparkDefaultFeeSats
         )
         // New node: spends the split node output at the initial timelock.
-        let splitAddress = try Self.p2trAddress(
-            pkScript: Self.parseTxOutput(splitPair.cpfp.tx, vout: 0).script,
-            network: config.networkString
+        let splitAddress = try BitcoinAddress.p2trAddress(
+            scriptPubKey: try Self.parseTxOutput(splitPair.cpfp.tx, vout: 0).script,
+            network: config.network
         )
         let nodePair = try constructNodeTxPair(
             parentTx: splitPair.cpfp.tx, vout: 0, address: splitAddress,
@@ -227,9 +229,9 @@ extension SparkWallet {
     private func renewZeroTimelockNode(_ node: Spark_TreeNode) async throws {
         let context = try RenewalContext(node: node, signer: signer)
         let nodeTx = Data(node.nodeTx)
-        let address = try Self.p2trAddress(
-            pkScript: Self.parseTxOutput(nodeTx, vout: 0).script,
-            network: config.networkString
+        let address = try BitcoinAddress.p2trAddress(
+            scriptPubKey: try Self.parseTxOutput(nodeTx, vout: 0).script,
+            network: config.network
         )
 
         let nodePair = try constructNodeTxPair(
@@ -328,23 +330,5 @@ extension SparkWallet {
         guard response.renewResult != nil else {
             throw SparkError.invalidResponse("renew_leaf returned no result for leaf \(leafId)")
         }
-    }
-
-    /// bech32m P2TR address for a `OP_1 <32-byte>` output script.
-    static func p2trAddress(pkScript: Data, network: String) throws -> String {
-        let bytes = [UInt8](pkScript)
-        guard bytes.count == 34, bytes[0] == 0x51, bytes[1] == 0x20 else {
-            throw SparkError.invalidResponse("Output script is not P2TR (\(pkScript.hexString))")
-        }
-        let hrp: String
-        switch network {
-        case "mainnet": hrp = "bc"
-        case "regtest": hrp = "bcrt"
-        default: hrp = "tb"
-        }
-        guard let program = Bech32m.convertBits(Array(bytes[2...]), fromBits: 8, toBits: 5, pad: true) else {
-            throw SparkError.invalidResponse("Failed to encode P2TR program")
-        }
-        return Bech32m.encode(hrp: hrp, data: [0x01] + program)
     }
 }

@@ -469,18 +469,9 @@ extension SparkWallet {
         return (hash, amountSats)
     }
 
-    /// Parse nSequence from the first input of a raw Bitcoin transaction
-    static func parseSequenceFromRawTx(_ rawTx: Data) -> UInt32 {
-        var offset = 4 // skip version
-        if rawTx.count > 5 && rawTx[offset] == 0x00 && rawTx[offset + 1] == 0x01 {
-            offset += 2
-        }
-        offset += 1 // skip input count varint (assume single byte)
-        offset += 36 // skip prevout hash (32) + index (4)
-        let scriptLen = Int(rawTx[offset])
-        offset += 1 + scriptLen
-        return rawTx.subdata(in: offset..<(offset + 4))
-            .withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+    /// nSequence of the first input of a raw Bitcoin transaction (where Spark keeps leaf timelocks).
+    static func parseSequenceFromRawTx(_ rawTx: Data) throws -> UInt32 {
+        try RawTransaction.parse(rawTx, context: "leaf tx").firstInputSequence
     }
 
     /// Convert between bit widths (bech32 5-bit to 8-bit)
