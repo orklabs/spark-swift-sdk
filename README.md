@@ -132,8 +132,13 @@ let transferId = try await wallet.send(
 ### Creating a wallet
 
 ```swift
-// From a BIP-39 mnemonic (the most common case)
+// From a BIP-39 mnemonic (the most common case). The phrase is validated against the
+// English wordlist and its checksum; a typo throws `SparkError.invalidMnemonic` instead of
+// silently opening a different, empty wallet.
 let wallet = try SparkWallet(mnemonic: "...", account: 0)
+
+// Phrases known to be non-standard can skip validation.
+let legacy = try SparkWallet(mnemonic: "...", validateMnemonic: false)
 
 // From a raw 32-byte account key (advanced — bring-your-own-derivation)
 let wallet = try SparkWallet(config: .init(network: .mainnet), accountKey: keyData)
@@ -156,6 +161,10 @@ let transferId = try await wallet.claimStaticDeposit(
     transactionId: utxo.txid,
     outputIndex: utxo.vout
 )
+
+// One-time deposit addresses: the SDK locates the output that pays one of your unused
+// deposit addresses (pass `vout:` to insist on a specific output).
+try await wallet.claimDeposit(txID: txid)
 ```
 
 ### Lightning
@@ -165,20 +174,34 @@ let transferId = try await wallet.claimStaticDeposit(
 let invoice = try await wallet.createLightningInvoice(amountSats: 1_000, memo: "Coffee")
 
 // Send
-let fee = try await wallet.getLightningSendFeeEstimate(paymentRequest: "lnbc...")
-let paymentId = try await wallet.payLightningInvoice(paymentRequest: "lnbc...")
+let fee = try await wallet.getLightningSendFeeEstimate(encodedInvoice: "lnbc...")
+// `maxFeeSats` is required: the SSP's fee estimate is refused if it is above the cap.
+let paymentId = try await wallet.payLightningInvoice(paymentRequest: "lnbc...", maxFeeSats: fee)
+
+// Amountless invoices need an amount; invoices for another network are refused.
+let zeroAmountPaymentId = try await wallet.payLightningInvoice(
+    paymentRequest: "lnbc1...", maxFeeSats: 20, amountSats: 1_000
+)
+
+// Make a send resumable: on `SparkError.lightningSendIncomplete` call again with the
+// same `transferId` and the coordinator resumes the existing transfer instead of locking
+// a second set of leaves.
+let transferId = UUID().uuidString
+let resumable = try await wallet.payLightningInvoice(
+    paymentRequest: "lnbc...", maxFeeSats: fee, transferId: transferId
+)
 ```
 
 ### Spark transfers
 
 ```swift
-// Pubkey form
+// Pubkey form (33-byte compressed secp256k1 key)
 let id = try await wallet.send(
-    receiverIdentityPublicKey: "02abcd...",
+    receiverIdentityPublicKey: Data(hexString: "02abcd...")!,
     amountSats: 500
 )
 
-// Spark address form (bech32m)
+// Spark address form (bech32m, must be for the wallet's network)
 let id = try await wallet.send(
     receiverSparkAddress: "spark1...",
     amountSats: 500
@@ -191,11 +214,20 @@ try await wallet.claimAllPendingTransfers()
 ### Withdrawals
 
 ```swift
+// Exactly `amountSats` leaves the wallet; the SSP's fee is deducted from it. Leaves are
+// swapped to matching denominations first, so a partial withdrawal never overshoots.
 let txid = try await wallet.withdraw(
     onChainAddress: "bc1q...",
-    amountSats: 10_000
+    amountSats: 10_000,
+    maxFeeSats: 500        // optional: refuse if the SSP quotes more (default: the quote itself)
 )
 ```
+
+Before anything is signed the SDK verifies the SSP's response: the exit transaction must
+hash to the reported txid, pay `onChainAddress` at least `amountSats - fee`, and the connector
+transaction must spend it. A response that fails throws `SparkError.untrustedResponse` and no
+leaves are handed over. Destination addresses may be P2PKH, P2SH, P2WPKH, P2WSH or P2TR and
+must belong to the wallet's network.
 
 ### Tokens
 
@@ -286,7 +318,15 @@ do {
         // show user-friendly message
     case .authenticationFailed(let reason):
         // re-auth flow
-    case .grpcError, .graphqlError, .frostSigningFailed:
+    case .feeExceedsLimit(let fee, let max):
+        // the SSP quoted more than the caller allows — nothing was signed
+    case .untrustedResponse(let reason):
+        // an SSP / coordinator response failed client-side verification — nothing was signed
+    case .lightningSendIncomplete(let transferId, let reason):
+        // the coordinator holds the leaves; retry with the same transferId or reconcile via getTransferFromSsp
+    case .invalidInvoice, .invalidAddress, .invalidMnemonic, .invalidArgument:
+        // caller input problems
+    case .grpcError, .graphqlError, .frostSigningFailed, .malformedTransaction:
         // transport / protocol failures
     default:
         // log and surface
@@ -309,6 +349,10 @@ This is a self-custody wallet SDK. **Read [SECURITY.md](SECURITY.md) before ship
 Highlights:
 
 - The host process is trusted — the SDK does not defend against a compromised app.
+- The SSP and the coordinator are **not** trusted blindly: withdrawals verify the exit
+  transaction before signing, inbound transfers verify the sender's signature before claiming,
+  token commits verify the coordinator's final transaction, created invoices are checked against
+  the requested hash and amount, and fees are capped by the caller.
 - Mnemonic and account-key storage is the **app's responsibility**. Use Keychain on Apple
   platforms.
 - The bundled `spark_frostFFI.xcframework` is a binary — see CONTRIBUTING.md for
@@ -321,12 +365,14 @@ reporting on this repo or email `gm@orklabs.com`.
 ## Testing
 
 ```bash
-swift test --filter SparkSDKTests   # unit — no network, safe
-swift test --filter TokenTests      # unit — no network, safe
+swift test                                         # unit tests only, when no .env is present
+SPARK_TEST_DOTENV=/dev/null swift test             # force unit tests only, even with a .env
 ```
 
 Integration tests connect to live Spark mainnet and require funded wallets configured via
-`.env` (see [`.env.example`](.env.example)). They are not run in CI.
+`.env` (see [`.env.example`](.env.example)). They are not run in CI. **Note:** once a `.env`
+with wallet mnemonics exists at the repo root, a plain `swift test` enables the integration
+suites and moves real sats; point `SPARK_TEST_DOTENV` at an empty file to keep a run local.
 
 ```bash
 cp .env.example .env

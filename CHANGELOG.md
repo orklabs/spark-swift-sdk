@@ -13,7 +13,47 @@ migration note.
 
 ## [Unreleased]
 
+### Security
+- `withdraw` verifies the SSP's cooperative-exit response before signing: the raw exit
+  transaction must hash to the reported txid, pay the destination at least `amount - fee`, and
+  the connector transaction must spend it. Leaves are swapped to exactly `amountSats` first, so
+  a partial withdrawal can no longer send the full value of an oversized leaf. Fees are bounded
+  by a new optional `maxFeeSats` (default: the SSP's own quote).
+- `payLightningInvoice` now requires `maxFeeSats` and refuses a higher SSP estimate. Invoices
+  are decoded by a BOLT-11 parser that verifies the checksum, enforces the wallet's network and
+  handles hostile amounts without trapping. A caller amount is only accepted for amountless
+  invoices. Failures after the coordinator locked leaves throw
+  `SparkError.lightningSendIncomplete(transferId:)`; pass `transferId:` to resume.
+- `createLightningInvoice` verifies the SSP-returned invoice (payment hash, amount, network)
+  before storing preimage shares.
+- Inbound transfer claims verify the sender's signature on every leaf, and that the transfer is
+  addressed to this wallet, before any secret is decrypted.
+- Token commits verify the coordinator's final transaction against the submitted partial
+  transaction (inputs, outputs, amounts, owners, operator keys, withdraw bond and locktime,
+  keyshare info).
+- The coordinator's operator list is reconciled with the local configuration; secret shares
+  are encrypted only to configured operator keys.
+- Mnemonics are validated against the BIP-39 English wordlist and checksum
+  (`SparkError.invalidMnemonic`); pass `validateMnemonic: false` to opt out.
+- Raw transactions from operators, the SSP and the block explorer are parsed with bounds checks
+  (`SparkError.malformedTransaction`) instead of unchecked indexing that could crash the app.
+
 ### Added
+- `send(receiverSparkAddress:amountSats:)` with network-checked Spark address decoding.
+- `SparkConfig.signingThreshold`, `expectedWithdrawBondSats`, `expectedWithdrawRelativeBlockLocktime`.
+- `SparkError` cases: `invalidArgument`, `malformedTransaction`, `invalidAddress`,
+  `invalidInvoice`, `invalidMnemonic`, `untrustedResponse`, `feeExceedsLimit`,
+  `lightningSendIncomplete`.
+- Bitcoin address decoding for P2PKH, P2SH, P2WPKH, P2WSH and P2TR with BIP-173/350 rules and
+  network enforcement (static-deposit refunds previously rejected `bc1q` destinations).
+- `claimDeposit(txID:vout:)` matches the transaction output that pays one of the wallet's unused
+  deposit addresses; `vout` is now optional.
+
+### Changed
+- **Breaking:** `payLightningInvoice` takes a required `maxFeeSats`.
+- **Breaking:** `exportAccountKey()` throws instead of crashing when the wallet uses a custom
+  signer.
+- `withdraw` amount semantics: exactly `amountSats` is withdrawn, fee deducted from it.
 - `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and this `CHANGELOG.md`.
 - `.env.example` and `Tests/SparkSDKTests/TestConfig.swift` for environment-driven test config.
 - GitHub issue / pull request templates and Dependabot configuration.

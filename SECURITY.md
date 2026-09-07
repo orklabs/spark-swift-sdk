@@ -62,7 +62,8 @@ SparkSDK assumes:
   not provide Keychain integration, encrypted-at-rest storage, or hardware-key isolation.
   Apps embedding the SDK MUST take care of these.
 - Network transport is gRPC over TLS to Spark operators and HTTPS to the SSP. The SDK does
-  not implement certificate pinning by default.
+  not implement certificate pinning by default; the response verification described below is
+  what limits the damage an impersonated SSP or coordinator can do.
 - The cryptography is provided by `secp256k1.swift` (ECDSA / Schnorr) and the
   `spark-frost` Rust crate (FROST threshold signing). Bugs in those libraries are out of
   scope and tracked upstream.
@@ -75,8 +76,36 @@ SparkSDK assumes:
   initialiser with a short-lived `Data` buffer they control.
 - **Account keys** never leave the device. The SDK derives identity / signing keys locally
   via BIP-32 and uses them for FROST signing rounds with operators.
-- **No telemetry**. The SDK makes no network calls beyond Spark operators and the configured
-  SSP endpoint.
+- **No telemetry**. The SDK makes no network calls beyond Spark operators, the configured SSP
+  endpoint, and a block explorer (`mempool.space` on mainnet, a local electrs on regtest) used
+  to fetch raw transactions for one-time deposit claims and to broadcast static-deposit
+  refunds. Transaction ids sent to the explorer are visible to it.
+
+## What the SDK Verifies
+
+Responses from the Spark Service Provider and the coordinator are checked on the device before
+any key material is used:
+
+- **Withdrawals** — the SSP's exit transaction must hash to the reported txid and pay the
+  requested address at least `amount - fee`; the connector transaction must spend it; the fee
+  is bounded by the caller's `maxFeeSats` or the SSP's own quote. Leaves are swapped to the
+  exact amount first so no more than requested leaves the wallet.
+- **Lightning sends** — the invoice must decode (BOLT-11 checksum, network, overflow-checked
+  amount) and belong to the wallet's network; the SSP fee estimate must be within
+  `maxFeeSats`.
+- **Lightning receives** — the invoice the SSP returns must carry our payment hash, amount and
+  network before preimage shares are stored.
+- **Inbound transfers** — every leaf's sender signature over
+  `sha256(leafId || transferId || secretCipher)` is verified against the sender identity key
+  before any secret is decrypted or refund signed.
+- **Token transactions** — the coordinator's final transaction must equal the submitted partial
+  transaction apart from server-set fields, with the expected withdraw bond and locktime.
+- **Operators** — secret shares are only ever encrypted to operator identity keys from the local
+  configuration; a coordinator operator list that does not match the configuration is refused.
+- **Mnemonics** — validated against the BIP-39 English wordlist and checksum by default.
+
+Anything that fails these checks throws (`SparkError.untrustedResponse`,
+`.feeExceedsLimit`, `.invalidInvoice`, ...) before a signature is produced.
 
 ## Audit Status
 
