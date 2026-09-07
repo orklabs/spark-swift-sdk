@@ -989,11 +989,11 @@ struct TokenIntegrationTests {
 
         try await Task.sleep(for: .seconds(5))
 
-        // B should have 0 SWFT
+        // B is back to what it held before the round trip (it may keep tokens from earlier runs)
         let finalBBalances = try await walletB.getTokenBalances()
         let finalBSwft = finalBBalances.first { $0.tokenMetadata.tokenIdentifier == tokenIdentifier }
         print("WalletB final SWFT balance: \(finalBSwft?.ownedBalance ?? 0)")
-        #expect(finalBSwft == nil || finalBSwft!.ownedBalance == 0)
+        #expect((finalBSwft?.ownedBalance ?? 0) == swftBalanceB!.ownedBalance - transferAmount)
 
         // A should have all tokens back
         let finalABalances = try await walletA.getTokenBalances()
