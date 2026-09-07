@@ -17,6 +17,30 @@ Nothing yet.
 
 ---
 
+## [0.2.1] — 2026-09-07
+
+### Added
+- `SatsBalance.locked`: sats held by an in-flight transfer, swap, renewal or exit
+  (`owned - available - frozen`), the figure `WithdrawAllQuote.lockedSats` and
+  `WithdrawAllResult.lockedSats` already reported.
+
+### Changed
+- Internal cleanup of the 0.2.0 hardening work, with no behaviour change: removed the unused
+  greedy leaf selector and invoice rounding helper, shared the claim/renew/quote prelude between
+  `quoteWithdrawAll` and `withdrawAll`, replaced dictionary force-unwraps in Spark address and
+  key-tweak handling with a switch and index-paired shares, reduced `Bech32m` to a thin
+  bech32m-only layer over `Bech32`, and made invoice creation use the configured signing
+  threshold instead of recomputing it.
+
+### Fixed
+- README quick start showed the removed `send(receiverIdentityPublicKey:)` call; it now uses
+  `send(receiverSparkAddress:)`.
+- Stale comments: the `withdraw` leaf-selection note referred to a `withdraw_all` step that no
+  longer exists, and the refund-timelock doc said floor leaves could move "until renewed" when
+  the coordinator will not renew them either.
+
+---
+
 ## [0.2.0] — 2026-09-07
 
 ### Security
@@ -117,6 +141,7 @@ Initial public release.
 - FROST threshold signing via `spark_frostFFI.xcframework` (Rust UniFFI).
 - Test suite: BIP-39 vectors, key derivation, token validation, full integration coverage.
 
-[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/orklabs/spark-swift-sdk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orklabs/spark-swift-sdk/releases/tag/v0.1.0
