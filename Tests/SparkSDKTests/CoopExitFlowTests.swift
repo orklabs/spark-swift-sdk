@@ -108,7 +108,7 @@ struct BalanceSummaryTests {
         return node
     }
 
-    @Test("Leaves below the renewal minimum are frozen; renewable leaves count as available; locked adds to owned only")
+    @Test("Leaves below the renewal minimum are frozen; renewable leaves count as available; other statuses are ignored")
     func summary() {
         let nodes: [String: Spark_TreeNode] = [
             "a": treeNode("a", status: "AVAILABLE", value: 8192, refundTimelock: 1600),
@@ -116,20 +116,62 @@ struct BalanceSummaryTests {
             "c": treeNode("c", status: "AVAILABLE", value: 2, refundTimelock: 100),
             "d": treeNode("d", status: "TRANSFER_LOCKED", value: 500, refundTimelock: 2000),
             "e": treeNode("e", status: "CREATING", value: 700, refundTimelock: 2000),
+            // A renewal split node: permanently SPLIT_LOCKED, still carrying the owner key.
             "f": treeNode("f", status: "SPLIT_LOCKED", value: 9, refundTimelock: 2000),
             "g": treeNode("g", status: "AVAILABLE", value: 64, refundTimelock: 200),
             "h": treeNode("h", status: "AVAILABLE", value: 16, refundTimelock: 150),
             "i": treeNode("i", status: "AVAILABLE", value: 4, refundTimelock: 99),
         ]
-        let s = SparkWallet.summarizeNodes(nodes)
+        let summary = SparkWallet.summarizeNodes(nodes)
         // 100 and 150 are renewable (the coordinator renews refund timelocks from 100), so they
         // are available; 0 and 99 are below the renewal minimum and frozen.
-        #expect(s.available == 8192 + 2 + 64 + 16)
-        #expect(s.frozen == 32 + 4)
-        #expect(s.owned == 8192 + 32 + 2 + 500 + 9 + 64 + 16 + 4)
-        #expect(s.creating == 700)
-        #expect(Set(s.leaves.map(\.id)) == ["a", "b", "c", "g", "h", "i"])
+        #expect(summary.available == 8192 + 2 + 64 + 16)
+        #expect(summary.frozen == 32 + 4)
+        #expect(Set(summary.leaves.map(\.id)) == ["a", "b", "c", "g", "h", "i"])
         let empty = SparkWallet.summarizeNodes([:])
-        #expect(empty.available == 0 && empty.owned == 0 && empty.frozen == 0 && empty.creating == 0 && empty.leaves.isEmpty)
+        #expect(empty.available == 0 && empty.frozen == 0 && empty.leaves.isEmpty)
+    }
+
+    private func transfer(_ id: String, leaves: [(String, UInt64)]) -> Spark_Transfer {
+        var transfer = Spark_Transfer()
+        transfer.id = id
+        transfer.leaves = leaves.map { leafId, value in
+            var transferLeaf = Spark_TransferLeaf()
+            transferLeaf.leaf.id = leafId
+            transferLeaf.leaf.value = value
+            return transferLeaf
+        }
+        return transfer
+    }
+
+    @Test("In-flight sats count each leaf once and never a leaf that is already available")
+    func inFlight() {
+        let transfers = [
+            transfer("outgoing", leaves: [("l1", 500), ("l2", 20)]),
+            // A self-transfer, or a counter-swap leaf mid-claim, shows up in two queries.
+            transfer("counter", leaves: [("l2", 20), ("l3", 8)]),
+            transfer("claimed", leaves: [("available-leaf", 64)]),
+        ]
+        #expect(SparkWallet.inFlightSats(transfers, excludingLeafIds: ["available-leaf"]) == 500 + 20 + 8)
+        #expect(SparkWallet.inFlightSats([], excludingLeafIds: []) == 0)
+        var withoutNode = Spark_Transfer()
+        withoutNode.leaves = [Spark_TransferLeaf()]
+        #expect(SparkWallet.inFlightSats([withoutNode], excludingLeafIds: []) == 0)
+    }
+
+    @Test("In-flight transfers are queried with the reference SDK's types and statuses")
+    func inFlightQuerySets() {
+        // transfer.ts SENDER_PENDING_STATUSES: before the sender key tweak is applied.
+        #expect(SparkWallet.senderPendingStatuses == [
+            .senderInitiated, .senderInitiatedCoordinator, .applyingSenderKeyTweak, .senderKeyTweakPending,
+        ])
+        // ACTIVE_COUNTER_SWAP_STATUSES: the whole counter-transfer lifecycle until completion.
+        #expect(SparkWallet.activeCounterSwapStatuses == SparkWallet.senderPendingStatuses + [
+            .senderKeyTweaked, .receiverKeyTweakLocked, .receiverKeyTweakApplied, .receiverKeyTweaked, .receiverRefundSigned,
+        ])
+        #expect(!SparkWallet.activeCounterSwapStatuses.contains(.completed))
+        #expect(SparkWallet.outgoingTransferTypes == [.cooperativeExit, .utxoSwap, .preimageSwap, .transfer])
+        #expect(SparkWallet.primarySwapTypes == [.primarySwapV3, .swap])
+        #expect(SparkWallet.counterSwapTypes == [.counterSwapV3, .counterSwap])
     }
 }

@@ -5,7 +5,12 @@ public struct SatsBalance: Sendable {
     /// Leaves at 100…199 are renewed by every spend path before they are selected (the
     /// coordinator will not move them otherwise), as the reference SDK does.
     public let available: Int64
-    /// All satoshis owned (available + frozen + locked in outgoing transfers/swaps)
+    /// All satoshis the wallet owns: available + frozen + locked. Locked sats are held by an
+    /// in-flight operation that can still come back: an outgoing transfer, Lightning payment or
+    /// cooperative exit before the operators apply the sender's key tweak (a cooperative exit
+    /// until its transaction confirms), a swap the wallet started, and its counter-transfer until
+    /// claimed. Sent sats leave `owned` once the sender's key tweak is applied, even before the
+    /// receiver claims them.
     public let owned: Int64
     /// Pending inbound transfers not yet claimed
     public let incoming: Int64
@@ -14,7 +19,7 @@ public struct SatsBalance: Sendable {
     /// recover them. A leaf at exactly 100 is renewable and counts as available.
     public let frozen: Int64
 
-    /// Satoshis locked by an in-flight transfer, swap, renewal or exit.
+    /// Satoshis held by an in-flight transfer, swap or exit the wallet still owns (see `owned`).
     public var locked: Int64 { max(0, owned - available - frozen) }
 }
 

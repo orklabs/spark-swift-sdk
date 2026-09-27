@@ -196,6 +196,31 @@ struct HardeningIntegrationTests {
         #expect(try await pair.receiver.queryTransferById(sent.id).status == .completed)
     }
 
+    @Test("Sent sats leave owned once the transfer is committed, before the receiver claims", .timeLimit(.minutes(5)))
+    func committedTransferLeavesOwned() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        guard pair.senderSpendable >= 6 else {
+            Issue.record(Comment(rawValue: "sender needs 6 spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let before = try await pair.sender.getBalance().satsBalance
+        #expect(before.locked == 0)
+        let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: 1)
+        #expect(transfer.status == "senderKeyTweaked")
+
+        // The operators applied the sender's key tweak: the sat belongs to the receiver now, even
+        // though its leaf stays TRANSFER_LOCKED under the sender's key until the claim.
+        let sent = try await pair.sender.getBalance().satsBalance
+        print("[\(pair.senderLabel)] owned \(before.owned) -> \(sent.owned), locked \(before.locked) -> \(sent.locked)")
+        #expect(sent.owned == before.owned - 1)
+        #expect(sent.locked == 0)
+        let incoming = try await pair.receiver.getBalance().satsBalance.incoming
+        #expect(incoming >= 1)
+        _ = try await pair.receiver.claimPendingTransfers()
+    }
+
     @Test("Frozen sats are exactly the leaves below the renewal minimum, and the drain quote agrees", .timeLimit(.minutes(5)))
     func frozenClassification() async throws {
         let a = try await makeWallet(TestConfig.walletAMnemonic)

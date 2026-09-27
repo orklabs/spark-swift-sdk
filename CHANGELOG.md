@@ -19,7 +19,19 @@ migration note.
 - `SparkLeaf.isFrozen`, and `unrenewedSats` on `WithdrawAllQuote` and `WithdrawAllResult`:
   renewable sats a drain leaves behind because the operators did not renew them.
 
+### Changed
+- `SatsBalance.owned` and `locked` follow the reference SDK: available + frozen + leaves an
+  in-flight operation still holds for the wallet (outgoing transfers, Lightning payments and
+  cooperative exits before the operators apply the sender's key tweak, swaps the wallet started
+  and their counter-transfers until claimed). Sent sats leave `owned` as soon as the transfer is
+  committed instead of when the receiver claims it, and `getBalance`/`getLeaves` query only
+  AVAILABLE nodes.
+
 ### Fixed
+- `SatsBalance.owned` and `locked` no longer grow permanently with every node-level renewal. A
+  node or zero-timelock renewal leaves a SPLIT_LOCKED split node that keeps the owner key and the
+  leaf's full value (`renew_leaf_handler.go`), and the balance counted every SPLIT_LOCKED node
+  as owned, so `locked` (and `WithdrawAllQuote.lockedSats`) reported sats that never settle.
 - `SatsBalance.frozen` counts only leaves the operators will not renew: a refund timelock below
   100. A leaf at exactly 100 — what a transfer from a leaf at 200 routinely leaves the receiver
   — was reported frozen, although the coordinator renews refund timelocks from 100 up; frozen
