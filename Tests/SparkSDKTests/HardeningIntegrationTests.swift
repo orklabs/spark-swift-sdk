@@ -196,6 +196,28 @@ struct HardeningIntegrationTests {
         #expect(try await pair.receiver.queryTransferById(sent.id).status == .completed)
     }
 
+    @Test("A send no leaf combination can pay exactly swaps for change first", .timeLimit(.minutes(5)))
+    func sendWithSwap() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let leaves = try await pair.sender.getSpendableLeaves()
+        let total = leaves.reduce(0) { $0 + $1.valueSats }
+        guard let amount = (1...min(total, 200)).first(where: { SparkWallet.tryExactSelection(leaves, amountSats: $0) == nil }) else {
+            Issue.record(Comment(rawValue: "every amount up to 200 sats has an exact leaf combination"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverBefore = try await pair.receiver.getBalance().satsBalance
+        let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: amount)
+        print("[\(pair.senderLabel)] sent \(amount) sats through a swap, transfer \(transfer.id)")
+        #expect(transfer.totalValueSats == amount)
+        try await Task.sleep(for: .seconds(3))
+        let claim = try await pair.receiver.claimPendingTransfers()
+        #expect(claim.claimedTransferIds.contains(transfer.id))
+        let receiverAfter = try await pair.receiver.getBalance().satsBalance
+        #expect(receiverAfter.owned == receiverBefore.owned + receiverBefore.incoming + amount)
+    }
+
     @Test("Sent sats leave owned once the transfer is committed, before the receiver claims", .timeLimit(.minutes(5)))
     func committedTransferLeavesOwned() async throws {
         let pair = try await Self.makePair()
@@ -249,10 +271,11 @@ struct HardeningIntegrationTests {
         }
     }
 
-    /// Bounces one small leaf between the test wallets until its refund timelock is in the renewal
-    /// range (each Spark transfer takes 100 blocks off it), then renews it. Opt-in
-    /// (`SPARK_TEST_RENEWAL=1`) because it takes one transfer per 100 blocks of timelock.
-    @Test("A leaf bounced into the renewal range is renewed to a fresh timelock", .timeLimit(.minutes(20)),
+    /// Bounces one small leaf between the test wallets until a transfer delivers it in the renewal
+    /// range (each Spark transfer takes 100 blocks off it); the receiver's claim pass must renew
+    /// it to a fresh timelock right away. Opt-in (`SPARK_TEST_RENEWAL=1`) because it takes one
+    /// transfer per 100 blocks of timelock.
+    @Test("A leaf that arrives in the renewal range is renewed by the claim", .timeLimit(.minutes(20)),
           .enabled(if: ProcessInfo.processInfo.environment["SPARK_TEST_RENEWAL"] == "1"))
     func renewalRoundTrip() async throws {
         let a = try await makeWallet(TestConfig.walletAMnemonic)
@@ -274,27 +297,25 @@ struct HardeningIntegrationTests {
             return
         }
         var (holder, other, leaf) = (start.holder, start.other, start.leaf)
-        print("bouncing leaf \(leaf.id) (\(leaf.valueSats) sats) from refund timelock \(leaf.refundTimelockBlocks)")
-        while leaf.isSpendable {
+        let leafId = leaf.id
+        print("bouncing leaf \(leafId) (\(leaf.valueSats) sats) from refund timelock \(leaf.refundTimelockBlocks)")
+        while true {
+            let arrivesAt = SparkWallet.roundedTimelock(leaf.refundTimelockBlocks) - sparkTimeLockInterval
             _ = try await holder.transferLeaves([leaf], receiverIdentityPublicKey: other.signer.identityPublicKey)
             try await Task.sleep(for: .seconds(3))
             let claim = try await other.claimPendingTransfers()
             #expect(claim.failures.isEmpty)
             (holder, other) = (other, holder)
-            let leafId = leaf.id
             leaf = try #require(try await holder.getLeaves().first { $0.id == leafId })
-            print("  refund timelock now \(leaf.refundTimelockBlocks)")
+            print("  delivered at \(arrivesAt), after the claim \(leaf.refundTimelockBlocks)")
+            if arrivesAt < renewalThreshold {
+                // Delivered in the renewal range: the claim pass renewed it.
+                #expect(leaf.refundTimelockBlocks == 2000)
+                #expect(leaf.isSpendable)
+                break
+            }
+            #expect(leaf.refundTimelockBlocks == arrivesAt)
         }
-        #expect(leaf.isRenewable)
-        let leafId = leaf.id
-        let renewal = try await holder.renewExhaustedLeaves()
-        print("renewal: checked \(renewal.checked), renewed \(renewal.renewed), failures \(renewal.failures)")
-        // Frozen leaves of the test wallets are reported as failures too; this leaf must not be.
-        #expect(renewal.renewed >= 1)
-        #expect(!renewal.failures.contains { $0.hasPrefix(leafId) })
-        let renewed = try #require(try await holder.getLeaves().first { $0.id == leafId })
-        #expect(renewed.refundTimelockBlocks == 2000)
-        #expect(renewed.isSpendable)
     }
 
     /// Destination: `SPARK_TEST_WITHDRAW_DESTINATION` may be an address, or

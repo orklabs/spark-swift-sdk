@@ -152,6 +152,26 @@ struct ClaimDrainTests {
         #expect(await server.claimAttempts.filter { $0 == "refused" }.count == 1)
     }
 
+    @Test("The pass reports the leaves of the transfers it claimed, for the renewal that follows")
+    func claimedLeaves() async throws {
+        func withLeaves(_ id: String, _ leafIds: [String]) -> Spark_Transfer {
+            var transfer = Self.transfer(id)
+            transfer.leaves = leafIds.map { leafId in
+                var transferLeaf = Spark_TransferLeaf()
+                transferLeaf.leaf.id = leafId
+                return transferLeaf
+            }
+            return transfer
+        }
+        let server = PendingServer(
+            [withLeaves("t1", ["a", "b"]), withLeaves("refused", ["x"]), withLeaves("t2", ["c"])],
+            failing: ["refused"]
+        )
+        let result = try await Self.run(server)
+        #expect(result.claimedTransferIds == ["t1", "t2"])
+        #expect(result.claimedLeafIds == ["a", "b", "c"])
+    }
+
     @Test("Scans through unclaimable pages for at most 100 batches")
     func boundsUnclaimableScan() async throws {
         let expired = (1...25).map { Self.transfer("expired-loop-\($0)", status: .expired) }

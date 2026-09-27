@@ -18,6 +18,9 @@ public struct PendingTransferClaim: Sendable {
         public let transferId: String
         public let error: any Swift.Error
     }
+
+    /// Leaves of the claimed transfers.
+    var claimedLeafIds: [String] = []
 }
 
 /// One claim pass over the pending inbound transfers, following the reference SDK's
@@ -43,6 +46,7 @@ enum PendingTransferDrain {
         claim: (Spark_Transfer) async throws -> Void
     ) async throws -> PendingTransferClaim {
         var claimed: [String] = []
+        var claimedLeafIds: [String] = []
         var failures: [PendingTransferClaim.Failure] = []
         var attempted = Set<String>()
         var offset = 0
@@ -59,6 +63,7 @@ enum PendingTransferDrain {
                 do {
                     try await claim(transfer)
                     claimed.append(transfer.id)
+                    claimedLeafIds += transfer.leaves.map(\.leaf.id)
                     progress = true
                 } catch {
                     failures.append(PendingTransferClaim.Failure(transferId: transfer.id, error: error))
@@ -69,7 +74,9 @@ enum PendingTransferDrain {
             }
             offset = progress ? 0 : offset + batch.count
         }
-        return PendingTransferClaim(claimedTransferIds: claimed, failures: failures)
+        var result = PendingTransferClaim(claimedTransferIds: claimed, failures: failures)
+        result.claimedLeafIds = claimedLeafIds
+        return result
     }
 }
 
@@ -99,13 +106,28 @@ extension SparkWallet {
     /// concurrent pass waits for this one. A transfer that cannot be claimed is recorded in
     /// `failures` and the pass moves on to the rest, as the reference SDK does; a transfer the
     /// operators already recorded as claimed by this wallet counts as claimed.
+    ///
+    /// Claimed leaves whose refund timelock is in the renewal range (100…199 — a transfer from a
+    /// leaf at 200 arrives at 100) are renewed right away, best effort, as the reference SDK does
+    /// when it registers claimed leaves; spend paths renew anything that is left.
     public func claimPendingTransfers() async throws -> PendingTransferClaim {
-        try await claimLock.run {
+        let result = try await claimLock.run {
             try await PendingTransferDrain.run(
                 fetch: { limit, offset in try await self.queryPendingTransfers(limit: limit, offset: offset) },
                 claim: { transfer in try await self.claimTransferTreatingDuplicatesAsClaimed(transfer) }
             )
         }
+        await renewClaimedLeaves(result.claimedLeafIds)
+        return result
+    }
+
+    /// Best-effort renewal of the renewable leaves among `leafIds`.
+    private func renewClaimedLeaves(_ leafIds: [String]) async {
+        guard !leafIds.isEmpty else { return }
+        let ids = Set(leafIds)
+        guard let leaves = try? await getLeaves().filter({ ids.contains($0.id) }),
+              !Self.renewalCandidates(leaves).renewable.isEmpty else { return }
+        _ = try? await renewLeaves(leaves)
     }
 
     /// Claim every pending inbound transfer; returns how many were claimed. Transfers that cannot

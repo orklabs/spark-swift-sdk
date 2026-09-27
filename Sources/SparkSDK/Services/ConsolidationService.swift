@@ -63,6 +63,9 @@ extension SparkWallet {
             _ = try await processSwapBatch(leaves: batch, targetAmounts: targets)
             rounds += 1
 
+            // Swap outputs can arrive in the renewal range; renew them so the next round can use
+            // them (best effort, as before the first round).
+            _ = try? await renewExhaustedLeaves()
             let refreshed = try await getLeaves()
             guard refreshed.count < current.count else { break }  // no progress — stop
             current = refreshed

@@ -65,7 +65,13 @@ extension SparkWallet {
     /// - otherwise → renew_refund_timelock (decrements node by 100, resets
     ///   refund to 2000)
     public func renewExhaustedLeaves() async throws -> SparkLeafRenewal {
-        let leaves = try await getLeaves()
+        try await renewLeaves(try await getLeaves())
+    }
+
+    /// Renew the renewable leaves among `leaves` (refund timelock in [100, 200)) and report the
+    /// ones below the renewal minimum as failures. Each renewal is independent: one failing leaf
+    /// never stops the others.
+    func renewLeaves(_ leaves: [SparkLeaf]) async throws -> SparkLeafRenewal {
         let (needing, stuck) = Self.renewalCandidates(leaves)
         // The coordinator refuses to renew a leaf whose refund timelock is already below one
         // interval (100 blocks); report those without a round trip.

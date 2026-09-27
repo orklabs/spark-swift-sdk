@@ -28,6 +28,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Claimed leaves and swap outputs in the renewal range are renewed, as the reference SDK does.
+  A transfer from a leaf at 200 delivers it at 100; the claim now renews such leaves right away
+  (best effort). A send or withdrawal that swapped for change filtered the SSP's new leaves by
+  spendability and threw when they arrived at 100…199, although the swap had already gone
+  through; it now renews them before selecting, and consolidation renews between rounds.
 - Leaves hanging off any output but the first of their parent can be renewed. Refund and node
   renewals spent parent output 0 and paid that output's script, while the operators rebuild the
   renewal from the parent's output at the leaf's `vout`, paying P2TR of the leaf's verifying key,

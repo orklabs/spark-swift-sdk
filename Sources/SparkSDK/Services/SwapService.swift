@@ -41,10 +41,12 @@ extension SparkWallet {
         }
 
         // No exact match — swap leaves via SSP to get right denominations
-        let newLeaves = try await requestLeavesSwap(targetAmounts: [amountSats])
+        _ = try await requestLeavesSwap(targetAmounts: [amountSats])
 
-        // Retry selection with new leaves (must find exact match — never overspend)
-        if let exact = Self.tryExactSelection(Self.movableLeaves(newLeaves), amountSats: amountSats) {
+        // Retry selection with the swap's output (must find exact match — never overspend). The
+        // SSP may return leaves in the renewal range; renew them rather than leave them out, as
+        // the reference SDK does before it uses swap outputs.
+        if let exact = Self.tryExactSelection(try await getSpendableLeaves(), amountSats: amountSats) {
             return exact
         }
 
