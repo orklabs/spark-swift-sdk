@@ -642,7 +642,7 @@ struct WithdrawalTests {
 @Suite("Static Deposit", .enabled(if: TestConfig.hasIntegrationCredentials))
 struct StaticDepositTests {
 
-    @Test("Should get UTXOs and fee estimate for a static deposit")
+    @Test("Should get UTXOs for a static deposit address, claimed ones included")
     func depositFeeEstimate() async throws {
         guard let mnemonic = TestConfig.staticDepositMnemonic,
               let targetAddress = TestConfig.staticDepositAddress else {
@@ -654,12 +654,16 @@ struct StaticDepositTests {
         await wallet.start()
         defer { Task { await wallet.close() } }
 
-        let utxos = try await wallet.getUtxosForDepositAddress(address: targetAddress)
-        print("UTXOs at \(targetAddress): \(utxos.count)")
+        // The fixture address has received deposits; once they are claimed only the query that
+        // includes claimed ones still lists them.
+        let utxos = try await wallet.getUtxosForDepositAddress(address: targetAddress, excludeClaimed: false)
+        let unclaimed = try await wallet.getUtxosForDepositAddress(address: targetAddress)
+        print("UTXOs at \(targetAddress): \(utxos.count), \(unclaimed.count) unclaimed")
         for utxo in utxos {
             print("  txid=\(utxo.txid) vout=\(utxo.vout)")
         }
         #expect(!utxos.isEmpty, "Expected at least one UTXO")
+        #expect(unclaimed.allSatisfy { candidate in utxos.contains { $0.txid == candidate.txid && $0.vout == candidate.vout } })
     }
 
     @Test("Should estimate withdrawal fee for all balance")
@@ -705,6 +709,16 @@ struct StaticDepositTests {
         let wallet = try SparkWallet(mnemonic: mnemonic, account: TestConfig.staticDepositAccount)
         await wallet.start()
         defer { Task { await wallet.close() } }
+
+        // A deposit can be claimed once: after that the SSP answers "Transaction not found." for
+        // it. Skip only when the operators report this one claimed.
+        let address = try await wallet.getStaticDepositAddress().address
+        let isDeposit = { (utxo: DepositUtxo) in utxo.txid.lowercased() == txID.lowercased() }
+        if try await !wallet.getUtxosForDepositAddress(address: address).contains(where: isDeposit),
+           try await wallet.getUtxosForDepositAddress(address: address, excludeClaimed: false).contains(where: isDeposit) {
+            print("Skipping: the configured deposit \(txID) is already claimed; set SPARK_TEST_STATIC_DEPOSIT_TXID to an unclaimed one")
+            return
+        }
 
         let balanceBefore = try await wallet.getBalance()
         print("Balance before claim: \(balanceBefore.satsBalance.available) sats")
