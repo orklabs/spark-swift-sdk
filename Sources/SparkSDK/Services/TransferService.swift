@@ -141,17 +141,7 @@ extension SparkWallet {
             request: ClientRequest(message: transferRequest, metadata: metadata)
         )
 
-        let transfer = response.transfer
-        return SparkTransfer(
-            id: transfer.id,
-            senderIdentityPublicKey: Data(transfer.senderIdentityPublicKey).hexString,
-            receiverIdentityPublicKey: Data(transfer.receiverIdentityPublicKey).hexString,
-            totalValueSats: Int64(transfer.totalValue),
-            status: "\(transfer.status)",
-            type: "\(transfer.type)",
-            createdAt: transfer.createdTime.date,
-            sparkInvoice: transfer.sparkInvoice.isEmpty ? nil : transfer.sparkInvoice
-        )
+        return SparkTransfer(response.transfer)
     }
 
     /// A leaf's refund transactions paying `receivingPubkey` at the given sequences: the CPFP

@@ -346,7 +346,7 @@ extension SparkWallet {
         // Fetch the raw tx to determine the output value
         let rawTx = try await fetchRawTransaction(txID: transactionId)
         let output = try Self.parseTxOutput(rawTx, vout: outputIndex)
-        let totalAmount = Int64(output.value)
+        let totalAmount = Int64(reportedSats: output.value)
         let fee = totalAmount - quote.creditAmountSats
 
         guard fee <= maxFee else {
@@ -407,7 +407,7 @@ extension SparkWallet {
         let rawDepositTx = try await fetchRawTransaction(txID: depositTransactionId)
         let depositOutput = try Self.parseTxOutput(rawDepositTx, vout: outputIndex)
         let totalAmount = depositOutput.value
-        let creditAmountSats = Int64(totalAmount) - Int64(fee)
+        let creditAmountSats = Int64(reportedSats: totalAmount) - Int64(fee)
         guard creditAmountSats > 0 else {
             throw SparkError.invalidResponse("Fee too large, credit amount must be > 0")
         }

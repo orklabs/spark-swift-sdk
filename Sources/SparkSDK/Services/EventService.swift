@@ -40,26 +40,13 @@ extension SparkWallet {
         case .connected:
             return .connected
         case .receiverTransfer(let transferEvent):
-            return .transferReceived(mapTransfer(transferEvent.transfer))
+            return .transferReceived(SparkTransfer(transferEvent.transfer))
         case .senderTransfer(let transferEvent):
-            return .transferSent(mapTransfer(transferEvent.transfer))
+            return .transferSent(SparkTransfer(transferEvent.transfer))
         case .deposit(let depositEvent):
             return .depositConfirmed(treeID: depositEvent.deposit.treeID)
         default:
             return nil
         }
-    }
-
-    private static func mapTransfer(_ t: Spark_Transfer) -> SparkTransfer {
-        SparkTransfer(
-            id: t.id,
-            senderIdentityPublicKey: Data(t.senderIdentityPublicKey).hexString,
-            receiverIdentityPublicKey: Data(t.receiverIdentityPublicKey).hexString,
-            totalValueSats: Int64(t.totalValue),
-            status: "\(t.status)",
-            type: "\(t.type)",
-            createdAt: t.createdTime.date,
-            sparkInvoice: t.sparkInvoice.isEmpty ? nil : t.sparkInvoice
-        )
     }
 }

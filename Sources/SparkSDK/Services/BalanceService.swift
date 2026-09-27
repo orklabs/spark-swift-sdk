@@ -50,7 +50,7 @@ extension SparkWallet {
     static func summarizeNodes(_ nodes: [String: Spark_TreeNode]) -> NodeSummary {
         var summary = NodeSummary()
         for (id, node) in nodes where node.status == "AVAILABLE" {
-            let value = Int64(node.value)
+            let value = Int64(reportedSats: node.value)
             let leaf = SparkLeaf(id: id, treeID: node.treeID, valueSats: value, status: node.status, node: node)
             if leaf.isFrozen {
                 summary.frozen += value
@@ -96,7 +96,7 @@ extension SparkWallet {
         var values: [String: Int64] = [:]
         for transfer in transfers {
             for transferLeaf in transfer.leaves where transferLeaf.hasLeaf && !excluded.contains(transferLeaf.leaf.id) {
-                values[transferLeaf.leaf.id] = Int64(transferLeaf.leaf.value)
+                values[transferLeaf.leaf.id] = Int64(reportedSats: transferLeaf.leaf.value)
             }
         }
         return values.values.reduce(0, +)
@@ -179,7 +179,7 @@ extension SparkWallet {
             return SparkLeaf(
                 id: id,
                 treeID: node.treeID,
-                valueSats: Int64(node.value),
+                valueSats: Int64(reportedSats: node.value),
                 status: node.status,
                 node: node
             )

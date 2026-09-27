@@ -134,7 +134,7 @@ extension SparkWallet {
             leaves.append(SparkRecoveryLeaf(
                 id: id,
                 status: node.status,
-                valueSats: Int64(node.value),
+                valueSats: Int64(reportedSats: node.value),
                 treeNodeHex: try node.serializedData().hexString
             ))
             leafIds.append(id)

@@ -42,6 +42,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- A transfer or leaf value of 2^63 sats or more from an operator — or an output value that large
+  from the block explorer — no longer crashes the app. `Int64(value)` trapped on it in the event
+  stream, transfer history, send results, balances, recovery and static deposits, so a hostile or
+  corrupt coordinator could crash the app every time the event stream started. Reported amounts
+  are now capped at the bitcoin supply, which also keeps sums of them from overflowing.
 - `send(receiverSparkAddress:)` and `transferTokens` refuse Spark invoices with
   `SparkError.invalidAddress`, as the reference SDK does. A Spark invoice is a Spark address
   whose payload also carries an amount, expiry, sender restriction and the payee's signature; the

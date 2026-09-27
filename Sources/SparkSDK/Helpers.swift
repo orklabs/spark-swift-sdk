@@ -27,6 +27,18 @@ extension Date {
     }
 }
 
+extension Int64 {
+    /// Every bitcoin there will ever be, in sats.
+    static let maxSupplySats: Int64 = 21_000_000 * 100_000_000
+
+    /// A sats amount an operator, the SSP or a block explorer reported, capped at the bitcoin
+    /// supply: `Int64(value)` traps on 2^63 and above, so a hostile or corrupt response would
+    /// crash the app, and a cap this low keeps sums of such amounts far from overflowing.
+    init(reportedSats value: UInt64) {
+        self = Int64(Swift.min(value, UInt64(Int64.maxSupplySats)))
+    }
+}
+
 // MARK: - BIP-340 Tagged Hash (matching TS SDK's hashstructure.ts)
 
 struct SparkHasher {

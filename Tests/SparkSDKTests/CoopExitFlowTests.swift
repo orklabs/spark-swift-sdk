@@ -159,6 +159,31 @@ struct BalanceSummaryTests {
         #expect(SparkWallet.leafSats([withoutNode], excludingLeafIds: []) == 0)
     }
 
+    @Test("Amounts an operator reports above the bitcoin supply are capped instead of crashing the app")
+    func hostileAmounts() {
+        #expect(Int64(reportedSats: 0) == 0)
+        #expect(Int64(reportedSats: 12_345) == 12_345)
+        #expect(Int64(reportedSats: UInt64(Int64.maxSupplySats)) == Int64.maxSupplySats)
+        #expect(Int64(reportedSats: UInt64(Int64.max) + 1) == Int64.maxSupplySats)
+        #expect(Int64(reportedSats: .max) == Int64.maxSupplySats)
+
+        var hostile = Spark_Transfer()
+        hostile.id = "hostile"
+        hostile.totalValue = .max
+        #expect(SparkTransfer(hostile).totalValueSats == Int64.maxSupplySats)
+
+        // Two such leaves still add up without overflowing.
+        let nodes = [
+            "x": treeNode("x", status: "AVAILABLE", value: .max, refundTimelock: 2000),
+            "y": treeNode("y", status: "AVAILABLE", value: .max, refundTimelock: 50),
+        ]
+        let summary = SparkWallet.summarizeNodes(nodes)
+        #expect(summary.available == Int64.maxSupplySats)
+        #expect(summary.frozen == Int64.maxSupplySats)
+        #expect(SparkWallet.leafSats([transfer("t", leaves: [("l1", .max), ("l2", .max)])], excludingLeafIds: [])
+                == 2 * Int64.maxSupplySats)
+    }
+
     @Test("Incoming leaves out counter-transfers of the wallet's own swaps and leaves counted elsewhere")
     func incoming() {
         var counterSwap = transfer("counter", leaves: [("c1", 512)])

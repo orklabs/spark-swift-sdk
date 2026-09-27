@@ -54,18 +54,7 @@ extension SparkWallet {
             request: ClientRequest(message: filter, metadata: metadata)
         )
 
-        return response.transfers.map { transfer in
-            SparkTransfer(
-                id: transfer.id,
-                senderIdentityPublicKey: Data(transfer.senderIdentityPublicKey).hexString,
-                receiverIdentityPublicKey: Data(transfer.receiverIdentityPublicKey).hexString,
-                totalValueSats: Int64(transfer.totalValue),
-                status: "\(transfer.status)",
-                type: "\(transfer.type)",
-                createdAt: transfer.createdTime.date,
-                sparkInvoice: transfer.sparkInvoice.isEmpty ? nil : transfer.sparkInvoice
-            )
-        }
+        return response.transfers.map(SparkTransfer.init)
     }
 }
 

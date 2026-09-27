@@ -52,6 +52,22 @@ public struct SparkTransfer: Sendable {
     public let sparkInvoice: String?
 }
 
+extension SparkTransfer {
+    /// The transfer as an operator reported it.
+    init(_ transfer: Spark_Transfer) {
+        self.init(
+            id: transfer.id,
+            senderIdentityPublicKey: Data(transfer.senderIdentityPublicKey).hexString,
+            receiverIdentityPublicKey: Data(transfer.receiverIdentityPublicKey).hexString,
+            totalValueSats: Int64(reportedSats: transfer.totalValue),
+            status: "\(transfer.status)",
+            type: "\(transfer.type)",
+            createdAt: transfer.createdTime.date,
+            sparkInvoice: transfer.sparkInvoice.isEmpty ? nil : transfer.sparkInvoice
+        )
+    }
+}
+
 public struct DepositAddress: Sendable {
     public let address: String
     public let leafId: String
