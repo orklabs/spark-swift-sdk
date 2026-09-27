@@ -75,6 +75,13 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Anyone can send a wallet tokens, and unwanted ones could break its balance. Token metadata was
+  asked for in one query, and the operators refuse more than 500 tokens per query, so
+  `getTokenBalances()` failed for a wallet holding more than 500 kinds of token. It now asks 500
+  at a time. `getBalance()` also failed whenever token balances could not be read, taking the
+  sats balance with it. Its `tokenBalances` are now best effort (empty on failure), and
+  `getTokenBalances()` still throws the error. The reference SDK does neither: it sends every
+  identifier in one query and fails `getBalance()` with the tokens.
 - The regtest preset (`SparkConfig(network: .regtest)`) can be used: it named operators on
   localhost with empty identity keys, which nothing could talk to. It now uses the hosted
   operators under their keys, as the reference SDK's REGTEST preset does. The block explorer for

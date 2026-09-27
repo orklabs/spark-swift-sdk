@@ -49,6 +49,13 @@ actor FakeOperatorState {
     private(set) var heldSends: [Spark_PreimageRequestWithTransfer] = []
     /// Transfers `query_transfers_by_id` knows, matched by id.
     private(set) var knownTransfers: [Spark_Transfer] = []
+    /// Token outputs `query_token_outputs` returns, in one page.
+    private(set) var tokenOutputs: [SparkToken_OutputWithPreviousTransactionData] = []
+    /// Token identifiers per `query_token_metadata` call; more than 500 are refused, as the
+    /// operators refuse them.
+    private(set) var metadataRequestSizes: [Int] = []
+    /// Whether `query_token_metadata` fails.
+    private(set) var failsTokenMetadata = false
     /// Nodes `query_nodes` pages through by id, as the operators page an owner query.
     private(set) var nodes: [Spark_TreeNode] = []
     /// `(limit, offset)` of every `query_nodes` call.
@@ -124,6 +131,18 @@ actor FakeOperatorState {
         return Dictionary(uniqueKeysWithValues: nodes[start..<end].map { ($0.id, $0) })
     }
 
+    func setTokenOutputs(_ outputs: [SparkToken_OutputWithPreviousTransactionData]) {
+        tokenOutputs = outputs
+    }
+
+    func setFailsTokenMetadata(_ fails: Bool) {
+        failsTokenMetadata = fails
+    }
+
+    func recordMetadataRequest(size: Int) {
+        metadataRequestSizes.append(size)
+    }
+
     func know(_ transfer: Spark_Transfer) {
         knownTransfers.append(transfer)
     }
@@ -162,6 +181,52 @@ struct FakeOperator: RegistrableRPCService {
         registerAuthn(with: &router)
         registerSparkService(with: &router)
         registerTransferMethods(with: &router)
+        registerTokenService(with: &router)
+    }
+
+    /// Token outputs and metadata, with the operators' 500-identifier limit on metadata queries.
+    private func registerTokenService<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.query_token_outputs.descriptor,
+            deserializer: ProtobufDeserializer<SparkToken_QueryTokenOutputsRequest>(),
+            serializer: ProtobufSerializer<SparkToken_QueryTokenOutputsResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("query_token_outputs", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            var response = SparkToken_QueryTokenOutputsResponse()
+            response.outputsWithPreviousTransactionData = await state.tokenOutputs
+            return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.query_token_metadata.descriptor,
+            deserializer: ProtobufDeserializer<SparkToken_QueryTokenMetadataRequest>(),
+            serializer: ProtobufSerializer<SparkToken_QueryTokenMetadataResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("query_token_metadata", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            let ids = try await ServerRequest(stream: request).message.tokenIdentifiers
+            await state.recordMetadataRequest(size: ids.count)
+            if await state.failsTokenMetadata {
+                return StreamingServerResponse(error: RPCError(code: .internalError, message: "metadata unavailable"))
+            }
+            guard ids.count <= 500 else {
+                return StreamingServerResponse(error: RPCError(
+                    code: .invalidArgument, message: "too many token identifiers in filter: got \(ids.count), max 500"
+                ))
+            }
+            var response = SparkToken_QueryTokenMetadataResponse()
+            response.tokenMetadata = ids.map { id in
+                var meta = SparkToken_TokenMetadata()
+                meta.tokenIdentifier = id
+                meta.tokenName = "Spam"
+                meta.tokenTicker = "SPM"
+                meta.maxSupply = Data(repeating: 0, count: 16)
+                return meta
+            }
+            return StreamingServerResponse(single: ServerResponse(message: response))
+        }
     }
 
     /// The token-issuing service: every challenge verifies, and each session token is new.
@@ -243,6 +308,18 @@ struct FakeOperator: RegistrableRPCService {
             let query = try await ServerRequest(stream: request).message
             var response = Spark_QueryHtlcResponse()
             response.preimageRequests = await state.heldSends.filter { query.transferIds.contains($0.transfer.id) }
+            response.offset = -1
+            return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.query_all_transfers.descriptor,
+            deserializer: ProtobufDeserializer<Spark_TransferFilter>(),
+            serializer: ProtobufSerializer<Spark_QueryTransfersResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("query_all_transfers", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            var response = Spark_QueryTransfersResponse()
             response.offset = -1
             return StreamingServerResponse(single: ServerResponse(message: response))
         }

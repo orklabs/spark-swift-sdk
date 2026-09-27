@@ -626,6 +626,9 @@ extension SparkWallet {
 
     // MARK: - Internal: Fetch Token Metadata
 
+    /// Metadata of `tokenIdentifiers`, asked for at most `tokenMetadataBatchSize` at a time: the
+    /// operators refuse larger filters, and anyone can send a wallet tokens of as many kinds as
+    /// they like.
     func fetchTokenMetadata(
         tokenIdentifiers: [Data]
     ) async throws -> [Data: TokenMetadata] {
@@ -634,15 +637,18 @@ extension SparkWallet {
         let client = try await getTokenClient()
         let authMetadata = try await getAuthMetadata(for: config.coordinatorAddress)
 
-        var request = SparkToken_QueryTokenMetadataRequest()
-        request.tokenIdentifiers = tokenIdentifiers
-
-        let response = try await client.query_token_metadata(
-            request: ClientRequest(message: request, metadata: authMetadata)
-        )
+        var metadata: [SparkToken_TokenMetadata] = []
+        for start in stride(from: 0, to: tokenIdentifiers.count, by: Self.tokenMetadataBatchSize) {
+            var request = SparkToken_QueryTokenMetadataRequest()
+            request.tokenIdentifiers = Array(tokenIdentifiers[start..<min(start + Self.tokenMetadataBatchSize, tokenIdentifiers.count)])
+            let response = try await client.query_token_metadata(
+                request: ClientRequest(message: request, metadata: authMetadata)
+            )
+            metadata += response.tokenMetadata
+        }
 
         var result: [Data: TokenMetadata] = [:]
-        for meta in response.tokenMetadata {
+        for meta in metadata {
             let bech32Id = try encodeBech32mTokenIdentifier(meta.tokenIdentifier, network: config.network)
             result[meta.tokenIdentifier] = TokenMetadata(
                 tokenIdentifier: bech32Id,
@@ -658,6 +664,9 @@ extension SparkWallet {
         }
         return result
     }
+
+    /// Token identifiers per metadata query: the operators' `MaxTokenMetadataFilterValues`.
+    static let tokenMetadataBatchSize = 500
 
     // MARK: - Internal: Timestamp
 

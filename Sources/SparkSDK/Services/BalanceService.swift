@@ -11,6 +11,8 @@ extension SparkWallet {
     ///   claimed. Once the sender's key tweak is applied the sats belong to the receiver.
     /// - `incoming`: the leaves of pending inbound transfers, except counter-transfers of the
     ///   wallet's own swaps (already counted as locked) and leaves counted above.
+    /// - `tokenBalances`: best effort — empty when the wallet's tokens cannot be read, since anyone
+    ///   can send a wallet tokens; `getTokenBalances()` throws the error instead.
     public func getBalance() async throws -> WalletBalance {
         async let nodes = queryAvailableNodes()
         async let inFlight = queryInFlightTransfers()
@@ -32,7 +34,11 @@ extension SparkWallet {
             frozen: summary.frozen
         )
 
-        let tokenBalances = try await getTokenBalances()
+        // Best effort: tokens anyone can send must not cost the wallet its sats balance.
+        // `getTokenBalances()` reports what went wrong. A cancelled call still throws rather than
+        // report no tokens.
+        let tokenBalances = (try? await getTokenBalances()) ?? []
+        try Task.checkCancellation()
 
         return WalletBalance(satsBalance: satsBalance, tokenBalances: tokenBalances, leaves: summary.leaves)
     }

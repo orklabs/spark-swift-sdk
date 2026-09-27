@@ -1,5 +1,6 @@
 import Foundation
 import SwiftProtobuf
+import GRPCCore
 import Testing
 @testable import SparkSDK
 
@@ -435,5 +436,44 @@ private func makeTokenOutputs(_ amounts: [UInt128]) -> [SparkToken_OutputWithPre
         outputWithData.previousTransactionHash = Data(count: 32)
         outputWithData.previousTransactionVout = UInt32(i)
         return outputWithData
+    }
+}
+
+/// Token balances against the operator stand-in, which refuses metadata queries for more than
+/// 500 tokens as the operators do.
+@Suite("Token balances")
+struct TokenBalanceTests {
+    static func outputs(kinds: Int) -> [SparkToken_OutputWithPreviousTransactionData] {
+        (0..<kinds).map { index in
+            var output = SparkToken_OutputWithPreviousTransactionData()
+            output.output.tokenIdentifier = Data(repeating: 0, count: 28) + withUnsafeBytes(of: UInt32(index).bigEndian) { Data($0) }
+            output.output.tokenAmount = encodeUInt128(1)
+            output.output.status = .available
+            return output
+        }
+    }
+
+    @Test("Metadata is asked for 500 tokens at a time, so any number of tokens can be listed", .timeLimit(.minutes(1)))
+    func manyTokens() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setTokenOutputs(Self.outputs(kinds: 1_200))
+        let balances = try await withFakeOperator(state) { wallet in try await wallet.getTokenBalances() }
+        #expect(balances.count == 1_200)
+        #expect(balances.allSatisfy { $0.ownedBalance == 1 && $0.availableToSendBalance == 1 })
+        #expect(await state.metadataRequestSizes == [500, 500, 200])
+    }
+
+    @Test("Tokens that cannot be read cost getBalance its token balances, not the sats", .timeLimit(.minutes(1)))
+    func tokensDoNotFailSats() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setNodes([TransportHardeningTests.availableNode(0), TransportHardeningTests.availableNode(1)])
+        await state.setTokenOutputs(Self.outputs(kinds: 3))
+        await state.setFailsTokenMetadata(true)
+        try await withFakeOperator(state) { wallet in
+            let balance = try await wallet.getBalance()
+            #expect(balance.satsBalance.owned == 2)
+            #expect(balance.tokenBalances.isEmpty)
+            await #expect(throws: RPCError.self) { _ = try await wallet.getTokenBalances() }
+        }
     }
 }
