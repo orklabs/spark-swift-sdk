@@ -49,6 +49,8 @@ actor FakeOperatorState {
     private(set) var heldSends: [Spark_PreimageRequestWithTransfer] = []
     /// Transfers `query_transfers_by_id` knows, matched by id.
     private(set) var knownTransfers: [Spark_Transfer] = []
+    /// The filter of every `query_all_transfers` call, in order.
+    private(set) var transferFilters: [Spark_TransferFilter] = []
     /// Token outputs `query_token_outputs` returns, in one page.
     private(set) var tokenOutputs: [SparkToken_OutputWithPreviousTransactionData] = []
     /// Token identifiers per `query_token_metadata` call; more than 500 are refused, as the
@@ -179,6 +181,10 @@ actor FakeOperatorState {
 
     func know(_ transfer: Spark_Transfer) {
         knownTransfers.append(transfer)
+    }
+
+    func recordTransferFilter(_ filter: Spark_TransferFilter) {
+        transferFilters.append(filter)
     }
 
     func hold(_ send: Spark_PreimageRequestWithTransfer) {
@@ -425,6 +431,7 @@ struct FakeOperator: RegistrableRPCService {
             guard await state.admit("query_all_transfers", authorization: Self.authorization(request.metadata)) else {
                 return await Self.reject(state)
             }
+            await state.recordTransferFilter(try await ServerRequest(stream: request).message)
             var response = Spark_QueryTransfersResponse()
             response.offset = -1
             return StreamingServerResponse(single: ServerResponse(message: response))

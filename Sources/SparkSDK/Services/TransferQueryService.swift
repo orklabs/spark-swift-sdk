@@ -10,8 +10,14 @@ extension SparkWallet {
     }
 
     /// Get transfers with optional filters.
+    ///
+    /// Without `ids`, only the transfers a user makes are listed, as the reference SDK lists
+    /// them: Spark transfers, Lightning payments (preimage swaps), cooperative exits and static
+    /// deposit claims (UTXO swaps). The legs of leaf swaps are left out; the operators also
+    /// answer that query in well under a second, where an unfiltered one took them 17 s to over
+    /// a minute for a wallet with a long history.
     /// - Parameters:
-    ///   - ids: Filter by specific transfer IDs (empty = all)
+    ///   - ids: Filter by specific transfer IDs (empty = all), of any type
     ///   - direction: Filter by sent/received/both (default: both)
     ///   - limit: Max results (0 = server default)
     ///   - offset: Pagination offset
@@ -36,7 +42,9 @@ extension SparkWallet {
             filter.participant = .senderOrReceiverIdentityPublicKey(signer.identityPublicKey)
         }
 
-        if !ids.isEmpty {
+        if ids.isEmpty {
+            filter.types = Self.listedTransferTypes
+        } else {
             filter.transferIds = ids
         }
         if limit > 0 {
@@ -52,6 +60,9 @@ extension SparkWallet {
 
         return response.transfers.map(SparkTransfer.init)
     }
+
+    /// The transfer types `getTransfers` lists: the reference SDK's `getTransfers` types.
+    static let listedTransferTypes: [Spark_TransferType] = [.cooperativeExit, .preimageSwap, .utxoSwap, .transfer]
 }
 
 public enum TransferDirection: Sendable {

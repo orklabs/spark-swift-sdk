@@ -89,6 +89,13 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `getTransfers()` lists only the transfers a user makes, as the reference SDK does: Spark
+  transfers, Lightning payments, cooperative exits and static deposit claims. It asked the
+  operators for every type, leaf-swap legs included, which appeared as sends and receives. On
+  mainnet, for a wallet with a long history, that query took 17 s to over a minute and failed at
+  the SDK's 60 s deadline; filtered, it answers in under a second. A lookup by `ids` still
+  returns those transfers whatever their type. The README's history example called a
+  `getTransferHistory` that does not exist; it now uses `getTransfers`.
 - Token transaction hashes order invoice attachments as the operators and the reference SDK do:
   by each invoice's id (its 16 UUID bytes), not by the invoice string. The two orders can
   differ, and then the hash did not match the operators' (the reference SDK's known-answer

@@ -288,8 +288,8 @@ for await event in events {
     }
 }
 
-// Paginated history
-let page = try await wallet.getTransferHistory(direction: .all, limit: 20, cursor: nil)
+// History, 20 at a time: Spark transfers, Lightning payments, withdrawals and deposit claims
+let page = try await wallet.getTransfers(direction: .both, limit: 20, offset: 0)
 ```
 
 ## Networks

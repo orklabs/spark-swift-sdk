@@ -179,4 +179,19 @@ struct ClaimVerificationTests {
         }
         #expect(await state.methods == ["query_transfers_by_id", "query_transfers_by_id"])
     }
+
+    @Test("History lists the reference SDK's transfer types; a lookup by ids asks for exactly those", .timeLimit(.minutes(1)))
+    func historyFilter() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            _ = try await wallet.getTransfers(limit: 10)
+            _ = try await wallet.getTransfers(ids: ["a", "b"])
+        }
+        let filters = await state.transferFilters
+        #expect(filters.count == 2)
+        #expect(filters.first?.types == [.cooperativeExit, .preimageSwap, .utxoSwap, .transfer])
+        #expect(filters.first?.transferIds.isEmpty == true)
+        #expect(filters.last?.types.isEmpty == true)
+        #expect(filters.last?.transferIds == ["a", "b"])
+    }
 }
