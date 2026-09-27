@@ -61,6 +61,12 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Transfers whose leaves carry a scheme-tagged sender signature can be claimed. The current
+  protocol lets a leaf carry either the legacy ECDSA signature or a typed one (ECDSA in strict DER,
+  or BIP-340 Schnorr, which the operators emit for Schnorr MPC senders); the SDK read only the
+  legacy field, refused every typed signature, and such a transfer stayed pending. Signatures are
+  now verified by their scheme, as the reference SDK's `verifyTypedSignature` does, and an
+  unspecified or unknown scheme is refused.
 - The event stream notices a dead connection. After a network change a subscription can stay
   open without delivering anything, so payments went unseen until the app resubscribed. The
   operators now send a heartbeat every 5 s; as in the reference SDK, once a subscription has sent
