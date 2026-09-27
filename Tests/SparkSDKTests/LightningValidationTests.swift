@@ -1,6 +1,8 @@
 // swiftlint:disable line_length — specification test vectors are long single tokens
 import Foundation
 import Testing
+import CryptoKit
+import secp256k1
 @testable import SparkSDK
 
 /// BOLT-11 decoding against the specification's test vectors, plus the client-side checks on
@@ -222,6 +224,43 @@ struct LightningValidatorTests {
         // The mutation declares the variable and passes it to the input (RequestLightningSendInput).
         #expect(GraphQLMutations.requestLightningSend.contains("$amount_sats: Long"))
         #expect(GraphQLMutations.requestLightningSend.contains("amount_sats: $amount_sats"))
+    }
+
+    @Test("Preimage shares are encrypted to each operator's key, recover the preimage, and carry no user signature")
+    func storePreimageShares() throws {
+        let keys = try (0..<3).map { _ in try secp256k1.Signing.PrivateKey() }
+        let operators = keys.enumerated().map { index, key in
+            SigningOperatorConfig(
+                address: "https://\(index).example",
+                identifier: String(format: "%064x", index + 1),
+                identityPublicKeyHex: key.publicKey.dataRepresentation.hexString
+            )
+        }
+        let config = SparkConfig(network: .mainnet, signingOperators: operators)
+        let preimage = try randomSecretKeyBytes()
+        let shares = try splitSecretWithProofsUniffi(secret: preimage, threshold: config.signingThreshold, numShares: 3)
+        let request = try SparkWallet.storePreimageShareRequest(
+            paymentHash: Data(SHA256.hash(data: preimage)),
+            shares: shares,
+            encodedInvoice: "lnbc1...",
+            identityPublicKey: keys[0].publicKey.dataRepresentation,
+            config: config
+        )
+        // Reserved in the current protocol; the operators never read it.
+        #expect(request.userSignature.isEmpty)
+        #expect(request.threshold == config.signingThreshold)
+        #expect(request.invoiceString == "lnbc1...")
+        var recovered: [SecretShareResult] = []
+        for (index, signingOperator) in operators.enumerated() {
+            let encrypted = try #require(request.encryptedPreimageShares[signingOperator.identifier])
+            let share = try Spark_SecretShare(
+                serializedBytes: try decryptEcies(encryptedMsg: encrypted, privateKey: keys[index].dataRepresentation)
+            )
+            #expect(share.proofs.count == Int(config.signingThreshold))
+            recovered.append(SecretShareResult(threshold: config.signingThreshold, index: UInt32(index + 1), share: share.secretShare))
+        }
+        #expect(try recoverSecretUniffi(shares: Array(recovered.prefix(2))) == preimage)
+        #expect(try recoverSecretUniffi(shares: Array(recovered.suffix(2))) == preimage)
     }
 
     @Test("A Lightning send's preimage swap carries only the HTLC transfer request")

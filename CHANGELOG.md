@@ -37,6 +37,9 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Lightning receives no longer sign the preimage-share request with the identity key. The
+  current protocol reserves `user_signature` on `store_preimage_share_v2` and the operators never
+  read it; the reference SDK dropped it in 0.6.5.
 - Lightning sends no longer sign plain refunds over to the SSP. The SDK still filled the legacy
   `transfer` field of `initiate_preimage_swap_v3`, with an extra signing round and the user's
   signature shares on non-HTLC refunds paying the SSP. The operators build the swap from

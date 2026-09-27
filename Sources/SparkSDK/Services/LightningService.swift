@@ -58,52 +58,20 @@ extension SparkWallet {
             network: config.network
         )
 
-        // Split preimage and store encrypted shares with SOs using config-based identifiers/keys
-        let soConfigs = config.signingOperators
-        let numOperators = UInt32(soConfigs.count)
-        let threshold = config.signingThreshold
-
+        // Split the preimage and store one encrypted share with each operator.
         let shares = try splitSecretWithProofsUniffi(
-            secret: preimage, threshold: threshold, numShares: numOperators
+            secret: preimage, threshold: config.signingThreshold, numShares: UInt32(config.signingOperators.count)
+        )
+        let storeRequest = try Self.storePreimageShareRequest(
+            paymentHash: paymentHash,
+            shares: shares,
+            encodedInvoice: encodedInvoice,
+            identityPublicKey: signer.identityPublicKey,
+            config: config
         )
 
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
-
-        var storeRequest = Spark_StorePreimageShareV2Request()
-        storeRequest.paymentHash = paymentHash
-        storeRequest.threshold = threshold
-        storeRequest.invoiceString = encodedInvoice
-        storeRequest.userIdentityPublicKey = signer.identityPublicKey
-
-        // Match shares to operators by array index, encrypt to each SO's identity key
-        for i in 0..<soConfigs.count {
-            let soConfig = soConfigs[i]
-            let share = shares[i]
-
-            var secretShareProto = Spark_SecretShare()
-            secretShareProto.secretShare = share.share
-            for proof in share.proofs {
-                secretShareProto.proofs.append(proof)
-            }
-
-            let shareBytes = try secretShareProto.serializedData()
-            guard let identityPubKey = Data(hexString: soConfig.identityPublicKeyHex), !identityPubKey.isEmpty else {
-                throw SparkError.invalidArgument("operator \(soConfig.identifier) has no identity public key configured")
-            }
-            let encrypted = try encryptEcies(msg: shareBytes, publicKey: identityPubKey)
-            storeRequest.encryptedPreimageShares[soConfig.identifier] = encrypted
-        }
-
-        // Compute signing payload (BIP-340 tagged hash)
-        var sigHasher = SparkHasher(tag: ["spark", "store_preimage_share", "signing payload"])
-        sigHasher.addBytes(paymentHash)
-        sigHasher.addMapStringToBytes(storeRequest.encryptedPreimageShares)
-        sigHasher.addUint32(threshold)
-        sigHasher.addString(encodedInvoice)
-        let signingPayload = sigHasher.hash()
-        storeRequest.userSignature = try signer.signWithIdentityKey(signingPayload)
-
         let _ = try await client.store_preimage_share_v2(
             request: ClientRequest(message: storeRequest, metadata: metadata)
         )
@@ -295,6 +263,37 @@ extension SparkWallet {
         }
 
         return id
+    }
+
+    /// The `store_preimage_share_v2` request of a Lightning receive: each operator's share of the
+    /// preimage, ECIES-encrypted to its configured identity key. No `user_signature`: the current
+    /// protocol reserves that field and the operators never read it (reference SDK 0.6.5, "Remove
+    /// user signature requirement from Lightning preimage storage").
+    static func storePreimageShareRequest(
+        paymentHash: Data,
+        shares: [VerifiableSecretShareResult],
+        encodedInvoice: String,
+        identityPublicKey: Data,
+        config: SparkConfig
+    ) throws -> Spark_StorePreimageShareV2Request {
+        var request = Spark_StorePreimageShareV2Request()
+        request.paymentHash = paymentHash
+        request.threshold = config.signingThreshold
+        request.invoiceString = encodedInvoice
+        request.userIdentityPublicKey = identityPublicKey
+        // Match shares to operators by array index, encrypt to each SO's identity key
+        for (soConfig, share) in zip(config.signingOperators, shares) {
+            var secretShareProto = Spark_SecretShare()
+            secretShareProto.secretShare = share.share
+            secretShareProto.proofs = share.proofs
+            guard let identityPubKey = Data(hexString: soConfig.identityPublicKeyHex), !identityPubKey.isEmpty else {
+                throw SparkError.invalidArgument("operator \(soConfig.identifier) has no identity public key configured")
+            }
+            request.encryptedPreimageShares[soConfig.identifier] = try encryptEcies(
+                msg: try secretShareProto.serializedData(), publicKey: identityPubKey
+            )
+        }
+        return request
     }
 
     /// The `initiate_preimage_swap_v3` request of a Lightning send: the HTLC transfer to the SSP
