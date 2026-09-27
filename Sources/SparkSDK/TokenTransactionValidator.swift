@@ -52,6 +52,54 @@ enum TokenTransactionValidator {
         try validateKeyshare(keyshareInfo, expectations: expectations, fail: fail)
     }
 
+    /// Checks that the final transaction the coordinator answers `broadcast_transaction` with is
+    /// the V3 partial transaction the wallet signed, plus only what the operators add: a
+    /// revocation commitment per output, and a create's creation entity key. The wallet signs
+    /// only the partial transaction, whose hash already binds the inputs, outputs and amounts;
+    /// this makes sure the hash the SDK reports is of that transaction. Fields are compared by
+    /// their protohash, which is what the transaction's hash covers.
+    static func validateV3(
+        final: SparkToken_FinalTokenTransaction,
+        partial: SparkToken_PartialTokenTransaction
+    ) throws {
+        func fail(_ what: String) -> SparkError {
+            .untrustedResponse("final token transaction rejected: \(what)")
+        }
+        func same<M: SwiftProtobuf.Message>(_ lhs: M, _ rhs: M) throws -> Bool {
+            try ProtoHash.hash(lhs) == ProtoHash.hash(rhs)
+        }
+
+        guard final.version == partial.version else { throw fail("version changed") }
+        guard final.hasTokenTransactionMetadata,
+              try same(final.tokenTransactionMetadata, partial.tokenTransactionMetadata) else {
+            throw fail("metadata changed")
+        }
+        guard final.hasExecuteBefore == partial.hasExecuteBefore,
+              !partial.hasExecuteBefore || final.executeBefore == partial.executeBefore else {
+            throw fail("execute-before changed")
+        }
+        switch (final.tokenInputs, partial.tokenInputs) {
+        case (.transferInput(let answered), .transferInput(let sent)):
+            guard try same(answered, sent) else { throw fail("inputs changed") }
+        case (.mintInput(let answered), .mintInput(let sent)):
+            guard try same(answered, sent) else { throw fail("mint input changed") }
+        case (.createInput(var answered), .createInput(let sent)):
+            answered.clearCreationEntityPublicKey()   // set by the operators
+            guard try same(answered, sent) else { throw fail("create input changed") }
+        default:
+            throw fail("transaction type changed or missing")
+        }
+        guard final.finalTokenOutputs.count == partial.partialTokenOutputs.count else {
+            throw fail("output count changed (\(final.finalTokenOutputs.count) vs \(partial.partialTokenOutputs.count))")
+        }
+        for (index, (answered, sent)) in zip(final.finalTokenOutputs, partial.partialTokenOutputs).enumerated() {
+            guard answered.hasPartialTokenOutput, try same(answered.partialTokenOutput, sent) else {
+                throw fail("output \(index) changed")
+            }
+            guard answered.revocationCommitment.count == 33 else { throw fail("output \(index) has no revocation commitment") }
+        }
+    }
+
     private static func milliseconds(_ timestamp: Google_Protobuf_Timestamp) -> Int64 {
         timestamp.seconds * 1_000 + Int64(timestamp.nanos / 1_000_000)
     }

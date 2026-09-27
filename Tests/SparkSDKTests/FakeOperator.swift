@@ -61,6 +61,17 @@ actor FakeOperatorState {
     private(set) var startedSpends: [[String]] = []
     /// The partial transaction and `x-idempotency-key` of each `start_transaction`, in order.
     private(set) var startedTransactions: [(transaction: SparkToken_TokenTransaction, idempotencyKey: String?)] = []
+    /// What `broadcast_transaction` does with a V3 transaction.
+    enum Broadcast: Sendable {
+        /// Refuses it, as `start_transaction` does.
+        case refuse
+        /// Finalizes it as the operators do (`FakeOperator.finalize`), then alters the answer as a
+        /// dishonest coordinator would.
+        case finalize(tamper: @Sendable (inout SparkToken_FinalTokenTransaction) -> Void = { _ in })
+    }
+    private(set) var broadcast: Broadcast = .refuse
+    /// Each `broadcast_transaction` request and its `x-idempotency-key`, in order.
+    private(set) var broadcasts: [(request: SparkToken_BroadcastTransactionRequest, idempotencyKey: String?)] = []
     /// Nodes `query_nodes` pages through by id, as the operators page an owner query.
     private(set) var nodes: [Spark_TreeNode] = []
     /// `(limit, offset)` of every `query_nodes` call.
@@ -149,10 +160,21 @@ actor FakeOperatorState {
     }
 
     func recordStart(_ transaction: SparkToken_TokenTransaction, idempotencyKey: String?) {
-        startedSpends.append(transaction.transferInput.outputsToSpend.map {
-            "\($0.prevTokenTransactionHash.hexString):\($0.prevTokenTransactionVout)"
-        })
+        startedSpends.append(Self.spends(transaction.transferInput))
         startedTransactions.append((transaction, idempotencyKey))
+    }
+
+    func setBroadcast(_ broadcast: Broadcast) {
+        self.broadcast = broadcast
+    }
+
+    func recordBroadcast(_ request: SparkToken_BroadcastTransactionRequest, idempotencyKey: String?) {
+        startedSpends.append(Self.spends(request.partialTokenTransaction.transferInput))
+        broadcasts.append((request, idempotencyKey))
+    }
+
+    private static func spends(_ input: SparkToken_TokenTransferInput) -> [String] {
+        input.outputsToSpend.map { "\($0.prevTokenTransactionHash.hexString):\($0.prevTokenTransactionVout)" }
     }
 
     func know(_ transfer: Spark_Transfer) {
@@ -194,11 +216,14 @@ struct FakeOperator: RegistrableRPCService {
         registerSparkService(with: &router)
         registerTransferMethods(with: &router)
         registerTokenService(with: &router)
+        registerTokenTransactions(with: &router)
     }
 
-    /// Token outputs and metadata, with the operators' 500-identifier limit on metadata queries,
-    /// and a `start_transaction` that records what it would spend and refuses.
-    private func registerTokenService<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+    static let startRefusal = RPCError(code: .failedPrecondition, message: "the fake operator starts nothing")
+
+    /// A V2 `start_transaction` that records what it would spend and refuses, and a V3
+    /// `broadcast_transaction` that records the request and refuses or finalizes it.
+    private func registerTokenTransactions<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         router.registerHandler(
             forMethod: SparkToken_SparkTokenService.Method.start_transaction.descriptor,
             deserializer: ProtobufDeserializer<SparkToken_StartTransactionRequest>(),
@@ -208,9 +233,65 @@ struct FakeOperator: RegistrableRPCService {
                 return await Self.reject(state)
             }
             let transaction = try await ServerRequest(stream: request).message.partialTokenTransaction
-            await state.recordStart(transaction, idempotencyKey: request.metadata[stringValues: "x-idempotency-key"].first { _ in true })
-            return StreamingServerResponse(error: RPCError(code: .failedPrecondition, message: "the fake operator starts nothing"))
+            await state.recordStart(transaction, idempotencyKey: Self.idempotencyKey(request.metadata))
+            return StreamingServerResponse(error: Self.startRefusal)
         }
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.broadcast_transaction.descriptor,
+            deserializer: ProtobufDeserializer<SparkToken_BroadcastTransactionRequest>(),
+            serializer: ProtobufSerializer<SparkToken_BroadcastTransactionResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("broadcast_transaction", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            let message = try await ServerRequest(stream: request).message
+            await state.recordBroadcast(message, idempotencyKey: Self.idempotencyKey(request.metadata))
+            guard case .finalize(let tamper) = await state.broadcast else {
+                return StreamingServerResponse(error: Self.startRefusal)
+            }
+            var response = SparkToken_BroadcastTransactionResponse()
+            response.finalTokenTransaction = Self.finalize(message.partialTokenTransaction)
+            tamper(&response.finalTokenTransaction)
+            response.commitStatus = .commitFinalized
+            if case .createInput = message.partialTokenTransaction.tokenInputs {
+                response.tokenIdentifier = Self.createdTokenIdentifier
+            }
+            return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+    }
+
+    /// The identifier `broadcast_transaction` reports for a created token.
+    static let createdTokenIdentifier = Data(repeating: 0x07, count: 32)
+
+    /// What the operators answer a V3 transaction with: the partial transaction, with a
+    /// revocation commitment per output and, for a create, the creation entity key.
+    static func finalize(_ partial: SparkToken_PartialTokenTransaction) -> SparkToken_FinalTokenTransaction {
+        var final = SparkToken_FinalTokenTransaction()
+        final.version = partial.version
+        final.tokenTransactionMetadata = partial.tokenTransactionMetadata
+        switch partial.tokenInputs {
+        case .mintInput(let input): final.tokenInputs = .mintInput(input)
+        case .transferInput(let input): final.tokenInputs = .transferInput(input)
+        case .createInput(var input):
+            input.creationEntityPublicKey = Data([0x02]) + Data(repeating: 0x0E, count: 32)
+            final.tokenInputs = .createInput(input)
+        case nil: break
+        }
+        final.finalTokenOutputs = partial.partialTokenOutputs.enumerated().map { index, output in
+            var finalOutput = SparkToken_FinalTokenOutput()
+            finalOutput.partialTokenOutput = output
+            finalOutput.revocationCommitment = Data([0x03]) + Data(repeating: UInt8(index), count: 32)
+            return finalOutput
+        }
+        return final
+    }
+
+    static func idempotencyKey(_ metadata: Metadata) -> String? {
+        metadata[stringValues: "x-idempotency-key"].first { _ in true }
+    }
+
+    /// Token outputs and metadata, with the operators' 500-identifier limit on metadata queries.
+    private func registerTokenService<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         router.registerHandler(
             forMethod: SparkToken_SparkTokenService.Method.query_token_outputs.descriptor,
             deserializer: ProtobufDeserializer<SparkToken_QueryTokenOutputsRequest>(),
@@ -436,6 +517,7 @@ struct FakeOperator: RegistrableRPCService {
 @discardableResult
 func withFakeOperator<T: Sendable>(
     _ state: FakeOperatorState,
+    tokenTransactionVersion: TokenTransactionVersion = .v3,
     _ body: (SparkWallet) async throws -> T
 ) async throws -> T {
     let transport = HTTP2ServerTransport.Posix(
@@ -457,7 +539,8 @@ func withFakeOperator<T: Sendable>(
         )],
         // A scheme URLSession cannot send: every SSP call fails at once, without retries.
         sspURL: "unreachable://127.0.0.1/graphql",
-        sspIdentityPublicKeyHex: "022bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe"
+        sspIdentityPublicKeyHex: "022bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe",
+        tokenTransactionVersion: tokenTransactionVersion
     )
     let wallet = try SparkWallet(
         config: config,

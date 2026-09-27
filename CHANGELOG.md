@@ -41,6 +41,8 @@ migration note.
   of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Added
+- `SparkConfig(tokenTransactionVersion:)` and `TokenTransactionVersion`: `.v3` by default, and `.v2`
+  for the older two-step flow while the operators accept it.
 - `SparkConfig(sspIdentityPublicKeyHex:)` and `SparkConfig.defaultSspURL`: the identity key of a
   custom SSP.
 - `claimStaticDeposit(transactionId:outputIndex:quote:)`: claims a static deposit for exactly the
@@ -52,6 +54,14 @@ migration note.
   renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Changed
+- Token transactions (`transferTokens`, `burnTokens`, `mintTokens`, `createToken`) use the
+  operators' V3 format by default, as the reference SDK has since 0.5.1; the operators are moving
+  to require it. A V3 transaction is one `broadcast_transaction` call, signed over the protohash
+  of the partial transaction, which already binds its inputs, outputs and amounts. Its outputs
+  carry the network's withdraw bond and locktime, and it stays valid for 180 s. The SDK checks
+  that the final transaction the operators answer with is the one it signed, and returns that
+  transaction's protohash. On mainnet the operators hold each transaction under the hash the
+  SDK returns. `SparkConfig(tokenTransactionVersion: .v2)` keeps the two-step V2 flow.
 - `getTransfer(id:)` and the SDK's own lookups by transfer id use the operators' by-id query
   (`query_transfers_by_id`), as the reference SDK does since 0.9.0, instead of filtering
   `query_all_transfers`. It returns the whole transfer and takes the id in any case.

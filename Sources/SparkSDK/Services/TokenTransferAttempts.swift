@@ -4,13 +4,15 @@ import Synchronization
 /// Token transfers sent with an idempotency key, so a retry with the key resends the same
 /// transaction rather than building another.
 ///
-/// The operators recognise the same transaction again: `start_transaction` answers from their
-/// idempotency records (kept 24 hours) or, while the transaction is started, from the stored
-/// transaction itself, and `commit_transaction` of a finalized transfer reports it finalized. A
-/// rebuilt transaction would differ in its client timestamp, and in its outputs while the first
-/// transaction's outputs are spent or locked (`TokenOutputLocks`), so it could not match what the
-/// operators answer for the key. Resending never makes a second transfer: an attempt whose
-/// transaction expired unsent fails again, and a new key starts a new transfer.
+/// The operators recognise the same transaction again. They answer a repeated key from their
+/// idempotency records (kept 24 hours). Without the record, V3's `broadcast_transaction` answers
+/// with the transaction stored under the partial transaction's hash, and V2's `start_transaction`
+/// answers from the stored transaction while it is started, where `commit_transaction` of a
+/// finalized transfer reports it finalized. A rebuilt transaction would differ in its client
+/// timestamp, and in its outputs while the first transaction's outputs are spent or locked
+/// (`TokenOutputLocks`), so it could not match what the operators answer for the key. Resending
+/// never makes a second transfer: an attempt whose transaction expired unsent fails again, and a
+/// new key starts a new transfer.
 final class TokenTransferAttempts: Sendable {
     /// What a transfer asked for: a retry with the key must ask for the same.
     struct Request: Equatable, Sendable {
@@ -21,8 +23,8 @@ final class TokenTransferAttempts: Sendable {
 
     struct Attempt: Sendable {
         let request: Request
-        /// The partial transaction, as first sent.
-        let transaction: SparkToken_TokenTransaction
+        /// The transaction, as first built.
+        let transaction: TokenTransactionDraft
         /// The outputs it spends.
         let spentOutputs: [SparkToken_OutputWithPreviousTransactionData]
     }

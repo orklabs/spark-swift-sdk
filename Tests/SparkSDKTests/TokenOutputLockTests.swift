@@ -170,10 +170,10 @@ struct TokenTransferIdempotencyTests {
                     )
                 }
             }
-            let started = await state.startedTransactions
-            #expect(started.count == 2)
-            #expect(started.map(\.idempotencyKey) == ["retry-1", "retry-1"])
-            #expect(started.first?.transaction == started.last?.transaction)
+            let broadcasts = await state.broadcasts
+            #expect(broadcasts.count == 2)
+            #expect(broadcasts.map(\.idempotencyKey) == ["retry-1", "retry-1"])
+            #expect(broadcasts.first?.request.partialTokenTransaction == broadcasts.last?.request.partialTokenTransaction)
         }
     }
 
@@ -191,7 +191,7 @@ struct TokenTransferIdempotencyTests {
             }
             await #expect(throws: RPCError.self) { try await send(100) }
             await #expect(throws: SparkError.self) { try await send(50) }
-            #expect(await state.startedTransactions.count == 1)
+            #expect(await state.broadcasts.count == 1)
         }
     }
 
@@ -199,7 +199,9 @@ struct TokenTransferIdempotencyTests {
     func capacity() {
         let attempts = TokenTransferAttempts()
         let request = TokenTransferAttempts.Request(tokenIdentifier: Data(count: 32), amount: 1, receiverIdentityPublicKey: Data(count: 33))
-        let attempt = TokenTransferAttempts.Attempt(request: request, transaction: SparkToken_TokenTransaction(), spentOutputs: [])
+        let attempt = TokenTransferAttempts.Attempt(
+            request: request, transaction: .v3(SparkToken_PartialTokenTransaction()), spentOutputs: []
+        )
         for index in 0...TokenTransferAttempts.capacity {
             attempts.remember(attempt, for: "key-\(index)")
         }

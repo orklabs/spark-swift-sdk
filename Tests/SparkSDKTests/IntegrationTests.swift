@@ -39,8 +39,8 @@ func resolveLightningAddress(_ address: String, amountSats: Int64) async throws 
 }
 
 /// Create and start a wallet, returning it for tests
-func makeWallet(_ mnemonic: String) async throws -> SparkWallet {
-    let w = try SparkWallet(mnemonic: mnemonic, account: 0)
+func makeWallet(_ mnemonic: String, config: SparkConfig = SparkConfig()) async throws -> SparkWallet {
+    let w = try SparkWallet(config: config, mnemonic: mnemonic, account: 0)
     await w.start()
     return w
 }
@@ -934,6 +934,7 @@ struct TokenIntegrationTests {
             tokenAmount: mintAmount
         )
         #expect(!mintTx.isEmpty)
+        try await Self.expectOperatorsKnow(mintTx, by: walletA)
         print("Mint tx: \(mintTx)")
 
         try await Task.sleep(for: .seconds(5))
@@ -955,6 +956,7 @@ struct TokenIntegrationTests {
             receiverSparkAddress: sparkAddressB
         )
         #expect(!transferTx.isEmpty)
+        try await Self.expectOperatorsKnow(transferTx, by: walletA)
         print("Transfer A->B tx: \(transferTx)")
 
         try await Task.sleep(for: .seconds(5))
@@ -980,6 +982,7 @@ struct TokenIntegrationTests {
             receiverSparkAddress: sparkAddressA
         )
         #expect(!returnTx.isEmpty)
+        try await Self.expectOperatorsKnow(returnTx, by: walletB)
         print("Transfer B->A tx: \(returnTx)")
 
         try await Task.sleep(for: .seconds(5))
@@ -1004,6 +1007,7 @@ struct TokenIntegrationTests {
             tokenAmount: burnAmount
         )
         #expect(!burnTx.isEmpty)
+        try await Self.expectOperatorsKnow(burnTx, by: walletA)
         print("Burn tx: \(burnTx)")
 
         try await Task.sleep(for: .seconds(5))
@@ -1045,6 +1049,9 @@ struct TokenIntegrationTests {
         let hashes = try await [first, second]
         print("Concurrent sends of \(amount): \(hashes)")
         #expect(Set(hashes).count == 2)
+        for hash in hashes {
+            try await Self.expectOperatorsKnow(hash, by: walletA)
+        }
 
         try await Task.sleep(for: .seconds(5))
         #expect(try await balanceB() == before + 2 * amount)
@@ -1077,6 +1084,7 @@ struct TokenIntegrationTests {
         let retry = try await send()
         print("Keyed send: \(first), retried: \(retry)")
         #expect(retry == first)
+        try await Self.expectOperatorsKnow(first, by: walletA)
 
         try await Task.sleep(for: .seconds(5))
         #expect(try await balanceB() == before + 7)
@@ -1086,6 +1094,46 @@ struct TokenIntegrationTests {
         _ = try await walletB.transferTokens(tokenIdentifier: token, tokenAmount: 7, receiverSparkAddress: addressA)
         try await Task.sleep(for: .seconds(5))
         #expect(try await balanceB() == before)
+    }
+
+    @Test("V2 token transactions still work when configured")
+    func v2TokenSend() async throws {
+        let walletA = try await makeWallet(walletAMnemonic, config: SparkConfig(tokenTransactionVersion: .v2))
+        defer { Task { await walletA.close() } }
+        let walletB = try await makeWallet(walletBMnemonic)
+        defer { Task { await walletB.close() } }
+
+        let issued = try await walletA.queryTokenMetadata(issuerPublicKeys: [walletA.signer.identityPublicKey])
+        let token = try #require(issued.first, "wallet A has issued no token; the lifecycle test creates one").tokenIdentifier
+        let balanceB = { (try await walletB.getTokenBalances()).first { $0.tokenMetadata.tokenIdentifier == token }?.ownedBalance ?? 0 }
+        let before = try await balanceB()
+
+        let hash = try await walletA.transferTokens(tokenIdentifier: token, tokenAmount: 3, receiverSparkAddress: walletB.getSparkAddress())
+        print("V2 send: \(hash)")
+        try await Self.expectOperatorsKnow(hash, by: walletA, version: 2)
+        try await Task.sleep(for: .seconds(5))
+        #expect(try await balanceB() == before + 3)
+
+        // Back to A, as V3.
+        _ = try await walletB.transferTokens(tokenIdentifier: token, tokenAmount: 3, receiverSparkAddress: walletA.getSparkAddress())
+        try await Task.sleep(for: .seconds(5))
+        #expect(try await balanceB() == before)
+    }
+
+    /// The operators hold a finalized transaction of `version` under `hash`, the hash the SDK
+    /// reported for it.
+    static func expectOperatorsKnow(_ hash: String, by wallet: SparkWallet, version: UInt32 = 3) async throws {
+        var byHash = SparkToken_QueryTokenTransactionsByTxHash()
+        byHash.tokenTransactionHashes = [try #require(Data(hexString: hash))]
+        var request = SparkToken_QueryTokenTransactionsRequest()
+        request.queryType = .byTxHash(byHash)
+        let response = try await wallet.getTokenClient().query_token_transactions(request: ClientRequest(
+            message: request, metadata: try await wallet.getAuthMetadata(for: wallet.config.coordinatorAddress)
+        ))
+        let found = response.tokenTransactionsWithStatus
+        #expect(found.map(\.tokenTransactionHash.hexString) == [hash], "the operators hold no transaction \(hash)")
+        #expect(found.first?.status == .tokenTransactionFinalized, "status \(String(describing: found.first?.status))")
+        #expect(found.first?.tokenTransaction.version == version)
     }
 
     @Test("Should query token outputs")

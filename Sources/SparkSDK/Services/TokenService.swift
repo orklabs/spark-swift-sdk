@@ -47,14 +47,9 @@ extension SparkWallet {
             }
         }
 
-        return try await broadcastTokenTransactionV2(
-            tokenTransaction: attempt.transaction,
-            signingPublicKeys: attempt.spentOutputs.map { $0.output.ownerPublicKey },
-            revocationCommitments: attempt.spentOutputs.compactMap {
-                $0.output.hasRevocationCommitment ? $0.output.revocationCommitment : nil
-            },
-            idempotencyKey: idempotencyKey
-        )
+        return try await sendTokenTransaction(
+            attempt.transaction, spentOutputs: attempt.spentOutputs, idempotencyKey: idempotencyKey
+        ).transactionHash
     }
 
     /// Picks outputs for `request` and builds its transaction, with change back to the wallet.
@@ -73,16 +68,14 @@ extension SparkWallet {
             try Self.selectTokenOutputs($0, amount: request.amount, strategy: strategy)
         }
 
-        let tx = try buildTransferTokenTransaction(
-            selectedOutputs: selected,
-            receiverOutputs: [(
-                receiverPubKey: request.receiverIdentityPublicKey,
-                rawTokenIdentifier: request.tokenIdentifier,
-                tokenAmount: request.amount
-            )],
-            changeOwnerPubKey: signer.identityPublicKey
+        let receiver = TokenOutputSpec(
+            owner: request.receiverIdentityPublicKey, tokenIdentifier: request.tokenIdentifier, amount: request.amount
         )
-        return TokenTransferAttempts.Attempt(request: request, transaction: tx, spentOutputs: selected)
+        let draft = transferDraft(
+            spending: selected,
+            outputs: Self.transferOutputs(spending: selected, paying: [receiver], changeOwner: signer.identityPublicKey)
+        )
+        return TokenTransferAttempts.Attempt(request: request, transaction: draft, spentOutputs: selected)
     }
 
     /// Get token balances for the current wallet.
@@ -210,20 +203,7 @@ extension SparkWallet {
             createInput.extraMetadata = extra
         }
 
-        var tx = SparkToken_TokenTransaction()
-        tx.version = 2
-        tx.network = config.networkProto
-        tx.tokenInputs = .createInput(createInput)
-        tx.tokenOutputs = []
-        tx.sparkOperatorIdentityPublicKeys = collectOperatorIdentityPublicKeys()
-        tx.clientCreatedTimestamp = currentTimestamp()
-        tx.invoiceAttachments = []
-
-        let (txHash, tokenId) = try await broadcastTokenTransactionV2Detailed(
-            tokenTransaction: tx,
-            signingPublicKeys: nil,
-            revocationCommitments: nil
-        )
+        let (txHash, tokenId) = try await sendTokenTransaction(createDraft(createInput))
 
         var bech32TokenId: Bech32mTokenIdentifier? = nil
         if let tokenId {
@@ -275,31 +255,7 @@ extension SparkWallet {
         }
 
         let (rawTokenId, _) = try decodeBech32mTokenIdentifier(tokenIdentifier, network: config.network)
-        let issuerPubKey = signer.identityPublicKey
-
-        var mintInput = SparkToken_TokenMintInput()
-        mintInput.issuerPublicKey = issuerPubKey
-        mintInput.tokenIdentifier = rawTokenId
-
-        var mintOutput = SparkToken_TokenOutput()
-        mintOutput.ownerPublicKey = issuerPubKey
-        mintOutput.tokenIdentifier = rawTokenId
-        mintOutput.tokenAmount = encodeUInt128(tokenAmount)
-
-        var tx = SparkToken_TokenTransaction()
-        tx.version = 2
-        tx.network = config.networkProto
-        tx.tokenInputs = .mintInput(mintInput)
-        tx.tokenOutputs = [mintOutput]
-        tx.sparkOperatorIdentityPublicKeys = collectOperatorIdentityPublicKeys()
-        tx.clientCreatedTimestamp = currentTimestamp()
-        tx.invoiceAttachments = []
-
-        return try await broadcastTokenTransactionV2(
-            tokenTransaction: tx,
-            signingPublicKeys: nil,
-            revocationCommitments: nil
-        )
+        return try await sendTokenTransaction(mintDraft(tokenIdentifier: rawTokenId, amount: tokenAmount)).transactionHash
     }
 
     /// Burn tokens by transferring them to a dead address.
@@ -320,17 +276,12 @@ extension SparkWallet {
             try Self.selectTokenOutputs($0, amount: tokenAmount, strategy: strategy)
         }
 
-        let tx = try buildTransferTokenTransaction(
-            selectedOutputs: selected,
-            receiverOutputs: [(receiverPubKey: burnPubKey, rawTokenIdentifier: rawTokenId, tokenAmount: tokenAmount)],
-            changeOwnerPubKey: signer.identityPublicKey
+        let burn = TokenOutputSpec(owner: burnPubKey, tokenIdentifier: rawTokenId, amount: tokenAmount)
+        let draft = transferDraft(
+            spending: selected,
+            outputs: Self.transferOutputs(spending: selected, paying: [burn], changeOwner: signer.identityPublicKey)
         )
-
-        return try await broadcastTokenTransactionV2(
-            tokenTransaction: tx,
-            signingPublicKeys: selected.map { $0.output.ownerPublicKey },
-            revocationCommitments: selected.compactMap { $0.output.hasRevocationCommitment ? $0.output.revocationCommitment : nil }
-        )
+        return try await sendTokenTransaction(draft, spentOutputs: selected).transactionHash
     }
 
     // MARK: - Token Output Selection
@@ -403,86 +354,11 @@ extension SparkWallet {
         }
     }
 
-    // MARK: - Internal: Build V2 Transfer Transaction
-
-    private func buildTransferTokenTransaction(
-        selectedOutputs: [SparkToken_OutputWithPreviousTransactionData],
-        receiverOutputs: [(receiverPubKey: Data, rawTokenIdentifier: Data, tokenAmount: UInt128)],
-        changeOwnerPubKey: Data
-    ) throws -> SparkToken_TokenTransaction {
-        let sorted = selectedOutputs.sorted { $0.previousTransactionVout < $1.previousTransactionVout }
-
-        var availableByToken: [Data: UInt128] = [:]
-        for output in sorted {
-            availableByToken[output.output.tokenIdentifier, default: 0] += decodeUInt128(output.output.tokenAmount)
-        }
-
-        var requestedByToken: [Data: UInt128] = [:]
-        for receiver in receiverOutputs {
-            requestedByToken[receiver.rawTokenIdentifier, default: 0] += receiver.tokenAmount
-        }
-
-        var tokenOutputs: [SparkToken_TokenOutput] = receiverOutputs.map { receiver in
-            var output = SparkToken_TokenOutput()
-            output.ownerPublicKey = receiver.receiverPubKey
-            output.tokenIdentifier = receiver.rawTokenIdentifier
-            output.tokenAmount = encodeUInt128(receiver.tokenAmount)
-            return output
-        }
-
-        // Add change outputs
-        for (tokenId, availableAmount) in availableByToken {
-            let requestedAmount = requestedByToken[tokenId] ?? 0
-            if availableAmount > requestedAmount {
-                var changeOutput = SparkToken_TokenOutput()
-                changeOutput.ownerPublicKey = changeOwnerPubKey
-                changeOutput.tokenIdentifier = tokenId
-                changeOutput.tokenAmount = encodeUInt128(availableAmount - requestedAmount)
-                tokenOutputs.append(changeOutput)
-            }
-        }
-
-        var transferInput = SparkToken_TokenTransferInput()
-        transferInput.outputsToSpend = sorted.map { output in
-            var ref = SparkToken_TokenOutputToSpend()
-            ref.prevTokenTransactionHash = output.previousTransactionHash
-            ref.prevTokenTransactionVout = output.previousTransactionVout
-            return ref
-        }
-
-        var tx = SparkToken_TokenTransaction()
-        tx.version = 2
-        tx.network = config.networkProto
-        tx.tokenInputs = .transferInput(transferInput)
-        tx.tokenOutputs = tokenOutputs
-        tx.sparkOperatorIdentityPublicKeys = collectOperatorIdentityPublicKeys()
-        tx.clientCreatedTimestamp = currentTimestamp()
-        tx.invoiceAttachments = []
-
-        return tx
-    }
-
     // MARK: - Internal: V2 Broadcast (Two-Phase: start + commit)
 
-    private func broadcastTokenTransactionV2(
+    func broadcastTokenTransactionV2Detailed(
         tokenTransaction: SparkToken_TokenTransaction,
         signingPublicKeys: [Data]?,
-        revocationCommitments: [Data]?,
-        idempotencyKey: String? = nil
-    ) async throws -> String {
-        let (txHash, _) = try await broadcastTokenTransactionV2Detailed(
-            tokenTransaction: tokenTransaction,
-            signingPublicKeys: signingPublicKeys,
-            revocationCommitments: revocationCommitments,
-            idempotencyKey: idempotencyKey
-        )
-        return txHash
-    }
-
-    private func broadcastTokenTransactionV2Detailed(
-        tokenTransaction: SparkToken_TokenTransaction,
-        signingPublicKeys: [Data]?,
-        revocationCommitments: [Data]?,
         idempotencyKey: String? = nil
     ) async throws -> (transactionHash: String, tokenIdentifier: Data?) {
         let client = try await getTokenClient()
@@ -733,7 +609,7 @@ extension SparkWallet {
 
     /// Now on the operators' clock: they refuse a client timestamp outside the transaction's
     /// validity window measured on theirs (the reference SDK stamps server time too).
-    private func currentTimestamp() -> Google_Protobuf_Timestamp {
+    func currentTimestamp() -> Google_Protobuf_Timestamp {
         var ts = Google_Protobuf_Timestamp(date: serverClock.now())
         ts.nanos = (ts.nanos / 1000) * 1000
         return ts

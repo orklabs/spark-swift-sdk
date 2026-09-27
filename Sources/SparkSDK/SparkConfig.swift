@@ -25,6 +25,16 @@ public struct SigningOperatorConfig: Sendable {
     }
 }
 
+/// How token transactions are sent to the operators.
+public enum TokenTransactionVersion: Sendable {
+    /// One `broadcast_transaction` call, signed over the protohash of the partial transaction:
+    /// the reference SDK's default, and the format the operators are moving to.
+    case v3
+    /// `start_transaction` then `commit_transaction`, signed over the V2 hashes. Kept while the
+    /// operators accept it, as the reference SDK keeps it.
+    case v2
+}
+
 public struct SparkConfig: Sendable {
     /// Lightspark's hosted SSP, the default.
     public static let defaultSspURL = "https://api.lightspark.com/graphql/spark/2025-03-19"
@@ -41,6 +51,8 @@ public struct SparkConfig: Sendable {
     public let expectedWithdrawBondSats: UInt64
     /// Relative block locktime the coordinator is expected to set on token outputs (reference SDK: 1 000).
     public let expectedWithdrawRelativeBlockLocktime: UInt64
+    /// How token transactions are sent: V3 by default, as in the reference SDK.
+    public let tokenTransactionVersion: TokenTransactionVersion
 
     /// - Parameters:
     ///   - sspURL: The SSP's GraphQL endpoint; Lightspark's hosted SSP by default.
@@ -55,7 +67,8 @@ public struct SparkConfig: Sendable {
         sspIdentityPublicKeyHex: String? = nil,
         signingThreshold: UInt32? = nil,
         expectedWithdrawBondSats: UInt64 = 10_000,
-        expectedWithdrawRelativeBlockLocktime: UInt64 = 1_000
+        expectedWithdrawRelativeBlockLocktime: UInt64 = 1_000,
+        tokenTransactionVersion: TokenTransactionVersion = .v3
     ) {
         self.network = network
         let operators = signingOperators ?? Self.defaultOperators(for: network)
@@ -65,6 +78,7 @@ public struct SparkConfig: Sendable {
         self.signingThreshold = signingThreshold ?? Self.defaultThreshold(operatorCount: operators.count)
         self.expectedWithdrawBondSats = expectedWithdrawBondSats
         self.expectedWithdrawRelativeBlockLocktime = expectedWithdrawRelativeBlockLocktime
+        self.tokenTransactionVersion = tokenTransactionVersion
     }
 
     /// The threshold the Spark deployments use for a given operator count (2 of 3, 3 of 5).

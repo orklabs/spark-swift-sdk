@@ -259,11 +259,19 @@ let token = try await wallet.createToken(
     tokenName: "Acme",
     tokenTicker: "ACME",
     decimals: 6,
-    maxSupply: 1_000_000
+    maxSupply: 1_000_000,
+    isFreezable: false
 )
-try await wallet.mintTokens(tokenIdentifier: token.tokenIdentifier, tokenAmount: 1_000)
+if let tokenIdentifier = token.tokenIdentifier {
+    try await wallet.mintTokens(tokenIdentifier: tokenIdentifier, tokenAmount: 1_000)
+}
 let balances = try await wallet.getTokenBalances()
 ```
+
+Token transactions use the operators' V3 format, as the reference SDK does: one
+`broadcast_transaction` call, signed over the protohash of the partial transaction.
+`SparkConfig(tokenTransactionVersion: .v2)` keeps the older two-step flow while the operators
+accept it.
 
 ### Events & history
 
