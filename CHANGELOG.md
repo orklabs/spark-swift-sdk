@@ -13,6 +13,12 @@ migration note.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.3.0] — 2026-09-27
+
 ### Security
 - Token commits check the coordinator's final transaction as the reference SDK does. It must
   carry the wallet's client timestamp (to the millisecond, which the transaction hash covers)
@@ -77,10 +83,11 @@ migration note.
   an index are unchanged.
 - `claimStaticDeposit(transactionId:outputIndex:)` is deprecated: it signs whatever credit the SSP
   quotes. Use `claimStaticDepositWithMaxFee` or the `quote:` variant.
-- `subscribeToEvents()` streams until the caller stops iterating or the wallet is closed: it
-  reconnects by itself and reports `SparkEvent.reconnecting(attempt:retryIn:reason:)` before
-  each wait — a new case that exhaustive `switch`es over `SparkEvent` must handle — and it claims
-  incoming payments itself (see Fixed). It throws only when the wallet is already closed.
+- **Breaking:** `subscribeToEvents()` streams until the caller stops iterating or the wallet is
+  closed: it reconnects by itself and reports `SparkEvent.reconnecting(attempt:retryIn:reason:)`
+  before each wait, and it claims incoming payments itself (see Fixed). It throws only when the
+  wallet is already closed. Migration: exhaustive `switch`es over `SparkEvent` must handle
+  `.reconnecting`, and a loop that resubscribed after the stream ended can simply keep iterating.
 - `SatsBalance.owned` and `locked` follow the reference SDK: available + frozen + leaves an
   in-flight operation still holds for the wallet (outgoing transfers, Lightning payments and
   cooperative exits before the operators apply the sender's key tweak, swaps the wallet started
@@ -457,7 +464,8 @@ Initial public release.
 - FROST threshold signing via `spark_frostFFI.xcframework` (Rust UniFFI).
 - Test suite: BIP-39 vectors, key derivation, token validation, full integration coverage.
 
-[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/orklabs/spark-swift-sdk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orklabs/spark-swift-sdk/releases/tag/v0.1.0
