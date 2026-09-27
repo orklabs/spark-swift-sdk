@@ -19,14 +19,21 @@ actor FakeOperatorState {
     }
 
     let rejection: Rejection
+    /// What `generate_deposit_address` and `generate_static_deposit_address` hand out.
+    let depositAddress: Spark_Address
     private let rejects: @Sendable (_ token: String) -> Bool
     /// Session tokens handed out by `verify_challenge`, in order.
     private(set) var issuedTokens: [String] = []
     /// `"<method> <authorization header>"` for every SparkService call received.
     private(set) var calls: [String] = []
 
-    init(rejection: Rejection = .beforeHeaders, rejects: @escaping @Sendable (_ token: String) -> Bool) {
+    init(
+        rejection: Rejection = .beforeHeaders,
+        depositAddress: Spark_Address = Spark_Address(),
+        rejects: @escaping @Sendable (_ token: String) -> Bool
+    ) {
         self.rejection = rejection
+        self.depositAddress = depositAddress
         self.rejects = rejects
     }
 
@@ -79,6 +86,30 @@ struct FakeOperator: RegistrableRPCService {
                 return await Self.reject(state)
             }
             return StreamingServerResponse(single: ServerResponse(message: Spark_QueryNodesResponse()))
+        }
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.generate_deposit_address.descriptor,
+            deserializer: ProtobufDeserializer<Spark_GenerateDepositAddressRequest>(),
+            serializer: ProtobufSerializer<Spark_GenerateDepositAddressResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("generate_deposit_address", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            var response = Spark_GenerateDepositAddressResponse()
+            response.depositAddress = state.depositAddress
+            return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.generate_static_deposit_address.descriptor,
+            deserializer: ProtobufDeserializer<Spark_GenerateStaticDepositAddressRequest>(),
+            serializer: ProtobufSerializer<Spark_GenerateStaticDepositAddressResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("generate_static_deposit_address", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            var response = Spark_GenerateStaticDepositAddressResponse()
+            response.depositAddress = state.depositAddress
+            return StreamingServerResponse(single: ServerResponse(message: response))
         }
         router.registerHandler(
             forMethod: Spark_SparkService.Method.subscribe_to_events.descriptor,

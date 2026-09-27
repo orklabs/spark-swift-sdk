@@ -102,6 +102,11 @@ any key material is used:
   transaction apart from server-set fields, with the expected withdraw bond and locktime.
 - **Operators** — secret shares are only ever encrypted to operator identity keys from the local
   configuration; a coordinator operator list that does not match the configuration is refused.
+- **Deposit addresses** — before a one-time or static deposit address is returned, the
+  operators' proof of possession (a BIP-340 signature by their share of the key over the
+  address, the wallet's identity key and that share) and every operator's signature over the
+  address (the coordinator's too, for static addresses) are verified against the configured
+  operator keys, and the address must pay the reported verifying key.
 - **Mnemonics** — validated against the BIP-39 English wordlist and checksum by default.
 
 Anything that fails these checks throws (`SparkError.untrustedResponse`,

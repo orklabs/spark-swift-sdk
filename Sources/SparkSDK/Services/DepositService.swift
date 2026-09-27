@@ -27,6 +27,13 @@ extension SparkWallet {
         )
 
         let deposit = response.depositAddress
+        try DepositAddressVerifier.verify(
+            deposit,
+            userSigningPublicKey: keyPair.publicKey,
+            identityPublicKey: signer.identityPublicKey,
+            isStatic: false,
+            config: config
+        )
         return DepositAddress(
             address: deposit.address,
             leafId: leafId,
@@ -174,6 +181,13 @@ extension SparkWallet {
         )
 
         let deposit = response.depositAddress
+        try DepositAddressVerifier.verify(
+            deposit,
+            userSigningPublicKey: staticPubKey,
+            identityPublicKey: signer.identityPublicKey,
+            isStatic: true,
+            config: config
+        )
         return StaticDepositAddress(
             address: deposit.address,
             verifyingKey: Data(deposit.verifyingKey)

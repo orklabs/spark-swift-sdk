@@ -13,6 +13,15 @@ migration note.
 
 ## [Unreleased]
 
+### Security
+- Deposit addresses are verified before they are returned, as the reference SDK does. The SDK
+  handed out whatever address and verifying key the coordinator sent, so a coordinator — or
+  anyone impersonating it — could substitute an address it alone controls, and a static address
+  is reused for every deposit. `getDepositAddress` and `getStaticDepositAddress` now check the
+  operators' proof of possession, every operator's signature over the address (the
+  coordinator's too for static addresses) against the configured keys, and that the address pays
+  the verifying key, and throw `SparkError.untrustedResponse` otherwise.
+
 ### Added
 - `claimPendingTransfers()`: claims every pending inbound transfer and returns the claimed
   transfer ids plus the transfers that could not be claimed, with their errors.
