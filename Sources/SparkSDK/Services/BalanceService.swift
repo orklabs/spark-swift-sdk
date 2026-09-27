@@ -167,15 +167,38 @@ extension SparkWallet {
 
     /// The wallet's AVAILABLE leaves on the coordinator.
     func queryAvailableNodes() async throws -> [String: Spark_TreeNode] {
-        let client = try await getCoordinatorClient()
         var request = Spark_QueryNodesRequest()
         request.ownerIdentityPubkey = signer.identityPublicKey
         request.network = config.networkProto
         request.statuses = [.available]
-        let response = try await client.query_nodes(
-            request: try await makeAuthenticatedRequest(message: request)
-        )
-        return response.nodes
+        return try await queryAllNodes(request)
+    }
+
+    /// Nodes the operators return for `request`, a page of 100 at a time (their maximum), as
+    /// the reference SDK pages them: without a limit the whole set comes back in one response,
+    /// which outgrows the message-size limit for a wallet with many leaves. Pages are counted
+    /// here rather than following the response's offset (proto3 cannot tell "0" from unset);
+    /// with `include_parents` the parents pad the pages, which costs at most one extra request.
+    func queryAllNodes(_ request: Spark_QueryNodesRequest, options: CallOptions = .defaults) async throws -> [String: Spark_TreeNode] {
+        let client = try await getCoordinatorClient()
+        let pageSize: Int64 = 100
+        var nodes: [String: Spark_TreeNode] = [:]
+        var page = request
+        page.limit = pageSize
+        page.offset = 0
+        while true {
+            let response = try await client.query_nodes(
+                request: try await makeAuthenticatedRequest(message: page), options: options
+            )
+            let countBefore = nodes.count
+            nodes.merge(response.nodes) { _, latest in latest }
+            // A short page ends the set; a page that adds nothing means the operator is not
+            // paging, and asking again would never end.
+            guard response.nodes.count >= pageSize, nodes.count > countBefore else {
+                return nodes
+            }
+            page.offset += pageSize
+        }
     }
 
     public func getLeaves() async throws -> [SparkLeaf] {

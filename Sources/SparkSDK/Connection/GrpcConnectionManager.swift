@@ -33,15 +33,24 @@ actor GrpcConnectionManager {
         retryableStatusCodes: [.unavailable, .cancelled, .unauthenticated]
     )
 
+    /// Largest message sent or received: the reference SDK's 20 MB, raised from gRPC's 4 MiB
+    /// default after `start_transfer_v2` answers of ~5 MB. (grpc-swift's HTTP/2 transport
+    /// applies the request limit to the messages a client decodes as well.)
+    static let maxMessageBytes = 20 * 1024 * 1024
+
     /// The event subscription is a long-lived server stream: unbounded and never retried here
     /// (reconnecting it with backoff is the subscriber's job, as in the official wallet). A
     /// per-method entry takes precedence over the global (empty-name) one.
     static let serviceConfig = ServiceConfig(methodConfig: [
         MethodConfig(names: [MethodConfig.Name(service: "", method: "")],
                      timeout: defaultRPCTimeout,
+                     maxRequestMessageBytes: maxMessageBytes,
+                     maxResponseMessageBytes: maxMessageBytes,
                      executionPolicy: .retry(retryPolicy)),
         MethodConfig(names: [MethodConfig.Name(service: "spark.SparkService", method: "subscribe_to_events")],
                      timeout: nil,
+                     maxRequestMessageBytes: maxMessageBytes,
+                     maxResponseMessageBytes: maxMessageBytes,
                      executionPolicy: nil),
     ])
 

@@ -36,6 +36,46 @@ struct TransportHardeningTests {
         #expect(!policy.retryableStatusCodes.contains(Status.Code.deadlineExceeded))
     }
 
+    @Test("Messages up to the reference SDK's 20 MB are sent and received, the event stream included")
+    func messageSizeLimit() {
+        let stream = GrpcConnectionManager.serviceConfig.methodConfig.first {
+            $0.names.contains(MethodConfig.Name(service: "spark.SparkService", method: "subscribe_to_events"))
+        }
+        #expect(GrpcConnectionManager.maxMessageBytes == 20 * 1024 * 1024)
+        for config in [global, stream] {
+            #expect(config?.maxRequestMessageBytes == GrpcConnectionManager.maxMessageBytes)
+            #expect(config?.maxResponseMessageBytes == GrpcConnectionManager.maxMessageBytes)
+        }
+    }
+
+    static func availableNode(_ index: Int, payload: Int = 0) -> Spark_TreeNode {
+        var node = Spark_TreeNode()
+        node.id = String(format: "node-%04d", index)
+        node.status = "AVAILABLE"
+        node.value = 1
+        node.nodeTx = Data(repeating: 0xAB, count: payload)
+        return node
+    }
+
+    @Test("A wallet's nodes are read a page of 100 at a time until a short page", .timeLimit(.minutes(1)))
+    func nodePaging() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setNodes((0..<250).map { Self.availableNode($0) })
+        let leaves = try await withFakeOperator(state) { wallet in try await wallet.getLeaves() }
+        #expect(leaves.count == 250)
+        #expect(await state.nodePages == [[100, 0], [100, 100], [100, 200]])
+    }
+
+    @Test("A page larger than gRPC's 4 MiB default is received", .timeLimit(.minutes(1)))
+    func largePage() async throws {
+        let state = FakeOperatorState { _ in false }
+        // 100 nodes of 50 kB: one 5 MB page, then an empty one.
+        await state.setNodes((0..<100).map { Self.availableNode($0, payload: 50_000) })
+        let leaves = try await withFakeOperator(state) { wallet in try await wallet.getLeaves() }
+        #expect(leaves.count == 100)
+        #expect(await state.nodePages == [[100, 0], [100, 100]])
+    }
+
     @Test("The event subscription stream is unbounded and never retried by the transport")
     func eventStreamUnbounded() {
         let stream = GrpcConnectionManager.serviceConfig.methodConfig.first {

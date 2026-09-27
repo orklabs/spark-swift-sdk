@@ -41,6 +41,10 @@ actor FakeOperatorState {
     private(set) var heldSends: [Spark_PreimageRequestWithTransfer] = []
     /// Transfers `query_transfers_by_id` knows, matched by id.
     private(set) var knownTransfers: [Spark_Transfer] = []
+    /// Nodes `query_nodes` pages through by id, as the operators page an owner query.
+    private(set) var nodes: [Spark_TreeNode] = []
+    /// `(limit, offset)` of every `query_nodes` call.
+    private(set) var nodePages: [[Int64]] = []
     /// What every `initiate_preimage_swap_v3` fails with.
     private(set) var preimageSwapError = RPCError(code: .internalError, message: "preimage swap failed")
     /// The `x-idempotency-key` of every `initiate_preimage_swap_v3`, in order.
@@ -64,6 +68,18 @@ actor FakeOperatorState {
 
     func setSubscription(_ subscription: Subscription) {
         self.subscription = subscription
+    }
+
+    func setNodes(_ nodes: [Spark_TreeNode]) {
+        self.nodes = nodes.sorted { $0.id < $1.id }
+    }
+
+    /// The page the operators return: every node without a limit, else at most 100 from `offset`.
+    func nodesPage(limit: Int64, offset: Int64) -> [String: Spark_TreeNode] {
+        nodePages.append([limit, offset])
+        let start = min(Int(offset), nodes.count)
+        let end = limit > 0 ? min(start + Int(min(limit, 100)), nodes.count) : nodes.count
+        return Dictionary(uniqueKeysWithValues: nodes[start..<end].map { ($0.id, $0) })
     }
 
     func know(_ transfer: Spark_Transfer) {
@@ -139,7 +155,11 @@ struct FakeOperator: RegistrableRPCService {
             guard await state.admit("query_nodes", authorization: Self.authorization(request.metadata)) else {
                 return await Self.reject(state)
             }
-            return StreamingServerResponse(single: ServerResponse(message: Spark_QueryNodesResponse()))
+            let query = try await ServerRequest(stream: request).message
+            var response = Spark_QueryNodesResponse()
+            response.nodes = await state.nodesPage(limit: query.limit, offset: query.offset)
+            response.offset = -1
+            return StreamingServerResponse(single: ServerResponse(message: response))
         }
         router.registerHandler(
             forMethod: Spark_SparkService.Method.generate_deposit_address.descriptor,

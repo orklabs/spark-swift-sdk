@@ -54,18 +54,11 @@ extension SparkWallet {
     public func getRecoverySnapshot() async throws -> SparkRecoverySnapshot {
         let client = try await getCoordinatorClient()
 
-        var all: [String: Spark_TreeNode] = [:]
-
         var request = Spark_QueryNodesRequest()
         request.ownerIdentityPubkey = signer.identityPublicKey
         request.includeParents = true
         request.network = config.networkProto
-
-        let response = try await client.query_nodes(
-            request: try await makeAuthenticatedRequest(message: request),
-            options: Self.recoveryCallOptions
-        )
-        for (id, node) in response.nodes { all[id] = node }
+        var all = try await queryAllNodes(request, options: Self.recoveryCallOptions)
 
         // Repair pass: fetch any parent referenced by a node in the map but not
         // present in it. Bounded so a coordinator that keeps returning nothing

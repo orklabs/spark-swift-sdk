@@ -64,6 +64,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Responses over 4 MiB no longer fail. gRPC's 4 MiB default applied, so a large answer (the
+  reference SDK has seen ~5 MB `start_transfer_v2` responses) failed with RESOURCE_EXHAUSTED, and
+  the balance, leaf list and recovery snapshot asked for all of a wallet's nodes in one response.
+  As in the reference SDK, messages up to 20 MB are accepted and node queries are paged at the
+  operators' 100 per page.
 - A multi-receiver transfer can be claimed by every receiver. The operators record only the
   first (lowest-key) receiver in `receiver_identity_public_key` but deliver the transfer to all of
   them; the SDK refused it unless this wallet was that first receiver, so it stayed pending for
