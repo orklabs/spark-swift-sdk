@@ -32,7 +32,11 @@ extension SparkWallet {
     ) async throws -> SparkTransfer {
         try Self.validateSendArguments(receiverIdentityPublicKey: receiverIdentityPublicKey, amountSats: amountSats)
         let selectedLeaves = try await selectLeavesWithSwap(amountSats: amountSats)
+        return try await transferLeaves(selectedLeaves, receiverIdentityPublicKey: receiverIdentityPublicKey)
+    }
 
+    /// Transfer exactly `selectedLeaves` to the receiver in one Spark transfer.
+    func transferLeaves(_ selectedLeaves: [SparkLeaf], receiverIdentityPublicKey: Data) async throws -> SparkTransfer {
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         let networkStr = config.networkString

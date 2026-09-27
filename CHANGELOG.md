@@ -28,6 +28,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Leaves hanging off any output but the first of their parent can be renewed. Refund and node
+  renewals spent parent output 0 and paid that output's script, while the operators rebuild the
+  renewal from the parent's output at the leaf's `vout`, paying P2TR of the leaf's verifying key,
+  and compare byte for byte — so such a leaf could never be renewed and, once its timelock ran
+  down, looked frozen. (The reference SDK has the same bug.)
 - `SatsBalance.incoming` no longer counts a swap's counter-transfer, which `locked` already
   counts, so every swap (a send that needs change, a withdrawal, a Lightning payment,
   consolidation) briefly reported the same sats twice. Incoming now sums the leaves of every page

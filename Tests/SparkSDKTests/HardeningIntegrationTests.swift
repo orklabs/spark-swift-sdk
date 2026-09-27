@@ -249,6 +249,54 @@ struct HardeningIntegrationTests {
         }
     }
 
+    /// Bounces one small leaf between the test wallets until its refund timelock is in the renewal
+    /// range (each Spark transfer takes 100 blocks off it), then renews it. Opt-in
+    /// (`SPARK_TEST_RENEWAL=1`) because it takes one transfer per 100 blocks of timelock.
+    @Test("A leaf bounced into the renewal range is renewed to a fresh timelock", .timeLimit(.minutes(20)),
+          .enabled(if: ProcessInfo.processInfo.environment["SPARK_TEST_RENEWAL"] == "1"))
+    func renewalRoundTrip() async throws {
+        let a = try await makeWallet(TestConfig.walletAMnemonic)
+        let b = try await makeWallet(TestConfig.walletBMnemonic)
+        defer { Task { await a.close(); await b.close() } }
+        struct Candidate {
+            let holder: SparkWallet
+            let other: SparkWallet
+            let leaf: SparkLeaf
+        }
+        var candidates: [Candidate] = []
+        for (holder, other) in [(a, b), (b, a)] {
+            for leaf in try await holder.getLeaves() where leaf.isSpendable && leaf.valueSats <= 64 {
+                candidates.append(Candidate(holder: holder, other: other, leaf: leaf))
+            }
+        }
+        guard let start = candidates.min(by: { $0.leaf.refundTimelockBlocks < $1.leaf.refundTimelockBlocks }) else {
+            Issue.record(Comment(rawValue: "no small spendable leaf to bounce"))
+            return
+        }
+        var (holder, other, leaf) = (start.holder, start.other, start.leaf)
+        print("bouncing leaf \(leaf.id) (\(leaf.valueSats) sats) from refund timelock \(leaf.refundTimelockBlocks)")
+        while leaf.isSpendable {
+            _ = try await holder.transferLeaves([leaf], receiverIdentityPublicKey: other.signer.identityPublicKey)
+            try await Task.sleep(for: .seconds(3))
+            let claim = try await other.claimPendingTransfers()
+            #expect(claim.failures.isEmpty)
+            (holder, other) = (other, holder)
+            let leafId = leaf.id
+            leaf = try #require(try await holder.getLeaves().first { $0.id == leafId })
+            print("  refund timelock now \(leaf.refundTimelockBlocks)")
+        }
+        #expect(leaf.isRenewable)
+        let leafId = leaf.id
+        let renewal = try await holder.renewExhaustedLeaves()
+        print("renewal: checked \(renewal.checked), renewed \(renewal.renewed), failures \(renewal.failures)")
+        // Frozen leaves of the test wallets are reported as failures too; this leaf must not be.
+        #expect(renewal.renewed >= 1)
+        #expect(!renewal.failures.contains { $0.hasPrefix(leafId) })
+        let renewed = try #require(try await holder.getLeaves().first { $0.id == leafId })
+        #expect(renewed.refundTimelockBlocks == 2000)
+        #expect(renewed.isSpendable)
+    }
+
     /// Destination: `SPARK_TEST_WITHDRAW_DESTINATION` may be an address, or
     /// `receiver-static-deposit` to pay the other test wallet's static deposit address so the
     /// sats stay inside the test setup and can be claimed back with `claimStaticDeposit`.

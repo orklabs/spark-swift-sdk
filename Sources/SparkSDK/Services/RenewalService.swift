@@ -140,47 +140,20 @@ extension SparkWallet {
     /// Refund-only renewal: new node tx with timelock −100, fresh refunds at 2000.
     private func renewRefundTimelock(_ node: Spark_TreeNode, parent: Spark_TreeNode) async throws {
         let context = try RenewalContext(node: node, signer: signer)
-        let parentTx = Data(parent.nodeTx)
-        let address = try BitcoinAddress.p2trAddress(
-            scriptPubKey: try Self.parseTxOutput(parentTx, vout: 0).script,
-            network: config.network
-        )
-
-        let nodeSequence = try Self.parseSequenceFromRawTx(Data(node.nodeTx))
-        let bit30 = nodeSequence & (1 << 30)
-        let nodeTimelock = nodeSequence & 0xFFFF
-        guard nodeTimelock >= sparkTimeLockInterval else {
-            throw SparkError.leafTimelockExhausted("Node timelock \(nodeTimelock) too low for refund renewal")
-        }
-        let newNodeSequence = bit30 | (nodeTimelock - sparkTimeLockInterval)
-
-        let nodePair = try constructNodeTxPair(
-            parentTx: parentTx, vout: 0, address: address,
-            sequence: newNodeSequence,
-            directSequence: newNodeSequence + sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
-        )
-        let trio = try constructRefundTxTrio(
-            cpfpNodeTx: nodePair.cpfp.tx,
-            directNodeTx: nodePair.direct.tx,
-            vout: 0,
-            receivingPubkey: context.signingPublicKey,
-            network: config.networkString,
-            sequence: renewalInitialSequence,
-            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
+        let txs = try Self.refundRenewalTransactions(
+            node: node, parent: parent, signingPublicKey: context.signingPublicKey, config: config
         )
 
         // Order defines which SO commitment each job consumes.
         var specs: [(slot: String, tx: Data, sighash: Data)] = [
-            ("node", nodePair.cpfp.tx, nodePair.cpfp.sighash),
-            ("directNode", nodePair.direct.tx, nodePair.direct.sighash),
-            ("cpfp", trio.cpfpRefund.tx, trio.cpfpRefund.sighash),
+            ("node", txs.node.cpfp.tx, txs.node.cpfp.sighash),
+            ("directNode", txs.node.direct.tx, txs.node.direct.sighash),
+            ("cpfp", txs.refunds.cpfpRefund.tx, txs.refunds.cpfpRefund.sighash),
         ]
-        if let direct = trio.directRefund {
+        if let direct = txs.refunds.directRefund {
             specs.append(("direct", direct.tx, direct.sighash))
         }
-        specs.append(("directFromCpfp", trio.directFromCpfpRefund.tx, trio.directFromCpfpRefund.sighash))
+        specs.append(("directFromCpfp", txs.refunds.directFromCpfpRefund.tx, txs.refunds.directFromCpfpRefund.sighash))
 
         let jobs = try await signRenewalJobs(specs, context: context)
 
@@ -201,52 +174,24 @@ extension SparkWallet {
     /// node tx at 2000, refunds reset to 2000.
     private func renewNodeTimelock(_ node: Spark_TreeNode, parent: Spark_TreeNode) async throws {
         let context = try RenewalContext(node: node, signer: signer)
-        let parentTx = Data(parent.nodeTx)
-        let address = try BitcoinAddress.p2trAddress(
-            scriptPubKey: try Self.parseTxOutput(parentTx, vout: 0).script,
-            network: config.network
+        let txs = try Self.nodeRenewalTransactions(
+            node: node, parent: parent, signingPublicKey: context.signingPublicKey, config: config
         )
-
-        // Split node: spends the parent output with zero timelock.
-        let splitPair = try constructNodeTxPair(
-            parentTx: parentTx, vout: 0, address: address,
-            sequence: 0,
-            directSequence: sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
-        )
-        // New node: spends the split node output at the initial timelock.
-        let splitAddress = try BitcoinAddress.p2trAddress(
-            scriptPubKey: try Self.parseTxOutput(splitPair.cpfp.tx, vout: 0).script,
-            network: config.network
-        )
-        let nodePair = try constructNodeTxPair(
-            parentTx: splitPair.cpfp.tx, vout: 0, address: splitAddress,
-            sequence: renewalInitialSequence,
-            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
-        )
-        let trio = try constructRefundTxTrio(
-            cpfpNodeTx: nodePair.cpfp.tx,
-            directNodeTx: nodePair.direct.tx,
-            vout: 0,
-            receivingPubkey: context.signingPublicKey,
-            network: config.networkString,
-            sequence: renewalInitialSequence,
-            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
-        )
+        guard let split = txs.split else {
+            throw SparkError.invalidResponse("Node renewal for leaf \(node.id) built no split node")
+        }
 
         var specs: [(slot: String, tx: Data, sighash: Data)] = [
-            ("split", splitPair.cpfp.tx, splitPair.cpfp.sighash),
-            ("directSplit", splitPair.direct.tx, splitPair.direct.sighash),
-            ("node", nodePair.cpfp.tx, nodePair.cpfp.sighash),
-            ("directNode", nodePair.direct.tx, nodePair.direct.sighash),
-            ("cpfp", trio.cpfpRefund.tx, trio.cpfpRefund.sighash),
+            ("split", split.cpfp.tx, split.cpfp.sighash),
+            ("directSplit", split.direct.tx, split.direct.sighash),
+            ("node", txs.node.cpfp.tx, txs.node.cpfp.sighash),
+            ("directNode", txs.node.direct.tx, txs.node.direct.sighash),
+            ("cpfp", txs.refunds.cpfpRefund.tx, txs.refunds.cpfpRefund.sighash),
         ]
-        if let direct = trio.directRefund {
+        if let direct = txs.refunds.directRefund {
             specs.append(("direct", direct.tx, direct.sighash))
         }
-        specs.append(("directFromCpfp", trio.directFromCpfpRefund.tx, trio.directFromCpfpRefund.sighash))
+        specs.append(("directFromCpfp", txs.refunds.directFromCpfpRefund.tx, txs.refunds.directFromCpfpRefund.sighash))
 
         let jobs = try await signRenewalJobs(specs, context: context)
 
@@ -269,35 +214,15 @@ extension SparkWallet {
     /// appends another zero-timelock node and resets the refunds.
     private func renewZeroTimelockNode(_ node: Spark_TreeNode) async throws {
         let context = try RenewalContext(node: node, signer: signer)
-        let nodeTx = Data(node.nodeTx)
-        let address = try BitcoinAddress.p2trAddress(
-            scriptPubKey: try Self.parseTxOutput(nodeTx, vout: 0).script,
-            network: config.network
-        )
-
-        let nodePair = try constructNodeTxPair(
-            parentTx: nodeTx, vout: 0, address: address,
-            sequence: 0,
-            directSequence: sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
-        )
-        // Zero-timelock node → no direct node context for the refunds.
-        let trio = try constructRefundTxTrio(
-            cpfpNodeTx: nodePair.cpfp.tx,
-            directNodeTx: nil,
-            vout: 0,
-            receivingPubkey: context.signingPublicKey,
-            network: config.networkString,
-            sequence: renewalInitialSequence,
-            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
-            feeSats: sparkDefaultFeeSats
+        let txs = try Self.zeroTimelockRenewalTransactions(
+            node: node, signingPublicKey: context.signingPublicKey, config: config
         )
 
         let specs: [(slot: String, tx: Data, sighash: Data)] = [
-            ("node", nodePair.cpfp.tx, nodePair.cpfp.sighash),
-            ("directNode", nodePair.direct.tx, nodePair.direct.sighash),
-            ("cpfp", trio.cpfpRefund.tx, trio.cpfpRefund.sighash),
-            ("directFromCpfp", trio.directFromCpfpRefund.tx, trio.directFromCpfpRefund.sighash),
+            ("node", txs.node.cpfp.tx, txs.node.cpfp.sighash),
+            ("directNode", txs.node.direct.tx, txs.node.direct.sighash),
+            ("cpfp", txs.refunds.cpfpRefund.tx, txs.refunds.cpfpRefund.sighash),
+            ("directFromCpfp", txs.refunds.directFromCpfpRefund.tx, txs.refunds.directFromCpfpRefund.sighash),
         ]
 
         let jobs = try await signRenewalJobs(specs, context: context)
@@ -312,6 +237,129 @@ extension SparkWallet {
         request.leafID = node.id
         request.renewNodeZeroTimelockSigningJob = renewJob
         try await submitRenewal(request, leafId: node.id)
+    }
+
+    // MARK: - Renewal transactions (what the operators rebuild, renew_leaf_handler.go)
+
+    struct RenewalTransactions {
+        /// The split node (node renewal only).
+        var split: NodeTxPairResult?
+        let node: NodeTxPairResult
+        let refunds: RefundTxTrioResult
+    }
+
+    /// The P2TR address a leaf's node transaction pays: the leaf's verifying key with the BIP-86
+    /// key-path tweak (`P2TRScriptFromPubKey(leaf.VerifyingPubkey)` on the operators).
+    static func leafNodeAddress(verifyingKey: Data, network: SparkNetwork) throws -> String {
+        let tweaked = try getTaprootPubkey(verifyingPubkey: verifyingKey)
+        guard tweaked.count == 33 else {
+            throw SparkError.invalidResponse("Unexpected taproot key length \(tweaked.count)")
+        }
+        return try BitcoinAddress.p2trAddress(scriptPubKey: Data([0x51, 0x20]) + tweaked.dropFirst(), network: network)
+    }
+
+    /// Refund renewal: a new node transaction spending the parent's output `node.vout` at the
+    /// node timelock minus 100, paying the leaf's node address, and fresh refunds at 2000.
+    static func refundRenewalTransactions(
+        node: Spark_TreeNode,
+        parent: Spark_TreeNode,
+        signingPublicKey: Data,
+        config: SparkConfig
+    ) throws -> RenewalTransactions {
+        let nodeSequence = try parseSequenceFromRawTx(Data(node.nodeTx))
+        let bit30 = nodeSequence & (1 << 30)
+        let nodeTimelock = nodeSequence & 0xFFFF
+        guard nodeTimelock >= sparkTimeLockInterval else {
+            throw SparkError.leafTimelockExhausted("Node timelock \(nodeTimelock) too low for refund renewal")
+        }
+        let newNodeSequence = bit30 | (nodeTimelock - sparkTimeLockInterval)
+        let nodePair = try constructNodeTxPair(
+            parentTx: Data(parent.nodeTx), vout: node.vout,
+            address: try leafNodeAddress(verifyingKey: Data(node.verifyingPublicKey), network: config.network),
+            sequence: newNodeSequence,
+            directSequence: newNodeSequence + sparkDirectTimelockOffset,
+            feeSats: sparkDefaultFeeSats
+        )
+        return RenewalTransactions(
+            split: nil,
+            node: nodePair,
+            refunds: try initialRefunds(nodePair: nodePair, signingPublicKey: signingPublicKey, config: config)
+        )
+    }
+
+    /// Node renewal: a zero-timelock split node spending the parent's output `node.vout`, a new
+    /// node transaction at 2000 spending it, both paying the leaf's node address, and fresh
+    /// refunds at 2000.
+    static func nodeRenewalTransactions(
+        node: Spark_TreeNode,
+        parent: Spark_TreeNode,
+        signingPublicKey: Data,
+        config: SparkConfig
+    ) throws -> RenewalTransactions {
+        let address = try leafNodeAddress(verifyingKey: Data(node.verifyingPublicKey), network: config.network)
+        let splitPair = try constructNodeTxPair(
+            parentTx: Data(parent.nodeTx), vout: node.vout, address: address,
+            sequence: 0,
+            directSequence: sparkDirectTimelockOffset,
+            feeSats: sparkDefaultFeeSats
+        )
+        let nodePair = try constructNodeTxPair(
+            parentTx: splitPair.cpfp.tx, vout: 0, address: address,
+            sequence: renewalInitialSequence,
+            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
+            feeSats: sparkDefaultFeeSats
+        )
+        return RenewalTransactions(
+            split: splitPair,
+            node: nodePair,
+            refunds: try initialRefunds(nodePair: nodePair, signingPublicKey: signingPublicKey, config: config)
+        )
+    }
+
+    /// Zero-timelock renewal: another zero-timelock node spending the leaf's own node
+    /// transaction (output 0), and fresh refunds at 2000 without a direct refund.
+    static func zeroTimelockRenewalTransactions(
+        node: Spark_TreeNode,
+        signingPublicKey: Data,
+        config: SparkConfig
+    ) throws -> RenewalTransactions {
+        let nodePair = try constructNodeTxPair(
+            parentTx: Data(node.nodeTx), vout: 0,
+            address: try leafNodeAddress(verifyingKey: Data(node.verifyingPublicKey), network: config.network),
+            sequence: 0,
+            directSequence: sparkDirectTimelockOffset,
+            feeSats: sparkDefaultFeeSats
+        )
+        // Zero-timelock node → no direct node context for the refunds.
+        let refunds = try constructRefundTxTrio(
+            cpfpNodeTx: nodePair.cpfp.tx,
+            directNodeTx: nil,
+            vout: 0,
+            receivingPubkey: signingPublicKey,
+            network: config.networkString,
+            sequence: renewalInitialSequence,
+            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
+            feeSats: sparkDefaultFeeSats
+        )
+        return RenewalTransactions(split: nil, node: nodePair, refunds: refunds)
+    }
+
+    /// Refunds at the initial timelock (2000) spending a renewed node pair.
+    private static func initialRefunds(
+        nodePair: NodeTxPairResult,
+        signingPublicKey: Data,
+        config: SparkConfig
+    ) throws -> RefundTxTrioResult {
+        try constructRefundTxTrio(
+            cpfpNodeTx: nodePair.cpfp.tx,
+            directNodeTx: nodePair.direct.tx,
+            vout: 0,
+            receivingPubkey: signingPublicKey,
+            network: config.networkString,
+            sequence: renewalInitialSequence,
+            directSequence: renewalInitialSequence + sparkDirectTimelockOffset,
+            feeSats: sparkDefaultFeeSats
+        )
     }
 
     // MARK: - Shared plumbing
