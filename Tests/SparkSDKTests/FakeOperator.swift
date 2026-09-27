@@ -39,6 +39,8 @@ actor FakeOperatorState {
     private(set) var calls: [String] = []
     /// Lightning sends `query_htlc` reports as held, matched by transfer id.
     private(set) var heldSends: [Spark_PreimageRequestWithTransfer] = []
+    /// Transfers `query_transfers_by_id` knows, matched by id.
+    private(set) var knownTransfers: [Spark_Transfer] = []
     /// What every `initiate_preimage_swap_v3` fails with.
     private(set) var preimageSwapError = RPCError(code: .internalError, message: "preimage swap failed")
     /// The `x-idempotency-key` of every `initiate_preimage_swap_v3`, in order.
@@ -62,6 +64,10 @@ actor FakeOperatorState {
 
     func setSubscription(_ subscription: Subscription) {
         self.subscription = subscription
+    }
+
+    func know(_ transfer: Spark_Transfer) {
+        knownTransfers.append(transfer)
     }
 
     func hold(_ send: Spark_PreimageRequestWithTransfer) {
@@ -186,6 +192,20 @@ struct FakeOperator: RegistrableRPCService {
                 return await Self.reject(state)
             }
             return StreamingServerResponse(single: ServerResponse(message: Spark_QueryTransfersResponse()))
+        }
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.query_transfers_by_id.descriptor,
+            deserializer: ProtobufDeserializer<Spark_QueryTransfersByIdRequest>(),
+            serializer: ProtobufSerializer<Spark_QueryTransfersResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("query_transfers_by_id", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            let ids = Set(try await ServerRequest(stream: request).message.transferIds.map { $0.lowercased() })
+            var response = Spark_QueryTransfersResponse()
+            response.transfers = await state.knownTransfers.filter { ids.contains($0.id) }
+            response.offset = -1
+            return StreamingServerResponse(single: ServerResponse(message: response))
         }
         router.registerHandler(
             forMethod: Spark_SparkService.Method.initiate_preimage_swap_v3.descriptor,

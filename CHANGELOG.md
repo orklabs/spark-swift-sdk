@@ -37,6 +37,9 @@ migration note.
   renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Changed
+- `getTransfer(id:)` and the SDK's own lookups by transfer id use the operators' by-id query
+  (`query_transfers_by_id`), as the reference SDK does since 0.9.0, instead of filtering
+  `query_all_transfers`. It returns the whole transfer and takes the id in any case.
 - The protos are re-vendored from `buildonspark/spark` at `0b3a32a` (2026-08-24; they dated from
   May) and the Swift code regenerated. They carry the event-stream heartbeat, typed leaf
   signatures, transfer receivers, `query_transfers_by_id`, watchtower tree-node statuses and

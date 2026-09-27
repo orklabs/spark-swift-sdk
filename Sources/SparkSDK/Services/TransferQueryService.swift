@@ -6,11 +6,7 @@ extension SparkWallet {
 
     /// Get a single transfer by its ID.
     public func getTransfer(id: String) async throws -> SparkTransfer {
-        let transfers = try await getTransfers(ids: [id])
-        guard let transfer = transfers.first else {
-            throw SparkError.invalidResponse("Transfer not found: \(id)")
-        }
-        return transfer
+        SparkTransfer(try await queryTransferById(id))
     }
 
     /// Get transfers with optional filters.

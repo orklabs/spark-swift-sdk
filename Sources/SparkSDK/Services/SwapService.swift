@@ -359,20 +359,22 @@ extension SparkWallet {
     }
 
     /// Query a specific transfer by its ID
+    /// A transfer this wallet sent or receives, by id, from the operators' by-id lookup
+    /// (`query_transfers_by_id`, the reference SDK's `queryTransfer`): the whole transfer, every
+    /// receiver's leaves included.
     func queryTransferById(_ transferId: String) async throws -> Spark_Transfer {
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
 
-        var filter = Spark_TransferFilter()
-        filter.participant = .senderOrReceiverIdentityPublicKey(signer.identityPublicKey)
-        filter.transferIds = [transferId]
-        filter.network = config.networkProto
+        var request = Spark_QueryTransfersByIdRequest()
+        request.transferIds = [transferId]
+        request.network = config.networkProto
 
-        let response = try await client.query_all_transfers(
-            request: ClientRequest(message: filter, metadata: metadata)
+        let response = try await client.query_transfers_by_id(
+            request: ClientRequest(message: request, metadata: metadata)
         )
 
-        guard let transfer = response.transfers.first else {
+        guard let transfer = response.transfers.first(where: { $0.id.lowercased() == transferId.lowercased() }) else {
             throw SparkError.invalidResponse("Transfer not found: \(transferId)")
         }
         return transfer

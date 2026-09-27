@@ -162,4 +162,21 @@ struct ClaimVerificationTests {
         #expect(TransferLeafVerifier.isReceiverLegComplete(whole, receiverIdentityPublicKey: receiver.identityPublicKey))
         #expect(!TransferLeafVerifier.isReceiverLegComplete(single, receiverIdentityPublicKey: receiver.identityPublicKey))
     }
+
+    @Test("A transfer is looked up by id with the operators' by-id query", .timeLimit(.minutes(1)))
+    func lookupById() async throws {
+        let state = FakeOperatorState { _ in false }
+        var known = Spark_Transfer()
+        known.id = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+        known.totalValue = 42
+        known.status = .completed
+        await state.know(known)
+        try await withFakeOperator(state) { wallet in
+            let transfer = try await wallet.getTransfer(id: known.id.uppercased())
+            #expect(transfer.id == known.id)
+            #expect(transfer.totalValueSats == 42)
+            await #expect(throws: SparkError.self) { _ = try await wallet.getTransfer(id: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c") }
+        }
+        #expect(await state.methods == ["query_transfers_by_id", "query_transfers_by_id"])
+    }
 }
