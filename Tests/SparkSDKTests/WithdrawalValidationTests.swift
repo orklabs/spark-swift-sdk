@@ -219,7 +219,11 @@ struct SpendableLeafTests {
     func leafFlags() {
         #expect(!leaf("a", sats: 1, timelock: 0).isSpendable)
         #expect(!leaf("b", sats: 1, timelock: 100).isSpendable)
-        #expect(leaf("c", sats: 1, timelock: 101).isSpendable)
+        // The floor applies to the timelock rounded down to the interval: 101…199 count as 100.
+        #expect(!leaf("c", sats: 1, timelock: 101).isSpendable)
+        #expect(!leaf("c", sats: 1, timelock: 199).isSpendable)
+        #expect(leaf("c", sats: 1, timelock: 200).isSpendable)
+        #expect(leaf("c", sats: 1, timelock: 740).isSpendable)
         #expect(leaf("d", sats: 1, timelock: 2000).isSpendable)
         #expect(!leaf("a", sats: 1, timelock: 99).isRenewable)
         #expect(leaf("b", sats: 1, timelock: 100).isRenewable)
@@ -231,11 +235,12 @@ struct SpendableLeafTests {
         #expect(!garbage.isSpendable)
         #expect(!garbage.isRenewable)
         // The public flag and the internal selection filter agree.
-        let leaves = [leaf("x", sats: 1, timelock: 0), leaf("y", sats: 1, timelock: 100), leaf("z", sats: 1, timelock: 150)]
+        let leaves = [leaf("x", sats: 1, timelock: 0), leaf("y", sats: 1, timelock: 100), leaf("z", sats: 1, timelock: 150),
+                      leaf("w", sats: 1, timelock: 250)]
         let viaFlag = leaves.filter(\.isSpendable).map(\.id)
         let viaFilter = SparkWallet.movableLeaves(leaves).map(\.id)
         #expect(viaFilter == viaFlag)
-        #expect(viaFlag == ["z"])
+        #expect(viaFlag == ["w"])
     }
 
     @Test("Renewal candidates: [100, 200) renewable, below 100 stuck, 200 and above healthy")

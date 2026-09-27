@@ -184,32 +184,48 @@ extension SparkWallet {
         return Data(node.directTx)
     }
 
-    /// Compute next cpfp and direct sequences from a refund tx.
+    /// A refund timelock rounded down to the 100-block interval. The operators validate every
+    /// successor refund against the rounded value (`RoundDownToTimelockInterval`), so a leaf whose
+    /// timelock is not a multiple of 100 — 740, left by older SDKs — counts as 700.
+    static func roundedTimelock(_ timelock: UInt32) -> UInt32 {
+        timelock - timelock % sparkTimeLockInterval
+    }
+
+    /// Whether a leaf with this refund timelock can be transferred, swapped or exited without a
+    /// renewal first. The operators require the rounded timelock to stay above 100 so the next
+    /// refund does not reach zero (`ValidateRenewalTimelockFloor`): a refund timelock of at least
+    /// 200. Leaves at 100…199 need renewing; below 100 they cannot be renewed either.
+    static func isTransferableRefundTimelock(_ timelock: UInt32) -> Bool {
+        roundedTimelock(timelock) > sparkTimeLockInterval
+    }
+
+    /// The next CPFP and direct refund sequences for a transfer, swap or cooperative exit: the
+    /// current refund timelock rounded down to the interval, minus 100, and the direct refunds 50
+    /// above that — exactly what the operators expect (`ValidateSequence`), and what the
+    /// reference SDK builds (`createDecrementedTimelockRefundTxs` with `enforceTimelocks`). A raw
+    /// decrement produced 640 for a leaf at 740 where the operators require 600. Bit 30 is kept.
+    /// Lightning HTLC refunds use `htlcSequences` instead: they are not rounded.
     static func computeNextSequences(from refundTxData: Data) throws -> (cpfp: UInt32, direct: UInt32) {
         let rawSequence = try parseSequenceFromRawTx(refundTxData)
         let currentTimelock = rawSequence & 0xFFFF
         let bit30 = rawSequence & (1 << 30)
-        // A leaf at the timelock floor cannot be moved again until it is
-        // renewed by the operators. This used to underflow UInt32 and TRAP —
-        // crashing the caller instead of failing the one leaf's operation.
-        // Strictly greater: the coordinator rejects a decrement that reaches
-        // zero ("too small to subtract TimeLockInterval without reaching zero").
-        guard currentTimelock > sparkTimeLockInterval else {
+        // Checked before subtracting: an unchecked decrement used to underflow and trap.
+        guard isTransferableRefundTimelock(currentTimelock) else {
             throw SparkError.leafTimelockExhausted(
-                "Leaf timelock exhausted (\(currentTimelock) <= \(sparkTimeLockInterval)); needs renewal before it can move"
+                "Leaf timelock exhausted (\(currentTimelock), rounded \(roundedTimelock(currentTimelock)) <= "
+                    + "\(sparkTimeLockInterval)); needs renewal before it can move"
             )
         }
-        let nextTimelock = currentTimelock - sparkTimeLockInterval
+        let nextTimelock = roundedTimelock(currentTimelock) - sparkTimeLockInterval
         return (bit30 | nextTimelock, bit30 | (nextTimelock + sparkDirectTimelockOffset))
     }
 
-    /// Whether the leaf's refund timelock still has room to decrement — i.e.
-    /// the leaf can be transferred/swapped without operator renewal. Strictly
-    /// greater: the coordinator rejects decrements that reach zero.
+    /// Whether the leaf can be transferred, swapped or exited without an operator renewal
+    /// (`isTransferableRefundTimelock` on its refund transaction).
     static func timelockCanDecrement(_ refundTxData: Data) -> Bool {
         // An unparseable refund tx is treated as exhausted: the leaf is skipped rather than
         // crashing the caller or being handed to the coordinator with a bogus sequence.
         guard let sequence = try? parseSequenceFromRawTx(refundTxData) else { return false }
-        return (sequence & 0xFFFF) > sparkTimeLockInterval
+        return isTransferableRefundTimelock(sequence & 0xFFFF)
     }
 }

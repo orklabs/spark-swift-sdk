@@ -359,13 +359,7 @@ extension SparkWallet {
             let directCommitments = htlcCommitments[i + selectedLeaves.count].signingNonceCommitments
             let directFromCpfpCommitments = htlcCommitments[i + 2 * selectedLeaves.count].signingNonceCommitments
 
-            let (cpfpSeq, _) = try Self.computeNextSequences(from: Data(node.refundTx))
-            let bit30 = cpfpSeq & (1 << 30)
-            let nextTimelock = cpfpSeq & 0xFFFF
-
-            // HTLC sequences (matching JS SDK getNextHTLCTransactionSequence)
-            let htlcNextSequence = bit30 | (nextTimelock + htlcTimelockOffset)
-            let htlcDirectSequence = bit30 | (nextTimelock + directHtlcTimelockOffset)
+            let (htlcNextSequence, htlcDirectSequence) = try Self.htlcSequences(from: Data(node.refundTx))
 
             // CPFP HTLC refund (no fee applied)
             let cpfpHtlc = try constructHtlcTransaction(
@@ -453,6 +447,25 @@ extension SparkWallet {
             ))
         }
         return swapCpfpJobs
+    }
+
+    /// Sequences of a Lightning send's HTLC refunds: the current refund timelock minus 100, plus
+    /// 70 for the CPFP HTLC and 85 for the direct ones — the reference SDK's
+    /// `getNextHTLCTransactionSequence`, and what the operators rebuild (refund sequence − 30 and
+    /// − 15, `lightning_handler.go`). Unlike transfer refunds these are NOT rounded down to the
+    /// interval. Spend paths only select leaves `isSpendable` allows, which keeps a leaf the
+    /// operators would refuse to let the receiver claim (rounded timelock at the floor) out.
+    static func htlcSequences(from refundTxData: Data) throws -> (cpfp: UInt32, direct: UInt32) {
+        let rawSequence = try parseSequenceFromRawTx(refundTxData)
+        let currentTimelock = rawSequence & 0xFFFF
+        guard currentTimelock > sparkTimeLockInterval else {
+            throw SparkError.leafTimelockExhausted(
+                "Leaf timelock exhausted (\(currentTimelock) <= \(sparkTimeLockInterval)); needs renewal before it can pay"
+            )
+        }
+        let nextTimelock = currentTimelock - sparkTimeLockInterval
+        let bit30 = rawSequence & (1 << 30)
+        return (bit30 | (nextTimelock + htlcTimelockOffset), bit30 | (nextTimelock + directHtlcTimelockOffset))
     }
 
     /// Get fee estimate for outbound lightning payment

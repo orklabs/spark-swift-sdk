@@ -18,6 +18,14 @@ migration note.
   transfer ids plus the transfers that could not be claimed, with their errors.
 
 ### Fixed
+- Leaves whose refund timelock is not a multiple of 100 can be spent again, and leaves at 101–199
+  blocks are no longer selected without a renewal. The next refund timelock was the current one
+  minus 100; the operators require the current one rounded down to the 100-block interval, minus
+  100 (a leaf at 740 needs 600, not 640), and refuse any leaf whose rounded timelock is 100 or
+  less. Such leaves counted as spendable but made every send, swap and cooperative exit that used
+  them fail — one of them failed a whole `withdrawAll`. `SparkLeaf.isSpendable` now means a
+  rounded refund timelock above 100 (at least 200). Lightning HTLC refunds keep their unrounded
+  offsets, which is how the operators rebuild them.
 - Leaves on a zero-timelock node can be sent and claimed again. Send and claim built a direct
   refund whenever the node carried a direct transaction, and the operators reject a direct refund
   for a zero node ("zero nodes must not have a direct refund tx") — the shape zero-timelock

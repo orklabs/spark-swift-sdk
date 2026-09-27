@@ -19,19 +19,20 @@ public struct SparkLeafRenewal: Sendable {
 }
 
 extension SparkLeaf {
-    /// Remaining refund-tx timelock in blocks. Below 200 the leaf should be renewed; at or
-    /// below 100 it cannot move; below 100 the coordinator will not renew it either (frozen).
+    /// Remaining refund-tx timelock in blocks. Below 200 the leaf must be renewed before it can
+    /// move; below 100 the coordinator will not renew it either (frozen).
     public var refundTimelockBlocks: UInt32 {
         // Unparseable refund tx → 0 ("exhausted"): never spent, renewal attempted and its
         // failure reported per leaf instead of crashing the caller.
         ((try? SparkWallet.parseSequenceFromRawTx(Data(node.refundTx))) ?? 0) & 0xFFFF
     }
 
-    /// Whether the leaf can be transferred, paid or exited right now: its refund timelock is
-    /// above the floor the coordinator enforces. Leaves in the renewable range just above the
-    /// floor are still spendable; `getSpendableLeaves()` renews them first.
+    /// Whether the leaf can be transferred, paid or exited right now without a renewal: its
+    /// refund timelock, rounded down to the 100-block interval, is above the floor the coordinator
+    /// enforces — at least 200. Leaves at 100…199 are renewable (`isRenewable`);
+    /// `getSpendableLeaves()` renews them first.
     public var isSpendable: Bool {
-        refundTimelockBlocks > sparkTimeLockInterval
+        SparkWallet.isTransferableRefundTimelock(refundTimelockBlocks)
     }
 
     /// Whether the coordinator will renew this leaf's timelocks (refund timelock in [100, 200)).
