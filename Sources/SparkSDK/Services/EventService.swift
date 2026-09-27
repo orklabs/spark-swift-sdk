@@ -3,12 +3,13 @@ import GRPCCore
 import SwiftProtobuf
 import Synchronization
 
-/// The wallet's running event streams, so that `close()` can stop them.
+/// The wallet's running event streams, so that `close()` can stop them and `start()` can accept
+/// new ones again.
 actor EventStreamRegistry {
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private var closed = false
 
-    /// Registers a stream's task; false once the wallet is closed.
+    /// Registers a stream's task; false while the wallet is closed.
     func register(_ id: UUID, _ task: Task<Void, Never>) -> Bool {
         guard !closed else { return false }
         tasks[id] = task
@@ -19,13 +20,18 @@ actor EventStreamRegistry {
         tasks[id] = nil
     }
 
-    /// Stops every running stream and refuses new ones.
+    /// Stops every running stream and refuses new ones until `reopen()`.
     func close() {
         closed = true
         for task in tasks.values {
             task.cancel()
         }
         tasks.removeAll()
+    }
+
+    /// Accepts new streams again after `close()`.
+    func reopen() {
+        closed = false
     }
 }
 
@@ -100,7 +106,7 @@ extension SparkWallet {
     /// - once the operator sends heartbeats, a subscription silent for 15 s — a connection that
     ///   died without closing, as after a network change — is dropped and resubscribed.
     ///
-    /// Throws only when the wallet is already closed.
+    /// Throws only while the wallet is closed: after `close()` and before the next `start()`.
     public func subscribeToEvents() async throws -> AsyncStream<SparkEvent> {
         try await subscribeToEvents(heartbeatTimeout: Self.eventStreamHeartbeatTimeout)
     }
@@ -115,7 +121,7 @@ extension SparkWallet {
         guard await eventStreams.register(id, task) else {
             task.cancel()
             continuation.finish()
-            throw SparkError.invalidArgument("the wallet is closed")
+            throw SparkError.invalidArgument("the wallet is closed; start() it before subscribing")
         }
         continuation.onTermination = { _ in
             task.cancel()

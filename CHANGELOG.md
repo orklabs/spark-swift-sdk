@@ -13,7 +13,13 @@ migration note.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+- `start()` accepts event streams again after `close()`. Since 0.3.0 `close()` ends the wallet's
+  event streams and refuses new ones, and nothing lifted that, so an app that cycles the wallet
+  around backgrounding as `close()` documents (`close()` in the background, `start()` then
+  `subscribeToEvents()` on return) got `SparkError.invalidArgument` from its second foreground on
+  and saw no events until it built a new `SparkWallet`. `close()` now refuses new streams only
+  until the next `start()`.
 
 ---
 

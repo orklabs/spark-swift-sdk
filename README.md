@@ -380,7 +380,9 @@ do {
 - All I/O methods are `async throws`.
 - The SDK requires no `MainActor` hops; call from any actor.
 - Long-lived gRPC connections are managed inside a private actor; `start()` opens them and
-  `close()` drains them.
+  `close()` drains them. `close()` also ends the wallet's event streams, and new ones are refused
+  until the next `start()`: an app that closes the wallet in the background calls `start()` and
+  then `subscribeToEvents()` when it returns.
 
 ## Security model
 

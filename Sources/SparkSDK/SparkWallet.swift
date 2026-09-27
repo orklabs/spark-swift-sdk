@@ -125,18 +125,21 @@ public final class SparkWallet: Sendable {
         return (connectionManager, authenticator, sspClient)
     }
 
-    /// Warm every operator's connection. `getClient` drives each client's connection loop itself
-    /// (and evicts the client when that loop ends), so a second `runConnections()` here would only
-    /// throw "already running"; callers that never `start()` get lazily-built clients on first use.
+    /// Accept event streams again after `close()`, and warm every operator's connection.
+    /// `getClient` drives each client's connection loop itself (and evicts the client when that
+    /// loop ends), so a second `runConnections()` here would only throw "already running"; callers
+    /// that never `start()` get lazily-built clients on first use.
     public func start() async {
+        await eventStreams.reopen()
         for address in config.signingOperatorAddresses {
             _ = try? await connectionManager.getClient(for: address)
         }
     }
 
-    /// Shut every operator connection down. The wallet stays usable: the next call after `close()`
-    /// builds fresh clients (that is how a host app cycles connections around backgrounding).
-    /// Stops the wallet's event streams and shuts its operator connections down.
+    /// Stop the wallet's event streams and shut every operator connection down. The wallet stays
+    /// usable: the next call after `close()` builds fresh clients, and the next `start()` accepts
+    /// event streams again. That is how a host app cycles connections around backgrounding:
+    /// `close()` in the background, then `start()` and `subscribeToEvents()` in the foreground.
     public func close() async {
         await eventStreams.close()
         await connectionManager.close()

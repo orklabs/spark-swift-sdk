@@ -123,7 +123,8 @@ struct EventStreamConnectionTests {
         #expect(await Array(state.methods.prefix(3)) == ["subscribe_to_events", "query_pending_transfers", "subscribe_to_events"])
     }
 
-    @Test("Closing the wallet ends its event streams and refuses new ones", .timeLimit(.minutes(1)))
+    @Test("Closing the wallet ends its event streams and refuses new ones until start()",
+          .timeLimit(.minutes(1)))
     func closeEndsStreams() async throws {
         let state = FakeOperatorState { _ in false }
         try await withFakeOperator(state) { wallet in
@@ -136,6 +137,27 @@ struct EventStreamConnectionTests {
             await wallet.close()
             while await iterator.next() != nil {}
             await #expect(throws: SparkError.self) { _ = try await wallet.subscribeToEvents() }
+        }
+    }
+
+    @Test("start() after close() accepts event streams again, as a host app cycles the wallet around backgrounding",
+          .timeLimit(.minutes(1)))
+    func startReopensStreams() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            var first = try await wallet.subscribeToEvents().makeAsyncIterator()
+            guard case .connected? = await first.next() else {
+                Issue.record("the first stream did not connect")
+                return
+            }
+            await wallet.close()
+            while await first.next() != nil {}
+            await wallet.start()
+            var second = try await wallet.subscribeToEvents().makeAsyncIterator()
+            guard case .connected? = await second.next() else {
+                Issue.record("the stream after start() did not connect")
+                return
+            }
         }
     }
 
