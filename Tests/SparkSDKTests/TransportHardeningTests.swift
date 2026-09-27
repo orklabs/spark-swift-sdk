@@ -118,6 +118,46 @@ struct TransportHardeningTests {
         #expect(GraphQLQueries.lightningSendFeeEstimate.contains("original_unit"))
     }
 
+    @Test("SSP requests are retried like the reference SDK's: 502/503/504 and lost connections, 1 s doubling to 10 s")
+    func sspRetries() async throws {
+        #expect((0...6).map(SspRetry.standard.delay) == [1, 2, 4, 8, 10, 10, 10].map { Duration.seconds($0) })
+        let instant = SspRetry(maxRetries: 5, baseDelay: .zero, maxDelay: .zero)
+        let url = try #require(URL(string: "https://ssp.example/graphql"))
+        func reply(_ status: Int) throws -> (Data, URLResponse) {
+            (Data(), try #require(HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)))
+        }
+
+        var attempts = 0
+        var (_, response) = try await instant.run {
+            attempts += 1
+            return try reply(attempts < 3 ? [503, 502][attempts - 1] : 200)
+        }
+        #expect(attempts == 3)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+
+        attempts = 0
+        (_, response) = try await instant.run {
+            attempts += 1
+            if attempts == 1 { throw URLError(.networkConnectionLost) }
+            return try reply(200)
+        }
+        #expect(attempts == 2)
+
+        // Out of retries, the last answer stands; other statuses and timeouts are not retried.
+        attempts = 0
+        (_, response) = try await instant.run { attempts += 1; return try reply(504) }
+        #expect(attempts == 6)
+        #expect((response as? HTTPURLResponse)?.statusCode == 504)
+        attempts = 0
+        (_, response) = try await instant.run { attempts += 1; return try reply(500) }
+        #expect(attempts == 1)
+        attempts = 0
+        await #expect(throws: URLError.self) {
+            _ = try await instant.run { attempts += 1; throw URLError(.timedOut) }
+        }
+        #expect(attempts == 1)
+    }
+
     @Test("An SSP auth rejection is recognised, other failures are not")
     func sspAuthFailureClassifier() {
         #expect(SspGraphQLClient.isAuthFailure(.graphqlError("HTTP 401")))

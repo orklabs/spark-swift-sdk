@@ -330,7 +330,7 @@ struct FakeOperator: RegistrableRPCService {
 }
 
 /// Runs `body` against a regtest wallet whose only operator is a `FakeOperator` on a local port.
-/// The wallet's SSP URL points at a closed local port, so any SSP call fails fast offline.
+/// The wallet's SSP URL cannot be sent to, so any SSP call fails fast offline.
 @discardableResult
 func withFakeOperator<T: Sendable>(
     _ state: FakeOperatorState,
@@ -353,7 +353,8 @@ func withFakeOperator<T: Sendable>(
             identifier: "0000000000000000000000000000000000000000000000000000000000000001",
             identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
         )],
-        sspURL: "http://127.0.0.1:1/graphql"
+        // A scheme URLSession cannot send: every SSP call fails at once, without retries.
+        sspURL: "unreachable://127.0.0.1/graphql"
     )
     let wallet = try SparkWallet(
         config: config,

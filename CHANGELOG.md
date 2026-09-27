@@ -64,6 +64,10 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- SSP requests are retried as in the reference SDK: up to 5 more attempts, 1 s doubling to 10 s,
+  on HTTP 502, 503 and 504 and on a lost or failed connection (not on a timeout or cancellation).
+  A single attempt failed fee quotes, invoices and Lightning payments on any transient SSP or
+  network hiccup.
 - Authentication is shared and retried as in the reference SDK. Concurrent calls each ran their
   own challenge — `getBalance` alone started three — and the transport retried `verify_challenge`
   with a challenge the operator may already have consumed, which fails as "challenge reused".

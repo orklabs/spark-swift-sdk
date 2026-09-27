@@ -67,12 +67,54 @@ final class SspGraphQLClient: Sendable {
     }
 }
 
+/// How SSP requests are retried: the reference SDK's fetch wrapper — up to 5 more attempts, 1 s
+/// doubling to 10 s between them, on HTTP 502, 503 and 504 and on a connection that failed, but
+/// not on a timeout or a cancellation. Mutations are retried too; the ones that move funds are
+/// keyed by the transfer they pay from, and the SSP answers a repeat with its first answer.
+struct SspRetry: Sendable {
+    var maxRetries = 5
+    var baseDelay: Duration = .seconds(1)
+    var maxDelay: Duration = .seconds(10)
+
+    static let standard = SspRetry()
+    static let retryableStatusCodes: Set<Int> = [502, 503, 504]
+    static let retryableErrors: Set<URLError.Code> = [
+        .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost,
+        .dnsLookupFailed, .resourceUnavailable, .badServerResponse, .secureConnectionFailed,
+    ]
+
+    func delay(afterAttempt attempt: Int) -> Duration {
+        min(baseDelay * (1 << min(attempt, 20)), maxDelay)
+    }
+
+    /// `send`, repeated per the policy. A retryable status on the last attempt is returned as is.
+    func run(_ send: () async throws -> (Data, URLResponse)) async throws -> (Data, URLResponse) {
+        var attempt = 0
+        while true {
+            do {
+                let (data, response) = try await send()
+                if let status = (response as? HTTPURLResponse)?.statusCode,
+                   Self.retryableStatusCodes.contains(status), attempt < maxRetries {
+                    try await Task.sleep(for: delay(afterAttempt: attempt))
+                    attempt += 1
+                    continue
+                }
+                return (data, response)
+            } catch let error as URLError where Self.retryableErrors.contains(error.code) && attempt < maxRetries {
+                try await Task.sleep(for: delay(afterAttempt: attempt))
+                attempt += 1
+            }
+        }
+    }
+}
+
 func executeGraphQL(
     session: URLSession,
     url: String,
     token: String?,
     query: String,
-    variables: [String: any Sendable]?
+    variables: [String: any Sendable]?,
+    retry: SspRetry = .standard
 ) async throws -> GraphQLResponse {
     guard let requestURL = URL(string: url) else {
         throw SparkError.graphqlError("Invalid URL: \(url)")
@@ -91,7 +133,7 @@ func executeGraphQL(
     }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await retry.run { try await session.data(for: request) }
 
     guard let httpResponse = response as? HTTPURLResponse,
           (200...299).contains(httpResponse.statusCode) else {
