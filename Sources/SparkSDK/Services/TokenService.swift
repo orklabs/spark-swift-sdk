@@ -31,7 +31,10 @@ extension SparkWallet {
             throw SparkError.insufficientTokenBalance(token: tokenIdentifier, need: "\(tokenAmount)", have: "0")
         }
 
-        let selected = try Self.selectTokenOutputs(outputs, amount: tokenAmount, strategy: strategy)
+        // Only available outputs no other send from this wallet has picked (see `TokenOutputLocks`).
+        let selected = try tokenOutputLocks.acquire(outputs) {
+            try Self.selectTokenOutputs($0, amount: tokenAmount, strategy: strategy)
+        }
 
         let tx = try buildTransferTokenTransaction(
             selectedOutputs: selected,
@@ -57,7 +60,7 @@ extension SparkWallet {
             let amount = decodeUInt128(output.output.tokenAmount)
             var entry = balancesByToken[tokenId] ?? (0, 0)
             entry.owned += amount
-            if !output.output.hasStatus || output.output.status == .available {
+            if TokenOutputLocks.isAvailable(output) {
                 entry.available += amount
             }
             balancesByToken[tokenId] = entry
@@ -257,7 +260,9 @@ extension SparkWallet {
             throw SparkError.insufficientTokenBalance(token: tokenIdentifier, need: "\(tokenAmount)", have: "0")
         }
 
-        let selected = try Self.selectTokenOutputs(outputs, amount: tokenAmount, strategy: strategy)
+        let selected = try tokenOutputLocks.acquire(outputs) {
+            try Self.selectTokenOutputs($0, amount: tokenAmount, strategy: strategy)
+        }
 
         let tx = try buildTransferTokenTransaction(
             selectedOutputs: selected,

@@ -15,6 +15,8 @@ public final class SparkWallet: Sendable {
     let eventStreams = EventStreamRegistry()
     /// The operators' clock, estimated from their answers (see `ServerClock`).
     let serverClock: ServerClock
+    /// Token outputs picked by sends that may still be in flight (see `TokenOutputLocks`).
+    let tokenOutputLocks = TokenOutputLocks()
 
     public var identityPublicKeyHex: String {
         signer.identityPublicKey.hexString

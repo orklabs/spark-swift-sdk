@@ -56,6 +56,9 @@ actor FakeOperatorState {
     private(set) var metadataRequestSizes: [Int] = []
     /// Whether `query_token_metadata` fails.
     private(set) var failsTokenMetadata = false
+    /// The outputs (`TokenOutputLocks.key`) each `start_transaction` spends, in order. Every
+    /// start fails, so nothing is spent.
+    private(set) var startedSpends: [[String]] = []
     /// Nodes `query_nodes` pages through by id, as the operators page an owner query.
     private(set) var nodes: [Spark_TreeNode] = []
     /// `(limit, offset)` of every `query_nodes` call.
@@ -143,6 +146,10 @@ actor FakeOperatorState {
         metadataRequestSizes.append(size)
     }
 
+    func recordStart(spending outputs: [String]) {
+        startedSpends.append(outputs)
+    }
+
     func know(_ transfer: Spark_Transfer) {
         knownTransfers.append(transfer)
     }
@@ -184,8 +191,23 @@ struct FakeOperator: RegistrableRPCService {
         registerTokenService(with: &router)
     }
 
-    /// Token outputs and metadata, with the operators' 500-identifier limit on metadata queries.
+    /// Token outputs and metadata, with the operators' 500-identifier limit on metadata queries,
+    /// and a `start_transaction` that records what it would spend and refuses.
     private func registerTokenService<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.start_transaction.descriptor,
+            deserializer: ProtobufDeserializer<SparkToken_StartTransactionRequest>(),
+            serializer: ProtobufSerializer<SparkToken_StartTransactionResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("start_transaction", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            let transaction = try await ServerRequest(stream: request).message.partialTokenTransaction
+            await state.recordStart(spending: transaction.transferInput.outputsToSpend.map {
+                "\($0.prevTokenTransactionHash.hexString):\($0.prevTokenTransactionVout)"
+            })
+            return StreamingServerResponse(error: RPCError(code: .failedPrecondition, message: "the fake operator starts nothing"))
+        }
         router.registerHandler(
             forMethod: SparkToken_SparkTokenService.Method.query_token_outputs.descriptor,
             deserializer: ProtobufDeserializer<SparkToken_QueryTokenOutputsRequest>(),

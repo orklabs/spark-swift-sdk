@@ -1015,6 +1015,47 @@ struct TokenIntegrationTests {
         print("\nFull token lifecycle complete!")
     }
 
+    @Test("Two concurrent sends from one wallet both land, on different outputs")
+    func concurrentTokenSends() async throws {
+        let walletA = try await makeWallet(walletAMnemonic)
+        defer { Task { await walletA.close() } }
+        let walletB = try await makeWallet(walletBMnemonic)
+        defer { Task { await walletB.close() } }
+
+        let issued = try await walletA.queryTokenMetadata(issuerPublicKeys: [walletA.signer.identityPublicKey])
+        let token = try #require(issued.first, "wallet A has issued no token; the lifecycle test creates one").tokenIdentifier
+        let rawToken = try decodeBech32mTokenIdentifier(token, network: walletA.config.network).tokenIdentifier
+        var available = try await walletA.fetchTokenOutputs(tokenIdentifiers: [rawToken]).filter(TokenOutputLocks.isAvailable)
+        if available.count < 2 {
+            for _ in available.count..<2 {
+                _ = try await walletA.mintTokens(tokenIdentifier: token, tokenAmount: 10)
+            }
+            try await Task.sleep(for: .seconds(5))
+            available = try await walletA.fetchTokenOutputs(tokenIdentifiers: [rawToken]).filter(TokenOutputLocks.isAvailable)
+        }
+        // The smallest output's amount: each send then spends a single output, and without
+        // locks both would pick the same one and the operators would refuse one as pre-empted.
+        let amount = try #require(available.map { decodeUInt128($0.output.tokenAmount) }.min())
+        let balanceB = { (try await walletB.getTokenBalances()).first { $0.tokenMetadata.tokenIdentifier == token }?.ownedBalance ?? 0 }
+        let before = try await balanceB()
+
+        let addressB = walletB.getSparkAddress()
+        async let first = walletA.transferTokens(tokenIdentifier: token, tokenAmount: amount, receiverSparkAddress: addressB)
+        async let second = walletA.transferTokens(tokenIdentifier: token, tokenAmount: amount, receiverSparkAddress: addressB)
+        let hashes = try await [first, second]
+        print("Concurrent sends of \(amount): \(hashes)")
+        #expect(Set(hashes).count == 2)
+
+        try await Task.sleep(for: .seconds(5))
+        #expect(try await balanceB() == before + 2 * amount)
+
+        // Back to A.
+        let addressA = walletA.getSparkAddress()
+        _ = try await walletB.transferTokens(tokenIdentifier: token, tokenAmount: 2 * amount, receiverSparkAddress: addressA)
+        try await Task.sleep(for: .seconds(5))
+        #expect(try await balanceB() == before)
+    }
+
     @Test("Should query token outputs")
     func queryTokenOutputs() async throws {
         let wallet = try await makeWallet(walletAMnemonic)

@@ -75,6 +75,13 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Token sends (`transferTokens`, `burnTokens`) no longer collide. A send could pick any output the
+  operators returned. That included outputs of a signed transaction that had not finalized
+  (PENDING_OUTBOUND), which the operators refuse to spend again. Two concurrent sends from one
+  wallet picked the same outputs, and one of them failed (seen on mainnet as INTERNAL "Something
+  went wrong."). As in the reference SDK, a send now picks only AVAILABLE outputs, and
+  locks the ones it picks for 30 s, or until the operators report them pending. A failed send
+  keeps its lock, since the operators may already hold its transaction.
 - Anyone can send a wallet tokens, and unwanted ones could break its balance. Token metadata was
   asked for in one query, and the operators refuse more than 500 tokens per query, so
   `getTokenBalances()` failed for a wallet holding more than 500 kinds of token. It now asks 500
