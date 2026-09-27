@@ -75,6 +75,10 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `createToken` checks the name and ticker as the operators and the reference SDK do. Names
+  must be 3–20 UTF-8 bytes and tickers 3–6, both in Unicode normalization form C. It accepted 1–2
+  bytes and did not check normalization. The operators refused those tokens with only INTERNAL
+  "Something went wrong."; the SDK now says which rule failed.
 - Token sends (`transferTokens`, `burnTokens`) no longer collide. A send could pick any output the
   operators returned. That included outputs of a signed transaction that had not finalized
   (PENDING_OUTBOUND), which the operators refuse to spend again. Two concurrent sends from one

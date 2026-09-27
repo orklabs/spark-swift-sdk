@@ -148,6 +148,8 @@ extension SparkWallet {
     // MARK: - Token Issuance
 
     /// Create a new token on Spark. The caller's identity key becomes the issuer.
+    ///
+    /// The parameters are checked as the operators check them (`validateTokenParameters`).
     public func createToken(
         tokenName: String,
         tokenTicker: String,
@@ -156,22 +158,9 @@ extension SparkWallet {
         isFreezable: Bool,
         extraMetadata: Data? = nil
     ) async throws -> TokenCreationResult {
-        let nameBytes = Data(tokenName.utf8)
-        guard !nameBytes.isEmpty && nameBytes.count <= 20 else {
-            throw SparkError.tokenValidationFailed("Token name must be 1-20 UTF-8 bytes")
-        }
-        let tickerBytes = Data(tokenTicker.utf8)
-        guard !tickerBytes.isEmpty && tickerBytes.count <= 6 else {
-            throw SparkError.tokenValidationFailed("Token ticker must be 1-6 UTF-8 bytes")
-        }
-        guard decimals <= 255 else {
-            throw SparkError.tokenValidationFailed("Decimals must be <= 255")
-        }
-        if let extra = extraMetadata {
-            guard extra.count <= 1024 else {
-                throw SparkError.tokenValidationFailed("Extra metadata must be <= 1024 bytes")
-            }
-        }
+        try Self.validateTokenParameters(
+            tokenName: tokenName, tokenTicker: tokenTicker, decimals: decimals, extraMetadata: extraMetadata
+        )
 
         let issuerPubKey = signer.identityPublicKey
 
@@ -207,6 +196,38 @@ extension SparkWallet {
         }
 
         return TokenCreationResult(transactionHash: txHash, tokenIdentifier: bech32TokenId)
+    }
+
+    /// The operators' rules for a new token (`TokenMetadata.ValidatePartial`), also the reference
+    /// SDK's: the name 3–20 and the ticker 3–6 UTF-8 bytes, both in Unicode normalization form C;
+    /// decimals up to 255; extra metadata up to 1024 bytes. The operators refuse a token that
+    /// breaks them with INTERNAL, which reaches the wallet as "Something went wrong.", so each rule
+    /// is checked here to say which one.
+    static func validateTokenParameters(
+        tokenName: String,
+        tokenTicker: String,
+        decimals: UInt32,
+        extraMetadata: Data?
+    ) throws {
+        // Compared as bytes: String equality treats canonically equivalent strings as equal.
+        guard Array(tokenName.utf8) == Array(tokenName.precomposedStringWithCanonicalMapping.utf8) else {
+            throw SparkError.tokenValidationFailed("Token name must be NFC-normalized UTF-8")
+        }
+        guard Array(tokenTicker.utf8) == Array(tokenTicker.precomposedStringWithCanonicalMapping.utf8) else {
+            throw SparkError.tokenValidationFailed("Token ticker must be NFC-normalized UTF-8")
+        }
+        guard (3...20).contains(tokenName.utf8.count) else {
+            throw SparkError.tokenValidationFailed("Token name must be 3-20 UTF-8 bytes, not \(tokenName.utf8.count)")
+        }
+        guard (3...6).contains(tokenTicker.utf8.count) else {
+            throw SparkError.tokenValidationFailed("Token ticker must be 3-6 UTF-8 bytes, not \(tokenTicker.utf8.count)")
+        }
+        guard decimals <= 255 else {
+            throw SparkError.tokenValidationFailed("Decimals must be <= 255")
+        }
+        if let extra = extraMetadata, extra.count > 1024 {
+            throw SparkError.tokenValidationFailed("Extra metadata must be <= 1024 bytes")
+        }
     }
 
     /// Mint additional tokens for an existing token. Caller must be the token issuer.

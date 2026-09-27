@@ -477,3 +477,44 @@ struct TokenBalanceTests {
         }
     }
 }
+
+/// `createToken`'s checks, ported from the reference SDK's `token-create.test.ts`, with the
+/// operators' NFC rule (`TokenMetadata.ValidatePartial`).
+@Suite("Token creation parameters")
+struct TokenCreationParameterTests {
+    static func validate(_ name: String, _ ticker: String, decimals: UInt32 = 0, extra: Data? = nil) throws {
+        try SparkWallet.validateTokenParameters(tokenName: name, tokenTicker: ticker, decimals: decimals, extraMetadata: extra)
+    }
+
+    @Test("Accepted", arguments: [
+        ("abc", "AAA"),                   // shortest name
+        ("12345678901234567890", "AAA"),  // longest name
+        ("Token", "ABC"),                 // shortest ticker
+        ("Token", "ABCDEF"),              // longest ticker
+        ("ABCDEFGHIJKLMNOPQ", "AAA"),
+        ("Tok🚀n", "TOK"),                // 8 bytes: the rocket is 4
+        ("Caf\u{E9}", "\u{C9}CU"),        // precomposed é and É: NFC
+    ])
+    func accepted(name: String, ticker: String) throws {
+        try Self.validate(name, ticker)
+    }
+
+    @Test("Refused", arguments: [
+        ("ab", "AAA"),                    // name too short
+        ("123456789012345678901", "AAA"), // name too long
+        ("Token", "AB"),                  // ticker too short
+        ("Token", "ABCDEFG"),             // ticker too long
+        ("Cafe\u{301}", "TOK"),           // e + combining acute: not NFC
+        ("Token", "E\u{301}CU"),          // ticker not NFC
+    ])
+    func refused(name: String, ticker: String) {
+        #expect(throws: SparkError.self) { try Self.validate(name, ticker) }
+    }
+
+    @Test("Decimals up to 255 and extra metadata up to 1024 bytes")
+    func decimalsAndExtraMetadata() throws {
+        try Self.validate("Token", "TOK", decimals: 255, extra: Data(count: 1024))
+        #expect(throws: SparkError.self) { try Self.validate("Token", "TOK", decimals: 256) }
+        #expect(throws: SparkError.self) { try Self.validate("Token", "TOK", extra: Data(count: 1025)) }
+    }
+}
