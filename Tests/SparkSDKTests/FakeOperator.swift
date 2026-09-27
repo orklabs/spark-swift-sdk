@@ -293,29 +293,32 @@ func withFakeOperator<T: Sendable>(
         address: .ipv4(host: "127.0.0.1", port: 0),
         transportSecurity: .plaintext
     )
-    return try await withGRPCServer(transport: transport, services: [FakeOperator(state: state)]) { _ in
-        let port = try #require(try await transport.listeningAddress.ipv4?.port)
-        let config = SparkConfig(
-            network: .regtest,
-            signingOperators: [SigningOperatorConfig(
-                address: "http://127.0.0.1:\(port)",
-                identifier: "0000000000000000000000000000000000000000000000000000000000000001",
-                identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
-            )],
-            sspURL: "http://127.0.0.1:1/graphql"
-        )
-        let wallet = try SparkWallet(
-            config: config,
-            mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-            account: 0
-        )
-        do {
-            let result = try await body(wallet)
-            await wallet.close()
-            return result
-        } catch {
-            await wallet.close()
-            throw error
-        }
+    let server = GRPCServer(transport: transport, services: [FakeOperator(state: state)])
+    // Stopped abruptly rather than gracefully: a handler still writing to a stream the client has
+    // reset can hold a graceful shutdown open indefinitely, and nothing waits on the server.
+    let serving = Task { try await server.serve() }
+    defer { serving.cancel() }
+    let port = try #require(try await transport.listeningAddress.ipv4?.port)
+    let config = SparkConfig(
+        network: .regtest,
+        signingOperators: [SigningOperatorConfig(
+            address: "http://127.0.0.1:\(port)",
+            identifier: "0000000000000000000000000000000000000000000000000000000000000001",
+            identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
+        )],
+        sspURL: "http://127.0.0.1:1/graphql"
+    )
+    let wallet = try SparkWallet(
+        config: config,
+        mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        account: 0
+    )
+    do {
+        let result = try await body(wallet)
+        await wallet.close()
+        return result
+    } catch {
+        await wallet.close()
+        throw error
     }
 }
