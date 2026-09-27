@@ -61,6 +61,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- The event stream notices a dead connection. After a network change a subscription can stay
+  open without delivering anything, so payments went unseen until the app resubscribed. The
+  operators now send a heartbeat every 5 s; as in the reference SDK, once a subscription has sent
+  one, 15 s of silence (outside handling an event) drops it and the stream resubscribes, while a
+  coordinator that sends no heartbeats is never timed out.
 - Fetching a deposit transaction from the block explorer no longer traps on a malformed txid or a
   reply that is not UTF-8: the txid must be 64 hex characters (any case) and the reply hex, or
   the call throws.

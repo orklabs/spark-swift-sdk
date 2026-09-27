@@ -18,7 +18,18 @@ actor FakeOperatorState {
         case afterHeaders
     }
 
+    /// How the event subscription behaves after its `connected` event.
+    enum Subscription: Sendable {
+        /// The stream ends.
+        case end
+        /// One heartbeat, then 3 s of silence (the local server waits for it before stopping).
+        case heartbeatThenSilence
+        /// 3 s of silence, without heartbeats.
+        case silence
+    }
+
     let rejection: Rejection
+    private(set) var subscription: Subscription = .end
     /// What `generate_deposit_address` and `generate_static_deposit_address` hand out.
     let depositAddress: Spark_Address
     private let rejects: @Sendable (_ token: String) -> Bool
@@ -47,6 +58,10 @@ actor FakeOperatorState {
         let token = "session-\(issuedTokens.count + 1)"
         issuedTokens.append(token)
         return token
+    }
+
+    func setSubscription(_ subscription: Subscription) {
+        self.subscription = subscription
     }
 
     func hold(_ send: Spark_PreimageRequestWithTransfer) {
@@ -193,10 +208,19 @@ struct FakeOperator: RegistrableRPCService {
             guard await state.admit("subscribe_to_events", authorization: Self.authorization(request.metadata)) else {
                 return await Self.reject(state)
             }
+            let subscription = await state.subscription
             return StreamingServerResponse { writer in
                 var event = Spark_SubscribeToEventsResponse()
                 event.connected = Spark_ConnectedEvent()
                 try await writer.write(event)
+                if subscription == .heartbeatThenSilence {
+                    var heartbeat = Spark_SubscribeToEventsResponse()
+                    heartbeat.heartbeat = Spark_HeartbeatEvent()
+                    try await writer.write(heartbeat)
+                }
+                if subscription != .end {
+                    try await Task.sleep(for: .seconds(3))
+                }
                 return [:]
             }
         }

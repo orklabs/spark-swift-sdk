@@ -585,6 +585,25 @@ extension HardeningIntegrationTests {
         }
     }
 
+    @Test("The operators' heartbeats keep a subscription alive; one silent past the timeout is resubscribed",
+          .timeLimit(.minutes(3)))
+    func eventStreamHeartbeats() async throws {
+        let wallet = try await makeWallet(TestConfig.walletBMnemonic)
+        defer { Task { await wallet.close() } }
+        func reconnects(timeout: Duration, listen: Duration) async throws -> [String] {
+            let events = try await EventStreamConnectionTests.events(
+                try await wallet.subscribeToEvents(heartbeatTimeout: timeout), for: listen
+            )
+            return events.compactMap { if case .reconnecting(_, _, let reason) = $0 { reason } else { nil } }
+        }
+        // Heartbeats every 5 s: an 8 s allowance is never exceeded.
+        #expect(try await reconnects(timeout: .seconds(8), listen: .seconds(30)).isEmpty)
+        // A 3 s allowance is exceeded between two heartbeats.
+        let tight = try await reconnects(timeout: .seconds(3), listen: .seconds(20))
+        #expect(tight.contains { $0.contains("heartbeat") })
+        print("with a 3 s allowance the stream was resubscribed \(tight.count) time(s)")
+    }
+
     @Test("A payment is reported to its receiver, and the sender's swap counter-transfer is not reported as received",
           .timeLimit(.minutes(5)))
     func eventsForSwappedSend() async throws {

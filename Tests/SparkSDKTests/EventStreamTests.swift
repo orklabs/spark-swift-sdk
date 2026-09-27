@@ -138,4 +138,72 @@ struct EventStreamConnectionTests {
             await #expect(throws: SparkError.self) { _ = try await wallet.subscribeToEvents() }
         }
     }
+
+    /// Every event a subscription yields within `duration`.
+    static func events(_ stream: AsyncStream<SparkEvent>, for duration: Duration) async throws -> [SparkEvent] {
+        let log = EventLog()
+        let reader = Task {
+            for await event in stream {
+                await log.append(event)
+            }
+        }
+        try await Task.sleep(for: duration)
+        reader.cancel()
+        return await log.events
+    }
+
+    @Test("A subscription that goes silent after sending heartbeats is dropped and resubscribed",
+          .timeLimit(.minutes(1)))
+    func heartbeatSilence() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setSubscription(.heartbeatThenSilence)
+        let events = try await withFakeOperator(state) { wallet in
+            await Self.events(try await wallet.subscribeToEvents(heartbeatTimeout: .milliseconds(300)), untilConnection: 2)
+        }
+        guard events.count == 3, case .connected = events[0], case .reconnecting(1, _, let reason) = events[1],
+              case .connected = events[2] else {
+            Issue.record("expected connected, reconnecting, connected; got \(events)")
+            return
+        }
+        #expect(reason.contains("heartbeat"))
+    }
+
+    @Test("A quiet subscription that never sent a heartbeat is kept", .timeLimit(.minutes(1)))
+    func quietWithoutHeartbeats() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setSubscription(.silence)
+        let events = try await withFakeOperator(state) { wallet in
+            try await Self.events(try await wallet.subscribeToEvents(heartbeatTimeout: .milliseconds(200)), for: .seconds(1))
+        }
+        guard events.count == 1, case .connected = events[0] else {
+            Issue.record("expected only the connection; got \(events)")
+            return
+        }
+    }
+
+    @Test("The watchdog arms on a heartbeat and pauses while an event is handled")
+    func watchdog() async throws {
+        func fires(_ activity: EventStreamActivity, within: Duration) async -> Bool {
+            let watchdog = Task { try await activity.silence(longerThan: .milliseconds(100)) }
+            let timer = Task {
+                try await Task.sleep(for: within)
+                watchdog.cancel()
+            }
+            defer { timer.cancel() }
+            return (try? await watchdog.value) != nil
+        }
+        let unarmed = EventStreamActivity()
+        unarmed.received(heartbeat: false)
+        unarmed.handled()
+        #expect(await !fires(unarmed, within: .milliseconds(400)))
+
+        let armed = EventStreamActivity()
+        armed.received(heartbeat: true)
+        armed.handled()
+        #expect(await fires(armed, within: .seconds(5)))
+
+        let busy = EventStreamActivity()
+        busy.received(heartbeat: true)
+        #expect(await !fires(busy, within: .milliseconds(400)))
+    }
 }

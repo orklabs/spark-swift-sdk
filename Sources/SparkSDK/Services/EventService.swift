@@ -1,6 +1,7 @@
 import Foundation
 import GRPCCore
 import SwiftProtobuf
+import Synchronization
 
 /// The wallet's running event streams, so that `close()` can stop them.
 actor EventStreamRegistry {
@@ -28,7 +29,66 @@ actor EventStreamRegistry {
     }
 }
 
+/// One subscription's activity, for the heartbeat watchdog. As in the reference SDK the
+/// watchdog arms on the first heartbeat — a coordinator that sends none never times out — and
+/// pauses while an event is being handled, since handling one can claim a transfer.
+final class EventStreamActivity: Sendable {
+    private struct State {
+        var connected = false
+        var heartbeats = false
+        var handling = false
+        var lastSeen = ContinuousClock.now
+    }
+    private let state = Mutex(State())
+
+    var connected: Bool {
+        state.withLock { $0.connected }
+    }
+
+    func markConnected() {
+        state.withLock { $0.connected = true }
+    }
+
+    /// A message arrived: the watchdog pauses until `handled()`; a heartbeat arms it.
+    func received(heartbeat: Bool) {
+        state.withLock {
+            $0.handling = true
+            if heartbeat { $0.heartbeats = true }
+        }
+    }
+
+    /// The message is handled: the silence starts counting again.
+    func handled() {
+        state.withLock {
+            $0.handling = false
+            $0.lastSeen = .now
+        }
+    }
+
+    /// Returns once heartbeats are armed and the stream has been silent for `timeout` outside
+    /// event handling; otherwise waits until cancelled.
+    func silence(longerThan timeout: Duration) async throws {
+        while true {
+            let deadline: ContinuousClock.Instant? = state.withLock {
+                $0.heartbeats && !$0.handling ? $0.lastSeen + timeout : nil
+            }
+            if let deadline, deadline <= .now {
+                return
+            }
+            try await Task.sleep(until: deadline ?? .now + timeout, clock: .continuous)
+        }
+    }
+}
+
+/// A subscription dropped because it went silent after sending heartbeats.
+private struct EventStreamSilent: Swift.Error {}
+
 extension SparkWallet {
+    /// How long a subscription that sends heartbeats (every 5 s from the operators) may stay
+    /// silent before it is dropped and resubscribed — the reference SDK's
+    /// `STREAM_HEARTBEAT_TIMEOUT_MS`.
+    static let eventStreamHeartbeatTimeout: Duration = .seconds(15)
+
     /// Events for this wallet, until the caller stops iterating or the wallet is closed. Like the
     /// reference SDK's background stream it stays up on its own:
     /// - a subscription that fails, or that the operator ends, is retried forever — 1 s doubling
@@ -36,14 +96,20 @@ extension SparkWallet {
     /// - on every connection the wallet's pending transfers are claimed, so payments that arrived
     ///   while the stream was down are not left waiting, and each is reported as
     ///   `.transferReceived`;
-    /// - a payment that arrives while connected is claimed, then reported.
+    /// - a payment that arrives while connected is claimed, then reported;
+    /// - once the operator sends heartbeats, a subscription silent for 15 s — a connection that
+    ///   died without closing, as after a network change — is dropped and resubscribed.
     ///
     /// Throws only when the wallet is already closed.
     public func subscribeToEvents() async throws -> AsyncStream<SparkEvent> {
+        try await subscribeToEvents(heartbeatTimeout: Self.eventStreamHeartbeatTimeout)
+    }
+
+    func subscribeToEvents(heartbeatTimeout: Duration) async throws -> AsyncStream<SparkEvent> {
         let (stream, continuation) = AsyncStream<SparkEvent>.makeStream()
         let id = UUID()
         let task = Task {
-            await self.runEventStream(continuation)
+            await self.runEventStream(continuation, heartbeatTimeout: heartbeatTimeout)
             await self.eventStreams.finished(id)
         }
         guard await eventStreams.register(id, task) else {
@@ -64,10 +130,10 @@ extension SparkWallet {
     }
 
     /// Subscribes, reports, and subscribes again — until the task is cancelled.
-    func runEventStream(_ continuation: AsyncStream<SparkEvent>.Continuation) async {
+    func runEventStream(_ continuation: AsyncStream<SparkEvent>.Continuation, heartbeatTimeout: Duration) async {
         var attempt = 0
         while !Task.isCancelled {
-            let outcome = await subscribeOnce(continuation)
+            let outcome = await subscribeOnce(continuation, heartbeatTimeout: heartbeatTimeout)
             guard !Task.isCancelled else { break }
             attempt = outcome.connected ? 1 : attempt + 1
             let delay = Self.eventStreamBackoff(attempt: attempt)
@@ -77,47 +143,70 @@ extension SparkWallet {
         continuation.finish()
     }
 
-    /// One subscription, reported until the operator ends it or it fails. Returns whether it
-    /// connected and why it ended.
+    /// One subscription, reported until the operator ends it, it fails, or it goes silent after
+    /// sending heartbeats. Returns whether it connected and why it ended.
     private func subscribeOnce(
-        _ continuation: AsyncStream<SparkEvent>.Continuation
+        _ continuation: AsyncStream<SparkEvent>.Continuation,
+        heartbeatTimeout: Duration
     ) async -> (connected: Bool, reason: String) {
+        let activity = EventStreamActivity()
         do {
             let client = try await getCoordinatorClient()
             let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
             var request = Spark_SubscribeToEventsRequest()
             request.identityPublicKey = signer.identityPublicKey
-            return try await client.subscribe_to_events(
+            try await client.subscribe_to_events(
                 request: ClientRequest(message: request, metadata: metadata)
             ) { response in
-                var connected = false
-                var claimedOnConnect: Set<String> = []
-                do {
-                    for try await message in response.messages {
-                        switch message.event {
-                        case .connected:
-                            connected = true
-                            continuation.yield(.connected)
-                            claimedOnConnect = await self.claimPendingOnConnect(continuation)
-                        case .receiverTransfer(let transferEvent):
-                            guard !claimedOnConnect.contains(transferEvent.transfer.id) else { continue }
-                            await self.claimOnArrival(transferEvent.transfer)
-                            if let event = Self.mapEvent(message) {
-                                continuation.yield(event)
-                            }
-                        default:
-                            if let event = Self.mapEvent(message) {
-                                continuation.yield(event)
-                            }
-                        }
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        try await self.report(response.messages, continuation, activity)
                     }
-                    return (connected, "the operator ended the event stream")
-                } catch {
-                    return (connected, String(describing: error))
+                    group.addTask {
+                        try await activity.silence(longerThan: heartbeatTimeout)
+                        throw EventStreamSilent()
+                    }
+                    // The first to finish decides: the stream ended, failed or went silent.
+                    try await group.next()
+                    group.cancelAll()
                 }
             }
+            return (activity.connected, "the operator ended the event stream")
+        } catch is EventStreamSilent {
+            return (activity.connected, "no heartbeat for \(heartbeatTimeout)")
         } catch {
-            return (false, String(describing: error))
+            return (activity.connected, String(describing: error))
+        }
+    }
+
+    /// Reports one subscription's messages until it ends.
+    private func report(
+        _ messages: RPCAsyncSequence<Spark_SubscribeToEventsResponse, any Swift.Error>,
+        _ continuation: AsyncStream<SparkEvent>.Continuation,
+        _ activity: EventStreamActivity
+    ) async throws {
+        var claimedOnConnect: Set<String> = []
+        for try await message in messages {
+            let isHeartbeat: Bool
+            if case .heartbeat = message.event { isHeartbeat = true } else { isHeartbeat = false }
+            activity.received(heartbeat: isHeartbeat)
+            defer { activity.handled() }
+            switch message.event {
+            case .connected:
+                activity.markConnected()
+                continuation.yield(.connected)
+                claimedOnConnect = await claimPendingOnConnect(continuation)
+            case .receiverTransfer(let transferEvent):
+                guard !claimedOnConnect.contains(transferEvent.transfer.id) else { continue }
+                await claimOnArrival(transferEvent.transfer)
+                if let event = Self.mapEvent(message) {
+                    continuation.yield(event)
+                }
+            default:
+                if let event = Self.mapEvent(message) {
+                    continuation.yield(event)
+                }
+            }
         }
     }
 
