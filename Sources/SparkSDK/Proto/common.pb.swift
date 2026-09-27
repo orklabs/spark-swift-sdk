@@ -71,6 +71,49 @@ enum Common_SignatureIntent: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+/// The scheme used to produce a Signature.
+enum Common_SignatureScheme: SwiftProtobuf.Enum, Swift.CaseIterable {
+  typealias RawValue = Int
+  case unspecified // = 0
+
+  /// secp256k1 ECDSA, strict DER encoding (variable length).
+  case ecdsa // = 1
+
+  /// BIP-340 Schnorr over secp256k1, 64 bytes.
+  case schnorr // = 2
+  case UNRECOGNIZED(Int)
+
+  init() {
+    self = .unspecified
+  }
+
+  init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .ecdsa
+    case 2: self = .schnorr
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .ecdsa: return 1
+    case .schnorr: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  static let allCases: [Common_SignatureScheme] = [
+    .unspecified,
+    .ecdsa,
+    .schnorr,
+  ]
+
+}
+
 ///
 /// A map from a string to a bytes. It's a workaround to have map arrays in proto.
 struct Common_PackageMap: Sendable {
@@ -116,12 +159,31 @@ struct Common_SigningResult: Sendable {
   init() {}
 }
 
+/// A signature tagged with the scheme used to produce it, which determines how to verify it.
+struct Common_Signature: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var scheme: Common_SignatureScheme = .unspecified
+
+  var signature: Data = Data()
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate let _protobuf_package = "common"
 
 extension Common_SignatureIntent: SwiftProtobuf._ProtoNameProviding {
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CREATION\0\u{1}TRANSFER\0\u{1}AGGREGATE\0\u{1}REFRESH\0\u{1}EXTEND\0")
+}
+
+extension Common_SignatureScheme: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SIGNATURE_SCHEME_UNSPECIFIED\0\u{1}SIGNATURE_SCHEME_ECDSA\0\u{1}SIGNATURE_SCHEME_SCHNORR\0")
 }
 
 extension Common_PackageMap: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -214,6 +276,41 @@ extension Common_SigningResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
 
   static func ==(lhs: Common_SigningResult, rhs: Common_SigningResult) -> Bool {
     if lhs.signatureShare != rhs.signatureShare {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Common_Signature: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".Signature"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}scheme\0\u{1}signature\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.scheme) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.signature) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.scheme != .unspecified {
+      try visitor.visitSingularEnumField(value: self.scheme, fieldNumber: 1)
+    }
+    if !self.signature.isEmpty {
+      try visitor.visitSingularBytesField(value: self.signature, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Common_Signature, rhs: Common_Signature) -> Bool {
+    if lhs.scheme != rhs.scheme {return false}
+    if lhs.signature != rhs.signature {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

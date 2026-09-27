@@ -321,8 +321,7 @@ struct LightningValidatorTests {
             identityPublicKey: keys[0].publicKey.dataRepresentation,
             config: config
         )
-        // Reserved in the current protocol; the operators never read it.
-        #expect(request.userSignature.isEmpty)
+        // No user signature: the protocol reserves the field, so the generated request has none.
         #expect(request.threshold == config.signingThreshold)
         #expect(request.invoiceString == "lnbc1...")
         var recovered: [SecretShareResult] = []
@@ -385,8 +384,7 @@ struct LightningValidatorTests {
             feeSats: 2,
             transferRequest: transferRequest
         )
-        // The legacy `transfer` field (reserved by the operators) is never sent.
-        #expect(!request.hasTransfer)
+        // The legacy `transfer` field is reserved in the protocol and absent from the generated request.
         #expect(request.transferRequest == transferRequest)
         #expect(request.receiverIdentityPublicKey == transferRequest.receiverIdentityPublicKey)
         #expect(request.reason == .send)

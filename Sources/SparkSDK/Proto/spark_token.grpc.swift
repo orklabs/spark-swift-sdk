@@ -104,6 +104,42 @@ internal enum SparkToken_SparkTokenService: Sendable {
                 method: "broadcast_transaction"
             )
         }
+        /// Namespace for "create_token_allowance" metadata.
+        internal enum create_token_allowance: Sendable {
+            /// Request type for "create_token_allowance".
+            internal typealias Input = SparkToken_CreateTokenAllowanceRequest
+            /// Response type for "create_token_allowance".
+            internal typealias Output = SparkToken_CreateTokenAllowanceResponse
+            /// Descriptor for "create_token_allowance".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark_token.SparkTokenService"),
+                method: "create_token_allowance"
+            )
+        }
+        /// Namespace for "revoke_token_allowance" metadata.
+        internal enum revoke_token_allowance: Sendable {
+            /// Request type for "revoke_token_allowance".
+            internal typealias Input = SparkToken_RevokeTokenAllowanceRequest
+            /// Response type for "revoke_token_allowance".
+            internal typealias Output = SparkToken_RevokeTokenAllowanceResponse
+            /// Descriptor for "revoke_token_allowance".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark_token.SparkTokenService"),
+                method: "revoke_token_allowance"
+            )
+        }
+        /// Namespace for "query_token_allowances" metadata.
+        internal enum query_token_allowances: Sendable {
+            /// Request type for "query_token_allowances".
+            internal typealias Input = SparkToken_QueryTokenAllowancesRequest
+            /// Response type for "query_token_allowances".
+            internal typealias Output = SparkToken_QueryTokenAllowancesResponse
+            /// Descriptor for "query_token_allowances".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark_token.SparkTokenService"),
+                method: "query_token_allowances"
+            )
+        }
         /// Descriptors for all methods in the "spark_token.SparkTokenService" service.
         internal static let descriptors: [GRPCCore.MethodDescriptor] = [
             start_transaction.descriptor,
@@ -112,7 +148,10 @@ internal enum SparkToken_SparkTokenService: Sendable {
             query_token_transactions.descriptor,
             query_token_outputs.descriptor,
             freeze_tokens.descriptor,
-            broadcast_transaction.descriptor
+            broadcast_transaction.descriptor,
+            create_token_allowance.descriptor,
+            revoke_token_allowance.descriptor,
+            query_token_allowances.descriptor
         ]
     }
 }
@@ -249,6 +288,57 @@ extension SparkToken_SparkTokenService {
             request: GRPCCore.StreamingServerRequest<SparkToken_BroadcastTransactionRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_BroadcastTransactionResponse>
+
+        /// Handle the "create_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Install an owner-signed spending allowance granting a spender bounded
+        /// > authority over the owner's token outputs. Coordinated across all SOs.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `SparkToken_CreateTokenAllowanceRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `SparkToken_CreateTokenAllowanceResponse` messages.
+        func create_token_allowance(
+            request: GRPCCore.StreamingServerRequest<SparkToken_CreateTokenAllowanceRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_CreateTokenAllowanceResponse>
+
+        /// Handle the "revoke_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Tombstone an existing allowance so no further delegated spends succeed.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `SparkToken_RevokeTokenAllowanceRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `SparkToken_RevokeTokenAllowanceResponse` messages.
+        func revoke_token_allowance(
+            request: GRPCCore.StreamingServerRequest<SparkToken_RevokeTokenAllowanceRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_RevokeTokenAllowanceResponse>
+
+        /// Handle the "query_token_allowances" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `SparkToken_QueryTokenAllowancesRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `SparkToken_QueryTokenAllowancesResponse` messages.
+        func query_token_allowances(
+            request: GRPCCore.StreamingServerRequest<SparkToken_QueryTokenAllowancesRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_QueryTokenAllowancesResponse>
     }
 
     /// Service protocol for the "spark_token.SparkTokenService" service.
@@ -370,6 +460,57 @@ extension SparkToken_SparkTokenService {
             request: GRPCCore.ServerRequest<SparkToken_BroadcastTransactionRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<SparkToken_BroadcastTransactionResponse>
+
+        /// Handle the "create_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Install an owner-signed spending allowance granting a spender bounded
+        /// > authority over the owner's token outputs. Coordinated across all SOs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_CreateTokenAllowanceRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `SparkToken_CreateTokenAllowanceResponse` message.
+        func create_token_allowance(
+            request: GRPCCore.ServerRequest<SparkToken_CreateTokenAllowanceRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<SparkToken_CreateTokenAllowanceResponse>
+
+        /// Handle the "revoke_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Tombstone an existing allowance so no further delegated spends succeed.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_RevokeTokenAllowanceRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `SparkToken_RevokeTokenAllowanceResponse` message.
+        func revoke_token_allowance(
+            request: GRPCCore.ServerRequest<SparkToken_RevokeTokenAllowanceRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<SparkToken_RevokeTokenAllowanceResponse>
+
+        /// Handle the "query_token_allowances" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_QueryTokenAllowancesRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `SparkToken_QueryTokenAllowancesResponse` message.
+        func query_token_allowances(
+            request: GRPCCore.ServerRequest<SparkToken_QueryTokenAllowancesRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<SparkToken_QueryTokenAllowancesResponse>
     }
 
     /// Simple service protocol for the "spark_token.SparkTokenService" service.
@@ -489,6 +630,57 @@ extension SparkToken_SparkTokenService {
             request: SparkToken_BroadcastTransactionRequest,
             context: GRPCCore.ServerContext
         ) async throws -> SparkToken_BroadcastTransactionResponse
+
+        /// Handle the "create_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Install an owner-signed spending allowance granting a spender bounded
+        /// > authority over the owner's token outputs. Coordinated across all SOs.
+        ///
+        /// - Parameters:
+        ///   - request: A `SparkToken_CreateTokenAllowanceRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `SparkToken_CreateTokenAllowanceResponse` to respond with.
+        func create_token_allowance(
+            request: SparkToken_CreateTokenAllowanceRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> SparkToken_CreateTokenAllowanceResponse
+
+        /// Handle the "revoke_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Tombstone an existing allowance so no further delegated spends succeed.
+        ///
+        /// - Parameters:
+        ///   - request: A `SparkToken_RevokeTokenAllowanceRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `SparkToken_RevokeTokenAllowanceResponse` to respond with.
+        func revoke_token_allowance(
+            request: SparkToken_RevokeTokenAllowanceRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> SparkToken_RevokeTokenAllowanceResponse
+
+        /// Handle the "query_token_allowances" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `SparkToken_QueryTokenAllowancesRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `SparkToken_QueryTokenAllowancesResponse` to respond with.
+        func query_token_allowances(
+            request: SparkToken_QueryTokenAllowancesRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> SparkToken_QueryTokenAllowancesResponse
     }
 }
 
@@ -573,6 +765,39 @@ extension SparkToken_SparkTokenService.StreamingServiceProtocol {
                 )
             }
         )
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.create_token_allowance.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_CreateTokenAllowanceRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_CreateTokenAllowanceResponse>(),
+            handler: { request, context in
+                try await self.create_token_allowance(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.revoke_token_allowance.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_RevokeTokenAllowanceRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_RevokeTokenAllowanceResponse>(),
+            handler: { request, context in
+                try await self.revoke_token_allowance(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: SparkToken_SparkTokenService.Method.query_token_allowances.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_QueryTokenAllowancesRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_QueryTokenAllowancesResponse>(),
+            handler: { request, context in
+                try await self.query_token_allowances(
+                    request: request,
+                    context: context
+                )
+            }
+        )
     }
 }
 
@@ -650,6 +875,39 @@ extension SparkToken_SparkTokenService.ServiceProtocol {
         context: GRPCCore.ServerContext
     ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_BroadcastTransactionResponse> {
         let response = try await self.broadcast_transaction(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func create_token_allowance(
+        request: GRPCCore.StreamingServerRequest<SparkToken_CreateTokenAllowanceRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_CreateTokenAllowanceResponse> {
+        let response = try await self.create_token_allowance(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func revoke_token_allowance(
+        request: GRPCCore.StreamingServerRequest<SparkToken_RevokeTokenAllowanceRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_RevokeTokenAllowanceResponse> {
+        let response = try await self.revoke_token_allowance(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func query_token_allowances(
+        request: GRPCCore.StreamingServerRequest<SparkToken_QueryTokenAllowancesRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<SparkToken_QueryTokenAllowancesResponse> {
+        let response = try await self.query_token_allowances(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -744,6 +1002,45 @@ extension SparkToken_SparkTokenService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<SparkToken_BroadcastTransactionResponse> {
         return GRPCCore.ServerResponse<SparkToken_BroadcastTransactionResponse>(
             message: try await self.broadcast_transaction(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func create_token_allowance(
+        request: GRPCCore.ServerRequest<SparkToken_CreateTokenAllowanceRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<SparkToken_CreateTokenAllowanceResponse> {
+        return GRPCCore.ServerResponse<SparkToken_CreateTokenAllowanceResponse>(
+            message: try await self.create_token_allowance(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func revoke_token_allowance(
+        request: GRPCCore.ServerRequest<SparkToken_RevokeTokenAllowanceRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<SparkToken_RevokeTokenAllowanceResponse> {
+        return GRPCCore.ServerResponse<SparkToken_RevokeTokenAllowanceResponse>(
+            message: try await self.revoke_token_allowance(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func query_token_allowances(
+        request: GRPCCore.ServerRequest<SparkToken_QueryTokenAllowancesRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<SparkToken_QueryTokenAllowancesResponse> {
+        return GRPCCore.ServerResponse<SparkToken_QueryTokenAllowancesResponse>(
+            message: try await self.query_token_allowances(
                 request: request.message,
                 context: context
             ),
@@ -906,6 +1203,72 @@ extension SparkToken_SparkTokenService {
             deserializer: some GRPCCore.MessageDeserializer<SparkToken_BroadcastTransactionResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_BroadcastTransactionResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "create_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Install an owner-signed spending allowance granting a spender bounded
+        /// > authority over the owner's token outputs. Coordinated across all SOs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_CreateTokenAllowanceRequest` message.
+        ///   - serializer: A serializer for `SparkToken_CreateTokenAllowanceRequest` messages.
+        ///   - deserializer: A deserializer for `SparkToken_CreateTokenAllowanceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func create_token_allowance<Result>(
+            request: GRPCCore.ClientRequest<SparkToken_CreateTokenAllowanceRequest>,
+            serializer: some GRPCCore.MessageSerializer<SparkToken_CreateTokenAllowanceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<SparkToken_CreateTokenAllowanceResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_CreateTokenAllowanceResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "revoke_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Tombstone an existing allowance so no further delegated spends succeed.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_RevokeTokenAllowanceRequest` message.
+        ///   - serializer: A serializer for `SparkToken_RevokeTokenAllowanceRequest` messages.
+        ///   - deserializer: A deserializer for `SparkToken_RevokeTokenAllowanceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func revoke_token_allowance<Result>(
+            request: GRPCCore.ClientRequest<SparkToken_RevokeTokenAllowanceRequest>,
+            serializer: some GRPCCore.MessageSerializer<SparkToken_RevokeTokenAllowanceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<SparkToken_RevokeTokenAllowanceResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_RevokeTokenAllowanceResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "query_token_allowances" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_QueryTokenAllowancesRequest` message.
+        ///   - serializer: A serializer for `SparkToken_QueryTokenAllowancesRequest` messages.
+        ///   - deserializer: A deserializer for `SparkToken_QueryTokenAllowancesResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func query_token_allowances<Result>(
+            request: GRPCCore.ClientRequest<SparkToken_QueryTokenAllowancesRequest>,
+            serializer: some GRPCCore.MessageSerializer<SparkToken_QueryTokenAllowancesRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<SparkToken_QueryTokenAllowancesResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_QueryTokenAllowancesResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
     }
 
@@ -1148,6 +1511,105 @@ extension SparkToken_SparkTokenService {
                 onResponse: handleResponse
             )
         }
+
+        /// Call the "create_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Install an owner-signed spending allowance granting a spender bounded
+        /// > authority over the owner's token outputs. Coordinated across all SOs.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_CreateTokenAllowanceRequest` message.
+        ///   - serializer: A serializer for `SparkToken_CreateTokenAllowanceRequest` messages.
+        ///   - deserializer: A deserializer for `SparkToken_CreateTokenAllowanceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func create_token_allowance<Result>(
+            request: GRPCCore.ClientRequest<SparkToken_CreateTokenAllowanceRequest>,
+            serializer: some GRPCCore.MessageSerializer<SparkToken_CreateTokenAllowanceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<SparkToken_CreateTokenAllowanceResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_CreateTokenAllowanceResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: SparkToken_SparkTokenService.Method.create_token_allowance.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "revoke_token_allowance" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Tombstone an existing allowance so no further delegated spends succeed.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_RevokeTokenAllowanceRequest` message.
+        ///   - serializer: A serializer for `SparkToken_RevokeTokenAllowanceRequest` messages.
+        ///   - deserializer: A deserializer for `SparkToken_RevokeTokenAllowanceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func revoke_token_allowance<Result>(
+            request: GRPCCore.ClientRequest<SparkToken_RevokeTokenAllowanceRequest>,
+            serializer: some GRPCCore.MessageSerializer<SparkToken_RevokeTokenAllowanceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<SparkToken_RevokeTokenAllowanceResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_RevokeTokenAllowanceResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: SparkToken_SparkTokenService.Method.revoke_token_allowance.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "query_token_allowances" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `SparkToken_QueryTokenAllowancesRequest` message.
+        ///   - serializer: A serializer for `SparkToken_QueryTokenAllowancesRequest` messages.
+        ///   - deserializer: A deserializer for `SparkToken_QueryTokenAllowancesResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func query_token_allowances<Result>(
+            request: GRPCCore.ClientRequest<SparkToken_QueryTokenAllowancesRequest>,
+            serializer: some GRPCCore.MessageSerializer<SparkToken_QueryTokenAllowancesRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<SparkToken_QueryTokenAllowancesResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_QueryTokenAllowancesResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: SparkToken_SparkTokenService.Method.query_token_allowances.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
     }
 }
 
@@ -1338,6 +1800,90 @@ extension SparkToken_SparkTokenService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_BroadcastTransactionRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_BroadcastTransactionResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "create_token_allowance" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Install an owner-signed spending allowance granting a spender bounded
+    /// > authority over the owner's token outputs. Coordinated across all SOs.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `SparkToken_CreateTokenAllowanceRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func create_token_allowance<Result>(
+        request: GRPCCore.ClientRequest<SparkToken_CreateTokenAllowanceRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_CreateTokenAllowanceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.create_token_allowance(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_CreateTokenAllowanceRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_CreateTokenAllowanceResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "revoke_token_allowance" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Tombstone an existing allowance so no further delegated spends succeed.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `SparkToken_RevokeTokenAllowanceRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func revoke_token_allowance<Result>(
+        request: GRPCCore.ClientRequest<SparkToken_RevokeTokenAllowanceRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_RevokeTokenAllowanceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.revoke_token_allowance(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_RevokeTokenAllowanceRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_RevokeTokenAllowanceResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "query_token_allowances" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `SparkToken_QueryTokenAllowancesRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func query_token_allowances<Result>(
+        request: GRPCCore.ClientRequest<SparkToken_QueryTokenAllowancesRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_QueryTokenAllowancesResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.query_token_allowances(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<SparkToken_QueryTokenAllowancesRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<SparkToken_QueryTokenAllowancesResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -1558,6 +2104,102 @@ extension SparkToken_SparkTokenService.ClientProtocol {
             metadata: metadata
         )
         return try await self.broadcast_transaction(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "create_token_allowance" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Install an owner-signed spending allowance granting a spender bounded
+    /// > authority over the owner's token outputs. Coordinated across all SOs.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func create_token_allowance<Result>(
+        _ message: SparkToken_CreateTokenAllowanceRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_CreateTokenAllowanceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<SparkToken_CreateTokenAllowanceRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.create_token_allowance(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "revoke_token_allowance" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Tombstone an existing allowance so no further delegated spends succeed.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func revoke_token_allowance<Result>(
+        _ message: SparkToken_RevokeTokenAllowanceRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_RevokeTokenAllowanceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<SparkToken_RevokeTokenAllowanceRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.revoke_token_allowance(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "query_token_allowances" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func query_token_allowances<Result>(
+        _ message: SparkToken_QueryTokenAllowancesRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<SparkToken_QueryTokenAllowancesResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<SparkToken_QueryTokenAllowancesRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.query_token_allowances(
             request: request,
             options: options,
             onResponse: handleResponse

@@ -119,17 +119,20 @@ See `Tests/SparkSDKTests/TestConfig.swift` for the full list of optional variabl
 ## Regenerating Protobufs
 
 The files in `Sources/SparkSDK/Proto/` are generated. The `.proto` source-of-truth lives
-in `Protos/` and is mirrored from [`buildonspark/spark`](https://github.com/buildonspark/spark).
+in `Protos/` and is mirrored from [`buildonspark/spark`](https://github.com/buildonspark/spark)
+(`protos/`, currently at `0b3a32a`, 2026-08-24).
 
-To regenerate:
+To regenerate (grpc-swift 2's plugin is `protoc-gen-grpc-swift-2`; `validate/validate.proto`
+only supplies options and is not generated):
 
 ```bash
-brew install swift-protobuf grpc-swift
+brew install protobuf swift-protobuf grpc-swift
 protoc \
+  --plugin=protoc-gen-grpc-swift="$(which protoc-gen-grpc-swift-2)" \
   --swift_out=Sources/SparkSDK/Proto \
   --grpc-swift_out=Sources/SparkSDK/Proto \
   --proto_path=Protos \
-  Protos/*.proto
+  Protos/spark.proto Protos/common.proto Protos/spark_authn.proto Protos/spark_token.proto Protos/multisig.proto
 ```
 
 If you change a `.proto` and submit it for review, please also commit the regenerated

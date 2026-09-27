@@ -193,6 +193,56 @@ enum SparkToken_TokenTransactionStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+enum SparkToken_TokenAllowanceStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
+  typealias RawValue = Int
+  case unspecified // = 0
+  case active // = 1
+  case revoked // = 2
+  case exhausted // = 3
+
+  /// The owner-signed expiry has passed and an operator retired the grant. Spends past the
+  /// expiry are refused regardless of stored status; this value exists so a retired grant
+  /// stops occupying the owner's quota and uniqueness slots.
+  case expired // = 4
+  case UNRECOGNIZED(Int)
+
+  init() {
+    self = .unspecified
+  }
+
+  init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .active
+    case 2: self = .revoked
+    case 3: self = .exhausted
+    case 4: self = .expired
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .active: return 1
+    case .revoked: return 2
+    case .exhausted: return 3
+    case .expired: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  static let allCases: [SparkToken_TokenAllowanceStatus] = [
+    .unspecified,
+    .active,
+    .revoked,
+    .exhausted,
+    .expired,
+  ]
+
+}
+
 /// This proto is constructed by the wallet to specify leaves it wants to spend
 /// as part of the token transaction.
 struct SparkToken_TokenOutputToSpend: Sendable {
@@ -226,6 +276,9 @@ struct SparkToken_TokenMintInput: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// Deprecated: The SO now uses token_identifier to look up the issuer public key
+  /// from the TokenCreate record. This field is still included in the transaction hash,
+  /// so it must be set correctly, but will be removed in a future version bump.
   var issuerPublicKey: Data = Data()
 
   var tokenIdentifier: Data {
@@ -539,6 +592,17 @@ struct SparkToken_TokenTransaction: @unchecked Sendable {
   /// Clears the value of `validityDurationSeconds`. Subsequent reads from it will return its default value.
   mutating func clearValidityDurationSeconds() {_uniqueStorage()._validityDurationSeconds = nil}
 
+  /// Optional client-specified deadline for transaction execution.
+  /// Carried through from PartialTokenTransaction.execute_before during conversion.
+  var executeBefore: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._executeBefore ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._executeBefore = newValue}
+  }
+  /// Returns true if `executeBefore` has been explicitly set.
+  var hasExecuteBefore: Bool {_storage._executeBefore != nil}
+  /// Clears the value of `executeBefore`. Subsequent reads from it will return its default value.
+  mutating func clearExecuteBefore() {_uniqueStorage()._executeBefore = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   enum OneOf_TokenInputs: Equatable, Sendable {
@@ -589,49 +653,71 @@ struct SparkToken_TokenTransactionMetadata: Sendable {
   fileprivate var _clientCreatedTimestamp: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
-struct SparkToken_PartialTokenTransaction: Sendable {
+struct SparkToken_PartialTokenTransaction: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var version: UInt32 = 0
+  var version: UInt32 {
+    get {_storage._version}
+    set {_uniqueStorage()._version = newValue}
+  }
 
   var tokenTransactionMetadata: SparkToken_TokenTransactionMetadata {
-    get {_tokenTransactionMetadata ?? SparkToken_TokenTransactionMetadata()}
-    set {_tokenTransactionMetadata = newValue}
+    get {_storage._tokenTransactionMetadata ?? SparkToken_TokenTransactionMetadata()}
+    set {_uniqueStorage()._tokenTransactionMetadata = newValue}
   }
   /// Returns true if `tokenTransactionMetadata` has been explicitly set.
-  var hasTokenTransactionMetadata: Bool {self._tokenTransactionMetadata != nil}
+  var hasTokenTransactionMetadata: Bool {_storage._tokenTransactionMetadata != nil}
   /// Clears the value of `tokenTransactionMetadata`. Subsequent reads from it will return its default value.
-  mutating func clearTokenTransactionMetadata() {self._tokenTransactionMetadata = nil}
+  mutating func clearTokenTransactionMetadata() {_uniqueStorage()._tokenTransactionMetadata = nil}
 
-  var tokenInputs: SparkToken_PartialTokenTransaction.OneOf_TokenInputs? = nil
+  var tokenInputs: OneOf_TokenInputs? {
+    get {return _storage._tokenInputs}
+    set {_uniqueStorage()._tokenInputs = newValue}
+  }
 
   var mintInput: SparkToken_TokenMintInput {
     get {
-      if case .mintInput(let v)? = tokenInputs {return v}
+      if case .mintInput(let v)? = _storage._tokenInputs {return v}
       return SparkToken_TokenMintInput()
     }
-    set {tokenInputs = .mintInput(newValue)}
+    set {_uniqueStorage()._tokenInputs = .mintInput(newValue)}
   }
 
   var transferInput: SparkToken_TokenTransferInput {
     get {
-      if case .transferInput(let v)? = tokenInputs {return v}
+      if case .transferInput(let v)? = _storage._tokenInputs {return v}
       return SparkToken_TokenTransferInput()
     }
-    set {tokenInputs = .transferInput(newValue)}
+    set {_uniqueStorage()._tokenInputs = .transferInput(newValue)}
   }
 
   var createInput: SparkToken_TokenCreateInput {
     get {
-      if case .createInput(let v)? = tokenInputs {return v}
+      if case .createInput(let v)? = _storage._tokenInputs {return v}
       return SparkToken_TokenCreateInput()
     }
-    set {tokenInputs = .createInput(newValue)}
+    set {_uniqueStorage()._tokenInputs = .createInput(newValue)}
   }
 
-  var partialTokenOutputs: [SparkToken_PartialTokenOutput] = []
+  var partialTokenOutputs: [SparkToken_PartialTokenOutput] {
+    get {_storage._partialTokenOutputs}
+    set {_uniqueStorage()._partialTokenOutputs = newValue}
+  }
+
+  /// Optional client-specified deadline for transaction execution.
+  /// If set, the server must reject the transaction if current time > execute_before.
+  /// Must be after client_created_timestamp, within a configurable max window,
+  /// and truncated to microsecond precision.
+  var executeBefore: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._executeBefore ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._executeBefore = newValue}
+  }
+  /// Returns true if `executeBefore` has been explicitly set.
+  var hasExecuteBefore: Bool {_storage._executeBefore != nil}
+  /// Clears the value of `executeBefore`. Subsequent reads from it will return its default value.
+  mutating func clearExecuteBefore() {_uniqueStorage()._executeBefore = nil}
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -644,52 +730,73 @@ struct SparkToken_PartialTokenTransaction: Sendable {
 
   init() {}
 
-  fileprivate var _tokenTransactionMetadata: SparkToken_TokenTransactionMetadata? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
-struct SparkToken_FinalTokenTransaction: Sendable {
+struct SparkToken_FinalTokenTransaction: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var version: UInt32 = 0
+  var version: UInt32 {
+    get {_storage._version}
+    set {_uniqueStorage()._version = newValue}
+  }
 
   var tokenTransactionMetadata: SparkToken_TokenTransactionMetadata {
-    get {_tokenTransactionMetadata ?? SparkToken_TokenTransactionMetadata()}
-    set {_tokenTransactionMetadata = newValue}
+    get {_storage._tokenTransactionMetadata ?? SparkToken_TokenTransactionMetadata()}
+    set {_uniqueStorage()._tokenTransactionMetadata = newValue}
   }
   /// Returns true if `tokenTransactionMetadata` has been explicitly set.
-  var hasTokenTransactionMetadata: Bool {self._tokenTransactionMetadata != nil}
+  var hasTokenTransactionMetadata: Bool {_storage._tokenTransactionMetadata != nil}
   /// Clears the value of `tokenTransactionMetadata`. Subsequent reads from it will return its default value.
-  mutating func clearTokenTransactionMetadata() {self._tokenTransactionMetadata = nil}
+  mutating func clearTokenTransactionMetadata() {_uniqueStorage()._tokenTransactionMetadata = nil}
 
-  var tokenInputs: SparkToken_FinalTokenTransaction.OneOf_TokenInputs? = nil
+  var tokenInputs: OneOf_TokenInputs? {
+    get {return _storage._tokenInputs}
+    set {_uniqueStorage()._tokenInputs = newValue}
+  }
 
   var mintInput: SparkToken_TokenMintInput {
     get {
-      if case .mintInput(let v)? = tokenInputs {return v}
+      if case .mintInput(let v)? = _storage._tokenInputs {return v}
       return SparkToken_TokenMintInput()
     }
-    set {tokenInputs = .mintInput(newValue)}
+    set {_uniqueStorage()._tokenInputs = .mintInput(newValue)}
   }
 
   var transferInput: SparkToken_TokenTransferInput {
     get {
-      if case .transferInput(let v)? = tokenInputs {return v}
+      if case .transferInput(let v)? = _storage._tokenInputs {return v}
       return SparkToken_TokenTransferInput()
     }
-    set {tokenInputs = .transferInput(newValue)}
+    set {_uniqueStorage()._tokenInputs = .transferInput(newValue)}
   }
 
   var createInput: SparkToken_TokenCreateInput {
     get {
-      if case .createInput(let v)? = tokenInputs {return v}
+      if case .createInput(let v)? = _storage._tokenInputs {return v}
       return SparkToken_TokenCreateInput()
     }
-    set {tokenInputs = .createInput(newValue)}
+    set {_uniqueStorage()._tokenInputs = .createInput(newValue)}
   }
 
-  var finalTokenOutputs: [SparkToken_FinalTokenOutput] = []
+  var finalTokenOutputs: [SparkToken_FinalTokenOutput] {
+    get {_storage._finalTokenOutputs}
+    set {_uniqueStorage()._finalTokenOutputs = newValue}
+  }
+
+  /// Optional client-specified deadline for transaction execution.
+  /// Included in the final hash to prevent malleability - an attacker cannot
+  /// change the deadline without invalidating operator signatures.
+  var executeBefore: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._executeBefore ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._executeBefore = newValue}
+  }
+  /// Returns true if `executeBefore` has been explicitly set.
+  var hasExecuteBefore: Bool {_storage._executeBefore != nil}
+  /// Clears the value of `executeBefore`. Subsequent reads from it will return its default value.
+  mutating func clearExecuteBefore() {_uniqueStorage()._executeBefore = nil}
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -702,7 +809,7 @@ struct SparkToken_FinalTokenTransaction: Sendable {
 
   init() {}
 
-  fileprivate var _tokenTransactionMetadata: SparkToken_TokenTransactionMetadata? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 struct SparkToken_InvoiceAttachment: Sendable {
@@ -717,21 +824,91 @@ struct SparkToken_InvoiceAttachment: Sendable {
   init() {}
 }
 
+/// A spender's authorization to spend an input TTXO under a delegated
+/// allowance. Cited in place of the owner's own signature; the SO validates
+/// spender_signature against the spender key recorded in the referenced
+/// allowance rather than against the TTXO owner key.
+struct SparkToken_AllowanceSignature: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var allowanceID: Data = Data()
+
+  var spenderSignature: Multisig_KeyedSignature {
+    get {_spenderSignature ?? Multisig_KeyedSignature()}
+    set {_spenderSignature = newValue}
+  }
+  /// Returns true if `spenderSignature` has been explicitly set.
+  var hasSpenderSignature: Bool {self._spenderSignature != nil}
+  /// Clears the value of `spenderSignature`. Subsequent reads from it will return its default value.
+  mutating func clearSpenderSignature() {self._spenderSignature = nil}
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _spenderSignature: Multisig_KeyedSignature? = nil
+}
+
 struct SparkToken_SignatureWithIndex: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// This is a Schnorr or ECDSA DER signature which can be between 64 and 73
-  /// bytes.
-  var signature: Data = Data()
+  /// Deprecated: use authority_signatures instead.
+  var signature: Data {
+    get {_signature ?? Data()}
+    set {_signature = newValue}
+  }
+  /// Returns true if `signature` has been explicitly set.
+  var hasSignature: Bool {self._signature != nil}
+  /// Clears the value of `signature`. Subsequent reads from it will return its default value.
+  mutating func clearSignature() {self._signature = nil}
 
   /// The index of the TTXO associated with this signature.
   var inputIndex: UInt32 = 0
 
+  /// Supports single-key, multisig, or delegated allowance signatures.
+  var authoritySignatures: SparkToken_SignatureWithIndex.OneOf_AuthoritySignatures? = nil
+
+  var singleSignature: Multisig_KeyedSignature {
+    get {
+      if case .singleSignature(let v)? = authoritySignatures {return v}
+      return Multisig_KeyedSignature()
+    }
+    set {authoritySignatures = .singleSignature(newValue)}
+  }
+
+  var multisigSignatures: Multisig_MultisigSignatureSet {
+    get {
+      if case .multisigSignatures(let v)? = authoritySignatures {return v}
+      return Multisig_MultisigSignatureSet()
+    }
+    set {authoritySignatures = .multisigSignatures(newValue)}
+  }
+
+  var allowanceSignature: SparkToken_AllowanceSignature {
+    get {
+      if case .allowanceSignature(let v)? = authoritySignatures {return v}
+      return SparkToken_AllowanceSignature()
+    }
+    set {authoritySignatures = .allowanceSignature(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// Supports single-key, multisig, or delegated allowance signatures.
+  enum OneOf_AuthoritySignatures: Equatable, Sendable {
+    case singleSignature(Multisig_KeyedSignature)
+    case multisigSignatures(Multisig_MultisigSignatureSet)
+    case allowanceSignature(SparkToken_AllowanceSignature)
+
+  }
+
   init() {}
+
+  fileprivate var _signature: Data? = nil
 }
 
 /// A group of signatures for the input TTXOs binding them to the final token
@@ -891,84 +1068,77 @@ struct SparkToken_CommitTransactionResponse: Sendable {
   fileprivate var _tokenIdentifier: Data? = nil
 }
 
-struct SparkToken_BroadcastTransactionRequest: @unchecked Sendable {
+struct SparkToken_BroadcastTransactionRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var identityPublicKey: Data {
-    get {_storage._identityPublicKey}
-    set {_uniqueStorage()._identityPublicKey = newValue}
-  }
+  var identityPublicKey: Data = Data()
 
   var partialTokenTransaction: SparkToken_PartialTokenTransaction {
-    get {_storage._partialTokenTransaction ?? SparkToken_PartialTokenTransaction()}
-    set {_uniqueStorage()._partialTokenTransaction = newValue}
+    get {_partialTokenTransaction ?? SparkToken_PartialTokenTransaction()}
+    set {_partialTokenTransaction = newValue}
   }
   /// Returns true if `partialTokenTransaction` has been explicitly set.
-  var hasPartialTokenTransaction: Bool {_storage._partialTokenTransaction != nil}
+  var hasPartialTokenTransaction: Bool {self._partialTokenTransaction != nil}
   /// Clears the value of `partialTokenTransaction`. Subsequent reads from it will return its default value.
-  mutating func clearPartialTokenTransaction() {_uniqueStorage()._partialTokenTransaction = nil}
+  mutating func clearPartialTokenTransaction() {self._partialTokenTransaction = nil}
 
   /// Filled by signing the partial token transaction hash with the
   /// owner/issuer private key. For mint transactions this will be one
   /// signature for the input issuer_public_key. For transfer transactions this
   /// will be one signature for each input to be spent.
-  var tokenTransactionOwnerSignatures: [SparkToken_SignatureWithIndex] {
-    get {_storage._tokenTransactionOwnerSignatures}
-    set {_uniqueStorage()._tokenTransactionOwnerSignatures = newValue}
-  }
+  var tokenTransactionOwnerSignatures: [SparkToken_SignatureWithIndex] = []
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
 
-  fileprivate var _storage = _StorageClass.defaultInstance
+  fileprivate var _partialTokenTransaction: SparkToken_PartialTokenTransaction? = nil
 }
 
-struct SparkToken_BroadcastTransactionResponse: @unchecked Sendable {
+struct SparkToken_BroadcastTransactionResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   var finalTokenTransaction: SparkToken_FinalTokenTransaction {
-    get {_storage._finalTokenTransaction ?? SparkToken_FinalTokenTransaction()}
-    set {_uniqueStorage()._finalTokenTransaction = newValue}
+    get {_finalTokenTransaction ?? SparkToken_FinalTokenTransaction()}
+    set {_finalTokenTransaction = newValue}
   }
   /// Returns true if `finalTokenTransaction` has been explicitly set.
-  var hasFinalTokenTransaction: Bool {_storage._finalTokenTransaction != nil}
+  var hasFinalTokenTransaction: Bool {self._finalTokenTransaction != nil}
   /// Clears the value of `finalTokenTransaction`. Subsequent reads from it will return its default value.
-  mutating func clearFinalTokenTransaction() {_uniqueStorage()._finalTokenTransaction = nil}
+  mutating func clearFinalTokenTransaction() {self._finalTokenTransaction = nil}
 
-  var commitStatus: SparkToken_CommitStatus {
-    get {_storage._commitStatus}
-    set {_uniqueStorage()._commitStatus = newValue}
-  }
+  var commitStatus: SparkToken_CommitStatus = .commitUnspecified
 
   var commitProgress: SparkToken_CommitProgress {
-    get {_storage._commitProgress ?? SparkToken_CommitProgress()}
-    set {_uniqueStorage()._commitProgress = newValue}
+    get {_commitProgress ?? SparkToken_CommitProgress()}
+    set {_commitProgress = newValue}
   }
   /// Returns true if `commitProgress` has been explicitly set.
-  var hasCommitProgress: Bool {_storage._commitProgress != nil}
+  var hasCommitProgress: Bool {self._commitProgress != nil}
   /// Clears the value of `commitProgress`. Subsequent reads from it will return its default value.
-  mutating func clearCommitProgress() {_uniqueStorage()._commitProgress = nil}
+  mutating func clearCommitProgress() {self._commitProgress = nil}
 
   /// The raw token identifier is returned on create transactions
   var tokenIdentifier: Data {
-    get {_storage._tokenIdentifier ?? Data()}
-    set {_uniqueStorage()._tokenIdentifier = newValue}
+    get {_tokenIdentifier ?? Data()}
+    set {_tokenIdentifier = newValue}
   }
   /// Returns true if `tokenIdentifier` has been explicitly set.
-  var hasTokenIdentifier: Bool {_storage._tokenIdentifier != nil}
+  var hasTokenIdentifier: Bool {self._tokenIdentifier != nil}
   /// Clears the value of `tokenIdentifier`. Subsequent reads from it will return its default value.
-  mutating func clearTokenIdentifier() {_uniqueStorage()._tokenIdentifier = nil}
+  mutating func clearTokenIdentifier() {self._tokenIdentifier = nil}
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
 
-  fileprivate var _storage = _StorageClass.defaultInstance
+  fileprivate var _finalTokenTransaction: SparkToken_FinalTokenTransaction? = nil
+  fileprivate var _commitProgress: SparkToken_CommitProgress? = nil
+  fileprivate var _tokenIdentifier: Data? = nil
 }
 
 struct SparkToken_QueryTokenMetadataRequest: Sendable {
@@ -1447,6 +1617,322 @@ struct SparkToken_FreezeTokensResponse: Sendable {
   fileprivate var _freezeProgress: SparkToken_FreezeProgress? = nil
 }
 
+/// Owner-signed policy object granting a spender bounded authority to spend the
+/// owner's token outputs. Replicated to every SO, which independently enforces
+/// it at prepare. Deterministically hashed to produce the message the owner
+/// signs; see HashCreateTokenAllowancePayload.
+struct SparkToken_TokenAllowancePayload: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var version: UInt32 = 0
+
+  /// Client-generated UUID (16 bytes) identifying the allowance across all SOs.
+  var allowanceID: Data = Data()
+
+  var ownerPublicKey: Data = Data()
+
+  var spenderPublicKey: Data = Data()
+
+  var tokenIdentifier: Data = Data()
+
+  /// Maximum value a single delegated transaction may move; uint128 big-endian.
+  var perTransactionCap: Data = Data()
+
+  /// Cumulative value the spender may move over the allowance lifetime; uint128 big-endian.
+  var totalLimit: Data = Data()
+
+  /// Recipient keys the spender may pay. Empty permits any recipient. Capped
+  /// at 256 entries: generous for real merchant/payout sets while bounding
+  /// stored row size and the per-spend allowlist scan (DoS hardening).
+  var recipientAllowlist: [Data] = []
+
+  var expiryTime: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_expiryTime ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_expiryTime = newValue}
+  }
+  /// Returns true if `expiryTime` has been explicitly set.
+  var hasExpiryTime: Bool {self._expiryTime != nil}
+  /// Clears the value of `expiryTime`. Subsequent reads from it will return its default value.
+  mutating func clearExpiryTime() {self._expiryTime = nil}
+
+  /// Fees are deliberately absent from the owner-signed grant: a pull settles at
+  /// face value, so the owner's debit always equals the authorized pull amount.
+  /// TODO(spark-pull): add the merchant-side network-fee layer (fee carved from
+  /// the merchant's proceeds at a network-set rate; no owner approval).
+  var network: Spark_Network = .unspecified
+
+  /// Wallet-provided creation timestamp in milliseconds, used to order updates.
+  var ownerProvidedTimestamp: UInt64 = 0
+
+  /// Waives the per-transaction ceiling. Requires a per_transaction_cap of all
+  /// zero bytes; the statement hash always binds this flag. Absent/false always
+  /// means bounded, so a stripped flag fails closed.
+  var perTransactionUnlimited: Bool = false
+
+  /// Waives the lifetime total ceiling. Same zero-cap rule as
+  /// per_transaction_unlimited; spent_amount still accumulates for observability.
+  var totalUnlimited: Bool = false
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _expiryTime: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+struct SparkToken_CreateTokenAllowanceRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var allowancePayload: SparkToken_TokenAllowancePayload {
+    get {_allowancePayload ?? SparkToken_TokenAllowancePayload()}
+    set {_allowancePayload = newValue}
+  }
+  /// Returns true if `allowancePayload` has been explicitly set.
+  var hasAllowancePayload: Bool {self._allowancePayload != nil}
+  /// Clears the value of `allowancePayload`. Subsequent reads from it will return its default value.
+  mutating func clearAllowancePayload() {self._allowancePayload = nil}
+
+  /// Schnorr or ECDSA DER signature (64-73 bytes) by the owner over the payload hash.
+  var ownerSignature: Data = Data()
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _allowancePayload: SparkToken_TokenAllowancePayload? = nil
+}
+
+/// AllowanceProgress tracks the coordinated allowance status across operators.
+struct SparkToken_AllowanceProgress: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var appliedOperatorPublicKeys: [Data] = []
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct SparkToken_CreateTokenAllowanceResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var allowance: SparkToken_TokenAllowanceInfo {
+    get {_allowance ?? SparkToken_TokenAllowanceInfo()}
+    set {_allowance = newValue}
+  }
+  /// Returns true if `allowance` has been explicitly set.
+  var hasAllowance: Bool {self._allowance != nil}
+  /// Clears the value of `allowance`. Subsequent reads from it will return its default value.
+  mutating func clearAllowance() {self._allowance = nil}
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _allowance: SparkToken_TokenAllowanceInfo? = nil
+}
+
+struct SparkToken_RevokeTokenAllowancePayload: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var version: UInt32 = 0
+
+  var allowanceID: Data = Data()
+
+  var ownerPublicKey: Data = Data()
+
+  /// Wallet-provided revoke timestamp in milliseconds, used to order updates.
+  var ownerProvidedTimestamp: UInt64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct SparkToken_RevokeTokenAllowanceRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var revokeAllowancePayload: SparkToken_RevokeTokenAllowancePayload {
+    get {_revokeAllowancePayload ?? SparkToken_RevokeTokenAllowancePayload()}
+    set {_revokeAllowancePayload = newValue}
+  }
+  /// Returns true if `revokeAllowancePayload` has been explicitly set.
+  var hasRevokeAllowancePayload: Bool {self._revokeAllowancePayload != nil}
+  /// Clears the value of `revokeAllowancePayload`. Subsequent reads from it will return its default value.
+  mutating func clearRevokeAllowancePayload() {self._revokeAllowancePayload = nil}
+
+  /// Schnorr or ECDSA DER signature (64-73 bytes) by the owner over the payload hash.
+  var ownerSignature: Data = Data()
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _revokeAllowancePayload: SparkToken_RevokeTokenAllowancePayload? = nil
+}
+
+struct SparkToken_RevokeTokenAllowanceResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var allowanceProgress: SparkToken_AllowanceProgress {
+    get {_allowanceProgress ?? SparkToken_AllowanceProgress()}
+    set {_allowanceProgress = newValue}
+  }
+  /// Returns true if `allowanceProgress` has been explicitly set.
+  var hasAllowanceProgress: Bool {self._allowanceProgress != nil}
+  /// Clears the value of `allowanceProgress`. Subsequent reads from it will return its default value.
+  mutating func clearAllowanceProgress() {self._allowanceProgress = nil}
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _allowanceProgress: SparkToken_AllowanceProgress? = nil
+}
+
+struct SparkToken_TokenAllowanceInfo: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var allowancePayload: SparkToken_TokenAllowancePayload {
+    get {_storage._allowancePayload ?? SparkToken_TokenAllowancePayload()}
+    set {_uniqueStorage()._allowancePayload = newValue}
+  }
+  /// Returns true if `allowancePayload` has been explicitly set.
+  var hasAllowancePayload: Bool {_storage._allowancePayload != nil}
+  /// Clears the value of `allowancePayload`. Subsequent reads from it will return its default value.
+  mutating func clearAllowancePayload() {_uniqueStorage()._allowancePayload = nil}
+
+  /// Decoded uint128
+  var spentAmount: Data {
+    get {_storage._spentAmount}
+    set {_uniqueStorage()._spentAmount = newValue}
+  }
+
+  var status: SparkToken_TokenAllowanceStatus {
+    get {_storage._status}
+    set {_uniqueStorage()._status = newValue}
+  }
+
+  /// The owner's signature over the create statement hash. Lets clients
+  /// recompute HashCreateTokenAllowancePayload from the returned payload and
+  /// verify the owner authored these policy terms - the queried SO cannot
+  /// fabricate or alter grant terms.
+  var ownerSignature: Data {
+    get {_storage._ownerSignature}
+    set {_uniqueStorage()._ownerSignature = newValue}
+  }
+
+  /// The owner's signature over the revoke statement hash, present once the
+  /// allowance is REVOKED. Together with owner_provided_revoke_timestamp and
+  /// revoke_version, clients can reconstruct RevokeTokenAllowancePayload,
+  /// recompute HashRevokeTokenAllowancePayload, and verify the owner
+  /// authorized the revocation.
+  var revokeSignature: Data {
+    get {_storage._revokeSignature}
+    set {_uniqueStorage()._revokeSignature = newValue}
+  }
+
+  /// Wallet-provided revoke timestamp in milliseconds, set once REVOKED.
+  var ownerProvidedRevokeTimestamp: UInt64 {
+    get {_storage._ownerProvidedRevokeTimestamp}
+    set {_uniqueStorage()._ownerProvidedRevokeTimestamp = newValue}
+  }
+
+  /// Version of the revoke payload the owner signed, set once REVOKED.
+  var revokeVersion: UInt32 {
+    get {_storage._revokeVersion}
+    set {_uniqueStorage()._revokeVersion = newValue}
+  }
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// Request constraints are combined using an AND relation.
+struct SparkToken_QueryTokenAllowancesRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var ownerPublicKey: Data {
+    get {_ownerPublicKey ?? Data()}
+    set {_ownerPublicKey = newValue}
+  }
+  /// Returns true if `ownerPublicKey` has been explicitly set.
+  var hasOwnerPublicKey: Bool {self._ownerPublicKey != nil}
+  /// Clears the value of `ownerPublicKey`. Subsequent reads from it will return its default value.
+  mutating func clearOwnerPublicKey() {self._ownerPublicKey = nil}
+
+  var spenderPublicKey: Data {
+    get {_spenderPublicKey ?? Data()}
+    set {_spenderPublicKey = newValue}
+  }
+  /// Returns true if `spenderPublicKey` has been explicitly set.
+  var hasSpenderPublicKey: Bool {self._spenderPublicKey != nil}
+  /// Clears the value of `spenderPublicKey`. Subsequent reads from it will return its default value.
+  mutating func clearSpenderPublicKey() {self._spenderPublicKey = nil}
+
+  var tokenIdentifier: Data {
+    get {_tokenIdentifier ?? Data()}
+    set {_tokenIdentifier = newValue}
+  }
+  /// Returns true if `tokenIdentifier` has been explicitly set.
+  var hasTokenIdentifier: Bool {self._tokenIdentifier != nil}
+  /// Clears the value of `tokenIdentifier`. Subsequent reads from it will return its default value.
+  mutating func clearTokenIdentifier() {self._tokenIdentifier = nil}
+
+  /// When false, only ACTIVE allowances are returned.
+  var includeInactive: Bool = false
+
+  /// Page size; defaults to 100 if not set, values above 100 are clamped to 100.
+  var limit: Int64 = 0
+
+  /// defaults to 0 if not set.
+  var offset: Int64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _ownerPublicKey: Data? = nil
+  fileprivate var _spenderPublicKey: Data? = nil
+  fileprivate var _tokenIdentifier: Data? = nil
+}
+
+struct SparkToken_QueryTokenAllowancesResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var allowances: [SparkToken_TokenAllowanceInfo] = []
+
+  /// defaults to -1 if there are no more results
+  var offset: Int64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate let _protobuf_package = "spark_token"
@@ -1465,6 +1951,10 @@ extension SparkToken_CommitStatus: SwiftProtobuf._ProtoNameProviding {
 
 extension SparkToken_TokenTransactionStatus: SwiftProtobuf._ProtoNameProviding {
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TOKEN_TRANSACTION_STARTED\0\u{1}TOKEN_TRANSACTION_SIGNED\0\u{1}TOKEN_TRANSACTION_FINALIZED\0\u{1}TOKEN_TRANSACTION_STARTED_CANCELLED\0\u{1}TOKEN_TRANSACTION_SIGNED_CANCELLED\0\u{1}TOKEN_TRANSACTION_REVEALED\0\u{2}\u{5}TOKEN_TRANSACTION_UNKNOWN\0")
+}
+
+extension SparkToken_TokenAllowanceStatus: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TOKEN_ALLOWANCE_STATUS_UNSPECIFIED\0\u{1}TOKEN_ALLOWANCE_STATUS_ACTIVE\0\u{1}TOKEN_ALLOWANCE_STATUS_REVOKED\0\u{1}TOKEN_ALLOWANCE_STATUS_EXHAUSTED\0\u{1}TOKEN_ALLOWANCE_STATUS_EXPIRED\0")
 }
 
 extension SparkToken_TokenOutputToSpend: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -1810,7 +2300,7 @@ extension SparkToken_FinalTokenOutput: SwiftProtobuf.Message, SwiftProtobuf._Mes
 
 extension SparkToken_TokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".TokenTransaction"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}mint_input\0\u{3}transfer_input\0\u{3}token_outputs\0\u{3}spark_operator_identity_public_keys\0\u{3}expiry_time\0\u{1}network\0\u{3}create_input\0\u{3}client_created_timestamp\0\u{3}invoice_attachments\0\u{3}validity_duration_seconds\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}mint_input\0\u{3}transfer_input\0\u{3}token_outputs\0\u{3}spark_operator_identity_public_keys\0\u{3}expiry_time\0\u{1}network\0\u{3}create_input\0\u{3}client_created_timestamp\0\u{3}invoice_attachments\0\u{3}validity_duration_seconds\0\u{3}execute_before\0")
 
   fileprivate class _StorageClass {
     var _version: UInt32 = 0
@@ -1822,6 +2312,7 @@ extension SparkToken_TokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _clientCreatedTimestamp: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _invoiceAttachments: [SparkToken_InvoiceAttachment] = []
     var _validityDurationSeconds: UInt64? = nil
+    var _executeBefore: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1841,6 +2332,7 @@ extension SparkToken_TokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _clientCreatedTimestamp = source._clientCreatedTimestamp
       _invoiceAttachments = source._invoiceAttachments
       _validityDurationSeconds = source._validityDurationSeconds
+      _executeBefore = source._executeBefore
     }
   }
 
@@ -1906,6 +2398,7 @@ extension SparkToken_TokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._clientCreatedTimestamp) }()
         case 10: try { try decoder.decodeRepeatedMessageField(value: &_storage._invoiceAttachments) }()
         case 11: try { try decoder.decodeSingularUInt64Field(value: &_storage._validityDurationSeconds) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._executeBefore) }()
         default: break
         }
       }
@@ -1956,6 +2449,9 @@ extension SparkToken_TokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._Mes
       try { if let v = _storage._validityDurationSeconds {
         try visitor.visitSingularUInt64Field(value: v, fieldNumber: 11)
       } }()
+      try { if let v = _storage._executeBefore {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1974,6 +2470,7 @@ extension SparkToken_TokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._clientCreatedTimestamp != rhs_storage._clientCreatedTimestamp {return false}
         if _storage._invoiceAttachments != rhs_storage._invoiceAttachments {return false}
         if _storage._validityDurationSeconds != rhs_storage._validityDurationSeconds {return false}
+        if _storage._executeBefore != rhs_storage._executeBefore {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -2039,98 +2536,147 @@ extension SparkToken_TokenTransactionMetadata: SwiftProtobuf.Message, SwiftProto
 
 extension SparkToken_PartialTokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".PartialTokenTransaction"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}token_transaction_metadata\0\u{3}mint_input\0\u{3}transfer_input\0\u{3}create_input\0\u{3}partial_token_outputs\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}token_transaction_metadata\0\u{3}mint_input\0\u{3}transfer_input\0\u{3}create_input\0\u{3}partial_token_outputs\0\u{3}execute_before\0")
+
+  fileprivate class _StorageClass {
+    var _version: UInt32 = 0
+    var _tokenTransactionMetadata: SparkToken_TokenTransactionMetadata? = nil
+    var _tokenInputs: SparkToken_PartialTokenTransaction.OneOf_TokenInputs?
+    var _partialTokenOutputs: [SparkToken_PartialTokenOutput] = []
+    var _executeBefore: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _version = source._version
+      _tokenTransactionMetadata = source._tokenTransactionMetadata
+      _tokenInputs = source._tokenInputs
+      _partialTokenOutputs = source._partialTokenOutputs
+      _executeBefore = source._executeBefore
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.version) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._tokenTransactionMetadata) }()
-      case 3: try {
-        var v: SparkToken_TokenMintInput?
-        var hadOneofValue = false
-        if let current = self.tokenInputs {
-          hadOneofValue = true
-          if case .mintInput(let m) = current {v = m}
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularUInt32Field(value: &_storage._version) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._tokenTransactionMetadata) }()
+        case 3: try {
+          var v: SparkToken_TokenMintInput?
+          var hadOneofValue = false
+          if let current = _storage._tokenInputs {
+            hadOneofValue = true
+            if case .mintInput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._tokenInputs = .mintInput(v)
+          }
+        }()
+        case 4: try {
+          var v: SparkToken_TokenTransferInput?
+          var hadOneofValue = false
+          if let current = _storage._tokenInputs {
+            hadOneofValue = true
+            if case .transferInput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._tokenInputs = .transferInput(v)
+          }
+        }()
+        case 5: try {
+          var v: SparkToken_TokenCreateInput?
+          var hadOneofValue = false
+          if let current = _storage._tokenInputs {
+            hadOneofValue = true
+            if case .createInput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._tokenInputs = .createInput(v)
+          }
+        }()
+        case 6: try { try decoder.decodeRepeatedMessageField(value: &_storage._partialTokenOutputs) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._executeBefore) }()
+        default: break
         }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.tokenInputs = .mintInput(v)
-        }
-      }()
-      case 4: try {
-        var v: SparkToken_TokenTransferInput?
-        var hadOneofValue = false
-        if let current = self.tokenInputs {
-          hadOneofValue = true
-          if case .transferInput(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.tokenInputs = .transferInput(v)
-        }
-      }()
-      case 5: try {
-        var v: SparkToken_TokenCreateInput?
-        var hadOneofValue = false
-        if let current = self.tokenInputs {
-          hadOneofValue = true
-          if case .createInput(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.tokenInputs = .createInput(v)
-        }
-      }()
-      case 6: try { try decoder.decodeRepeatedMessageField(value: &self.partialTokenOutputs) }()
-      default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if self.version != 0 {
-      try visitor.visitSingularUInt32Field(value: self.version, fieldNumber: 1)
-    }
-    try { if let v = self._tokenTransactionMetadata {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-    } }()
-    switch self.tokenInputs {
-    case .mintInput?: try {
-      guard case .mintInput(let v)? = self.tokenInputs else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
-    }()
-    case .transferInput?: try {
-      guard case .transferInput(let v)? = self.tokenInputs else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
-    }()
-    case .createInput?: try {
-      guard case .createInput(let v)? = self.tokenInputs else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
-    }()
-    case nil: break
-    }
-    if !self.partialTokenOutputs.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.partialTokenOutputs, fieldNumber: 6)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if _storage._version != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._version, fieldNumber: 1)
+      }
+      try { if let v = _storage._tokenTransactionMetadata {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      switch _storage._tokenInputs {
+      case .mintInput?: try {
+        guard case .mintInput(let v)? = _storage._tokenInputs else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      }()
+      case .transferInput?: try {
+        guard case .transferInput(let v)? = _storage._tokenInputs else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      }()
+      case .createInput?: try {
+        guard case .createInput(let v)? = _storage._tokenInputs else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      }()
+      case nil: break
+      }
+      if !_storage._partialTokenOutputs.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._partialTokenOutputs, fieldNumber: 6)
+      }
+      try { if let v = _storage._executeBefore {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: SparkToken_PartialTokenTransaction, rhs: SparkToken_PartialTokenTransaction) -> Bool {
-    if lhs.version != rhs.version {return false}
-    if lhs._tokenTransactionMetadata != rhs._tokenTransactionMetadata {return false}
-    if lhs.tokenInputs != rhs.tokenInputs {return false}
-    if lhs.partialTokenOutputs != rhs.partialTokenOutputs {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._version != rhs_storage._version {return false}
+        if _storage._tokenTransactionMetadata != rhs_storage._tokenTransactionMetadata {return false}
+        if _storage._tokenInputs != rhs_storage._tokenInputs {return false}
+        if _storage._partialTokenOutputs != rhs_storage._partialTokenOutputs {return false}
+        if _storage._executeBefore != rhs_storage._executeBefore {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2138,98 +2684,147 @@ extension SparkToken_PartialTokenTransaction: SwiftProtobuf.Message, SwiftProtob
 
 extension SparkToken_FinalTokenTransaction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".FinalTokenTransaction"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}token_transaction_metadata\0\u{3}mint_input\0\u{3}transfer_input\0\u{3}create_input\0\u{3}final_token_outputs\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}token_transaction_metadata\0\u{3}mint_input\0\u{3}transfer_input\0\u{3}create_input\0\u{3}final_token_outputs\0\u{3}execute_before\0")
+
+  fileprivate class _StorageClass {
+    var _version: UInt32 = 0
+    var _tokenTransactionMetadata: SparkToken_TokenTransactionMetadata? = nil
+    var _tokenInputs: SparkToken_FinalTokenTransaction.OneOf_TokenInputs?
+    var _finalTokenOutputs: [SparkToken_FinalTokenOutput] = []
+    var _executeBefore: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _version = source._version
+      _tokenTransactionMetadata = source._tokenTransactionMetadata
+      _tokenInputs = source._tokenInputs
+      _finalTokenOutputs = source._finalTokenOutputs
+      _executeBefore = source._executeBefore
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.version) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._tokenTransactionMetadata) }()
-      case 3: try {
-        var v: SparkToken_TokenMintInput?
-        var hadOneofValue = false
-        if let current = self.tokenInputs {
-          hadOneofValue = true
-          if case .mintInput(let m) = current {v = m}
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularUInt32Field(value: &_storage._version) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._tokenTransactionMetadata) }()
+        case 3: try {
+          var v: SparkToken_TokenMintInput?
+          var hadOneofValue = false
+          if let current = _storage._tokenInputs {
+            hadOneofValue = true
+            if case .mintInput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._tokenInputs = .mintInput(v)
+          }
+        }()
+        case 4: try {
+          var v: SparkToken_TokenTransferInput?
+          var hadOneofValue = false
+          if let current = _storage._tokenInputs {
+            hadOneofValue = true
+            if case .transferInput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._tokenInputs = .transferInput(v)
+          }
+        }()
+        case 5: try {
+          var v: SparkToken_TokenCreateInput?
+          var hadOneofValue = false
+          if let current = _storage._tokenInputs {
+            hadOneofValue = true
+            if case .createInput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._tokenInputs = .createInput(v)
+          }
+        }()
+        case 6: try { try decoder.decodeRepeatedMessageField(value: &_storage._finalTokenOutputs) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._executeBefore) }()
+        default: break
         }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.tokenInputs = .mintInput(v)
-        }
-      }()
-      case 4: try {
-        var v: SparkToken_TokenTransferInput?
-        var hadOneofValue = false
-        if let current = self.tokenInputs {
-          hadOneofValue = true
-          if case .transferInput(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.tokenInputs = .transferInput(v)
-        }
-      }()
-      case 5: try {
-        var v: SparkToken_TokenCreateInput?
-        var hadOneofValue = false
-        if let current = self.tokenInputs {
-          hadOneofValue = true
-          if case .createInput(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.tokenInputs = .createInput(v)
-        }
-      }()
-      case 6: try { try decoder.decodeRepeatedMessageField(value: &self.finalTokenOutputs) }()
-      default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if self.version != 0 {
-      try visitor.visitSingularUInt32Field(value: self.version, fieldNumber: 1)
-    }
-    try { if let v = self._tokenTransactionMetadata {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-    } }()
-    switch self.tokenInputs {
-    case .mintInput?: try {
-      guard case .mintInput(let v)? = self.tokenInputs else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
-    }()
-    case .transferInput?: try {
-      guard case .transferInput(let v)? = self.tokenInputs else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
-    }()
-    case .createInput?: try {
-      guard case .createInput(let v)? = self.tokenInputs else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
-    }()
-    case nil: break
-    }
-    if !self.finalTokenOutputs.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.finalTokenOutputs, fieldNumber: 6)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if _storage._version != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._version, fieldNumber: 1)
+      }
+      try { if let v = _storage._tokenTransactionMetadata {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      switch _storage._tokenInputs {
+      case .mintInput?: try {
+        guard case .mintInput(let v)? = _storage._tokenInputs else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      }()
+      case .transferInput?: try {
+        guard case .transferInput(let v)? = _storage._tokenInputs else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      }()
+      case .createInput?: try {
+        guard case .createInput(let v)? = _storage._tokenInputs else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      }()
+      case nil: break
+      }
+      if !_storage._finalTokenOutputs.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._finalTokenOutputs, fieldNumber: 6)
+      }
+      try { if let v = _storage._executeBefore {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: SparkToken_FinalTokenTransaction, rhs: SparkToken_FinalTokenTransaction) -> Bool {
-    if lhs.version != rhs.version {return false}
-    if lhs._tokenTransactionMetadata != rhs._tokenTransactionMetadata {return false}
-    if lhs.tokenInputs != rhs.tokenInputs {return false}
-    if lhs.finalTokenOutputs != rhs.finalTokenOutputs {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._version != rhs_storage._version {return false}
+        if _storage._tokenTransactionMetadata != rhs_storage._tokenTransactionMetadata {return false}
+        if _storage._tokenInputs != rhs_storage._tokenInputs {return false}
+        if _storage._finalTokenOutputs != rhs_storage._finalTokenOutputs {return false}
+        if _storage._executeBefore != rhs_storage._executeBefore {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2265,9 +2860,9 @@ extension SparkToken_InvoiceAttachment: SwiftProtobuf.Message, SwiftProtobuf._Me
   }
 }
 
-extension SparkToken_SignatureWithIndex: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  static let protoMessageName: String = _protobuf_package + ".SignatureWithIndex"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}signature\0\u{3}input_index\0")
+extension SparkToken_AllowanceSignature: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".AllowanceSignature"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}allowance_id\0\u{3}spender_signature\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2275,26 +2870,124 @@ extension SparkToken_SignatureWithIndex: SwiftProtobuf.Message, SwiftProtobuf._M
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularBytesField(value: &self.signature) }()
-      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.inputIndex) }()
+      case 1: try { try decoder.decodeSingularBytesField(value: &self.allowanceID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._spenderSignature) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.signature.isEmpty {
-      try visitor.visitSingularBytesField(value: self.signature, fieldNumber: 1)
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.allowanceID.isEmpty {
+      try visitor.visitSingularBytesField(value: self.allowanceID, fieldNumber: 1)
     }
+    try { if let v = self._spenderSignature {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_AllowanceSignature, rhs: SparkToken_AllowanceSignature) -> Bool {
+    if lhs.allowanceID != rhs.allowanceID {return false}
+    if lhs._spenderSignature != rhs._spenderSignature {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_SignatureWithIndex: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".SignatureWithIndex"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}signature\0\u{3}input_index\0\u{3}single_signature\0\u{3}multisig_signatures\0\u{3}allowance_signature\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBytesField(value: &self._signature) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.inputIndex) }()
+      case 3: try {
+        var v: Multisig_KeyedSignature?
+        var hadOneofValue = false
+        if let current = self.authoritySignatures {
+          hadOneofValue = true
+          if case .singleSignature(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.authoritySignatures = .singleSignature(v)
+        }
+      }()
+      case 4: try {
+        var v: Multisig_MultisigSignatureSet?
+        var hadOneofValue = false
+        if let current = self.authoritySignatures {
+          hadOneofValue = true
+          if case .multisigSignatures(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.authoritySignatures = .multisigSignatures(v)
+        }
+      }()
+      case 5: try {
+        var v: SparkToken_AllowanceSignature?
+        var hadOneofValue = false
+        if let current = self.authoritySignatures {
+          hadOneofValue = true
+          if case .allowanceSignature(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.authoritySignatures = .allowanceSignature(v)
+        }
+      }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._signature {
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 1)
+    } }()
     if self.inputIndex != 0 {
       try visitor.visitSingularUInt32Field(value: self.inputIndex, fieldNumber: 2)
+    }
+    switch self.authoritySignatures {
+    case .singleSignature?: try {
+      guard case .singleSignature(let v)? = self.authoritySignatures else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    }()
+    case .multisigSignatures?: try {
+      guard case .multisigSignatures(let v)? = self.authoritySignatures else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    }()
+    case .allowanceSignature?: try {
+      guard case .allowanceSignature(let v)? = self.authoritySignatures else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    }()
+    case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: SparkToken_SignatureWithIndex, rhs: SparkToken_SignatureWithIndex) -> Bool {
-    if lhs.signature != rhs.signature {return false}
+    if lhs._signature != rhs._signature {return false}
     if lhs.inputIndex != rhs.inputIndex {return false}
+    if lhs.authoritySignatures != rhs.authoritySignatures {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2555,81 +3248,41 @@ extension SparkToken_BroadcastTransactionRequest: SwiftProtobuf.Message, SwiftPr
   static let protoMessageName: String = _protobuf_package + ".BroadcastTransactionRequest"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}identity_public_key\0\u{3}partial_token_transaction\0\u{3}token_transaction_owner_signatures\0")
 
-  fileprivate class _StorageClass {
-    var _identityPublicKey: Data = Data()
-    var _partialTokenTransaction: SparkToken_PartialTokenTransaction? = nil
-    var _tokenTransactionOwnerSignatures: [SparkToken_SignatureWithIndex] = []
-
-      // This property is used as the initial default value for new instances of the type.
-      // The type itself is protecting the reference to its storage via CoW semantics.
-      // This will force a copy to be made of this reference when the first mutation occurs;
-      // hence, it is safe to mark this as `nonisolated(unsafe)`.
-      static nonisolated(unsafe) let defaultInstance = _StorageClass()
-
-    private init() {}
-
-    init(copying source: _StorageClass) {
-      _identityPublicKey = source._identityPublicKey
-      _partialTokenTransaction = source._partialTokenTransaction
-      _tokenTransactionOwnerSignatures = source._tokenTransactionOwnerSignatures
-    }
-  }
-
-  fileprivate mutating func _uniqueStorage() -> _StorageClass {
-    if !isKnownUniquelyReferenced(&_storage) {
-      _storage = _StorageClass(copying: _storage)
-    }
-    return _storage
-  }
-
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    _ = _uniqueStorage()
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      while let fieldNumber = try decoder.nextFieldNumber() {
-        // The use of inline closures is to circumvent an issue where the compiler
-        // allocates stack space for every case branch when no optimizations are
-        // enabled. https://github.com/apple/swift-protobuf/issues/1034
-        switch fieldNumber {
-        case 1: try { try decoder.decodeSingularBytesField(value: &_storage._identityPublicKey) }()
-        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._partialTokenTransaction) }()
-        case 3: try { try decoder.decodeRepeatedMessageField(value: &_storage._tokenTransactionOwnerSignatures) }()
-        default: break
-        }
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBytesField(value: &self.identityPublicKey) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._partialTokenTransaction) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.tokenTransactionOwnerSignatures) }()
+      default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every if/case branch local when no optimizations
-      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-      // https://github.com/apple/swift-protobuf/issues/1182
-      if !_storage._identityPublicKey.isEmpty {
-        try visitor.visitSingularBytesField(value: _storage._identityPublicKey, fieldNumber: 1)
-      }
-      try { if let v = _storage._partialTokenTransaction {
-        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-      } }()
-      if !_storage._tokenTransactionOwnerSignatures.isEmpty {
-        try visitor.visitRepeatedMessageField(value: _storage._tokenTransactionOwnerSignatures, fieldNumber: 3)
-      }
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.identityPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.identityPublicKey, fieldNumber: 1)
+    }
+    try { if let v = self._partialTokenTransaction {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if !self.tokenTransactionOwnerSignatures.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.tokenTransactionOwnerSignatures, fieldNumber: 3)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: SparkToken_BroadcastTransactionRequest, rhs: SparkToken_BroadcastTransactionRequest) -> Bool {
-    if lhs._storage !== rhs._storage {
-      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
-        let _storage = _args.0
-        let rhs_storage = _args.1
-        if _storage._identityPublicKey != rhs_storage._identityPublicKey {return false}
-        if _storage._partialTokenTransaction != rhs_storage._partialTokenTransaction {return false}
-        if _storage._tokenTransactionOwnerSignatures != rhs_storage._tokenTransactionOwnerSignatures {return false}
-        return true
-      }
-      if !storagesAreEqual {return false}
-    }
+    if lhs.identityPublicKey != rhs.identityPublicKey {return false}
+    if lhs._partialTokenTransaction != rhs._partialTokenTransaction {return false}
+    if lhs.tokenTransactionOwnerSignatures != rhs.tokenTransactionOwnerSignatures {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2639,88 +3292,46 @@ extension SparkToken_BroadcastTransactionResponse: SwiftProtobuf.Message, SwiftP
   static let protoMessageName: String = _protobuf_package + ".BroadcastTransactionResponse"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}final_token_transaction\0\u{3}commit_status\0\u{3}commit_progress\0\u{3}token_identifier\0")
 
-  fileprivate class _StorageClass {
-    var _finalTokenTransaction: SparkToken_FinalTokenTransaction? = nil
-    var _commitStatus: SparkToken_CommitStatus = .commitUnspecified
-    var _commitProgress: SparkToken_CommitProgress? = nil
-    var _tokenIdentifier: Data? = nil
-
-      // This property is used as the initial default value for new instances of the type.
-      // The type itself is protecting the reference to its storage via CoW semantics.
-      // This will force a copy to be made of this reference when the first mutation occurs;
-      // hence, it is safe to mark this as `nonisolated(unsafe)`.
-      static nonisolated(unsafe) let defaultInstance = _StorageClass()
-
-    private init() {}
-
-    init(copying source: _StorageClass) {
-      _finalTokenTransaction = source._finalTokenTransaction
-      _commitStatus = source._commitStatus
-      _commitProgress = source._commitProgress
-      _tokenIdentifier = source._tokenIdentifier
-    }
-  }
-
-  fileprivate mutating func _uniqueStorage() -> _StorageClass {
-    if !isKnownUniquelyReferenced(&_storage) {
-      _storage = _StorageClass(copying: _storage)
-    }
-    return _storage
-  }
-
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    _ = _uniqueStorage()
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      while let fieldNumber = try decoder.nextFieldNumber() {
-        // The use of inline closures is to circumvent an issue where the compiler
-        // allocates stack space for every case branch when no optimizations are
-        // enabled. https://github.com/apple/swift-protobuf/issues/1034
-        switch fieldNumber {
-        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._finalTokenTransaction) }()
-        case 2: try { try decoder.decodeSingularEnumField(value: &_storage._commitStatus) }()
-        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._commitProgress) }()
-        case 4: try { try decoder.decodeSingularBytesField(value: &_storage._tokenIdentifier) }()
-        default: break
-        }
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._finalTokenTransaction) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.commitStatus) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._commitProgress) }()
+      case 4: try { try decoder.decodeSingularBytesField(value: &self._tokenIdentifier) }()
+      default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every if/case branch local when no optimizations
-      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-      // https://github.com/apple/swift-protobuf/issues/1182
-      try { if let v = _storage._finalTokenTransaction {
-        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
-      } }()
-      if _storage._commitStatus != .commitUnspecified {
-        try visitor.visitSingularEnumField(value: _storage._commitStatus, fieldNumber: 2)
-      }
-      try { if let v = _storage._commitProgress {
-        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
-      } }()
-      try { if let v = _storage._tokenIdentifier {
-        try visitor.visitSingularBytesField(value: v, fieldNumber: 4)
-      } }()
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._finalTokenTransaction {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if self.commitStatus != .commitUnspecified {
+      try visitor.visitSingularEnumField(value: self.commitStatus, fieldNumber: 2)
     }
+    try { if let v = self._commitProgress {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._tokenIdentifier {
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: SparkToken_BroadcastTransactionResponse, rhs: SparkToken_BroadcastTransactionResponse) -> Bool {
-    if lhs._storage !== rhs._storage {
-      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
-        let _storage = _args.0
-        let rhs_storage = _args.1
-        if _storage._finalTokenTransaction != rhs_storage._finalTokenTransaction {return false}
-        if _storage._commitStatus != rhs_storage._commitStatus {return false}
-        if _storage._commitProgress != rhs_storage._commitProgress {return false}
-        if _storage._tokenIdentifier != rhs_storage._tokenIdentifier {return false}
-        return true
-      }
-      if !storagesAreEqual {return false}
-    }
+    if lhs._finalTokenTransaction != rhs._finalTokenTransaction {return false}
+    if lhs.commitStatus != rhs.commitStatus {return false}
+    if lhs._commitProgress != rhs._commitProgress {return false}
+    if lhs._tokenIdentifier != rhs._tokenIdentifier {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3563,6 +4174,527 @@ extension SparkToken_FreezeTokensResponse: SwiftProtobuf.Message, SwiftProtobuf.
     if lhs.impactedTokenAmount != rhs.impactedTokenAmount {return false}
     if lhs.impactedTokenOutputs != rhs.impactedTokenOutputs {return false}
     if lhs._freezeProgress != rhs._freezeProgress {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_TokenAllowancePayload: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TokenAllowancePayload"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}allowance_id\0\u{3}owner_public_key\0\u{3}spender_public_key\0\u{3}token_identifier\0\u{3}per_transaction_cap\0\u{3}total_limit\0\u{3}recipient_allowlist\0\u{3}expiry_time\0\u{2}\u{4}network\0\u{3}owner_provided_timestamp\0\u{3}per_transaction_unlimited\0\u{3}total_unlimited\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.version) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.allowanceID) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.ownerPublicKey) }()
+      case 4: try { try decoder.decodeSingularBytesField(value: &self.spenderPublicKey) }()
+      case 5: try { try decoder.decodeSingularBytesField(value: &self.tokenIdentifier) }()
+      case 6: try { try decoder.decodeSingularBytesField(value: &self.perTransactionCap) }()
+      case 7: try { try decoder.decodeSingularBytesField(value: &self.totalLimit) }()
+      case 8: try { try decoder.decodeRepeatedBytesField(value: &self.recipientAllowlist) }()
+      case 9: try { try decoder.decodeSingularMessageField(value: &self._expiryTime) }()
+      case 13: try { try decoder.decodeSingularEnumField(value: &self.network) }()
+      case 14: try { try decoder.decodeSingularUInt64Field(value: &self.ownerProvidedTimestamp) }()
+      case 15: try { try decoder.decodeSingularBoolField(value: &self.perTransactionUnlimited) }()
+      case 16: try { try decoder.decodeSingularBoolField(value: &self.totalUnlimited) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.version != 0 {
+      try visitor.visitSingularUInt32Field(value: self.version, fieldNumber: 1)
+    }
+    if !self.allowanceID.isEmpty {
+      try visitor.visitSingularBytesField(value: self.allowanceID, fieldNumber: 2)
+    }
+    if !self.ownerPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.ownerPublicKey, fieldNumber: 3)
+    }
+    if !self.spenderPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.spenderPublicKey, fieldNumber: 4)
+    }
+    if !self.tokenIdentifier.isEmpty {
+      try visitor.visitSingularBytesField(value: self.tokenIdentifier, fieldNumber: 5)
+    }
+    if !self.perTransactionCap.isEmpty {
+      try visitor.visitSingularBytesField(value: self.perTransactionCap, fieldNumber: 6)
+    }
+    if !self.totalLimit.isEmpty {
+      try visitor.visitSingularBytesField(value: self.totalLimit, fieldNumber: 7)
+    }
+    if !self.recipientAllowlist.isEmpty {
+      try visitor.visitRepeatedBytesField(value: self.recipientAllowlist, fieldNumber: 8)
+    }
+    try { if let v = self._expiryTime {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+    } }()
+    if self.network != .unspecified {
+      try visitor.visitSingularEnumField(value: self.network, fieldNumber: 13)
+    }
+    if self.ownerProvidedTimestamp != 0 {
+      try visitor.visitSingularUInt64Field(value: self.ownerProvidedTimestamp, fieldNumber: 14)
+    }
+    if self.perTransactionUnlimited != false {
+      try visitor.visitSingularBoolField(value: self.perTransactionUnlimited, fieldNumber: 15)
+    }
+    if self.totalUnlimited != false {
+      try visitor.visitSingularBoolField(value: self.totalUnlimited, fieldNumber: 16)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_TokenAllowancePayload, rhs: SparkToken_TokenAllowancePayload) -> Bool {
+    if lhs.version != rhs.version {return false}
+    if lhs.allowanceID != rhs.allowanceID {return false}
+    if lhs.ownerPublicKey != rhs.ownerPublicKey {return false}
+    if lhs.spenderPublicKey != rhs.spenderPublicKey {return false}
+    if lhs.tokenIdentifier != rhs.tokenIdentifier {return false}
+    if lhs.perTransactionCap != rhs.perTransactionCap {return false}
+    if lhs.totalLimit != rhs.totalLimit {return false}
+    if lhs.recipientAllowlist != rhs.recipientAllowlist {return false}
+    if lhs._expiryTime != rhs._expiryTime {return false}
+    if lhs.network != rhs.network {return false}
+    if lhs.ownerProvidedTimestamp != rhs.ownerProvidedTimestamp {return false}
+    if lhs.perTransactionUnlimited != rhs.perTransactionUnlimited {return false}
+    if lhs.totalUnlimited != rhs.totalUnlimited {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_CreateTokenAllowanceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".CreateTokenAllowanceRequest"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}allowance_payload\0\u{3}owner_signature\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._allowancePayload) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.ownerSignature) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._allowancePayload {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.ownerSignature.isEmpty {
+      try visitor.visitSingularBytesField(value: self.ownerSignature, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_CreateTokenAllowanceRequest, rhs: SparkToken_CreateTokenAllowanceRequest) -> Bool {
+    if lhs._allowancePayload != rhs._allowancePayload {return false}
+    if lhs.ownerSignature != rhs.ownerSignature {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_AllowanceProgress: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".AllowanceProgress"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}applied_operator_public_keys\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedBytesField(value: &self.appliedOperatorPublicKeys) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.appliedOperatorPublicKeys.isEmpty {
+      try visitor.visitRepeatedBytesField(value: self.appliedOperatorPublicKeys, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_AllowanceProgress, rhs: SparkToken_AllowanceProgress) -> Bool {
+    if lhs.appliedOperatorPublicKeys != rhs.appliedOperatorPublicKeys {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_CreateTokenAllowanceResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".CreateTokenAllowanceResponse"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}allowance\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._allowance) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._allowance {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_CreateTokenAllowanceResponse, rhs: SparkToken_CreateTokenAllowanceResponse) -> Bool {
+    if lhs._allowance != rhs._allowance {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_RevokeTokenAllowancePayload: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".RevokeTokenAllowancePayload"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}allowance_id\0\u{3}owner_public_key\0\u{3}owner_provided_timestamp\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.version) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.allowanceID) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.ownerPublicKey) }()
+      case 4: try { try decoder.decodeSingularUInt64Field(value: &self.ownerProvidedTimestamp) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.version != 0 {
+      try visitor.visitSingularUInt32Field(value: self.version, fieldNumber: 1)
+    }
+    if !self.allowanceID.isEmpty {
+      try visitor.visitSingularBytesField(value: self.allowanceID, fieldNumber: 2)
+    }
+    if !self.ownerPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.ownerPublicKey, fieldNumber: 3)
+    }
+    if self.ownerProvidedTimestamp != 0 {
+      try visitor.visitSingularUInt64Field(value: self.ownerProvidedTimestamp, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_RevokeTokenAllowancePayload, rhs: SparkToken_RevokeTokenAllowancePayload) -> Bool {
+    if lhs.version != rhs.version {return false}
+    if lhs.allowanceID != rhs.allowanceID {return false}
+    if lhs.ownerPublicKey != rhs.ownerPublicKey {return false}
+    if lhs.ownerProvidedTimestamp != rhs.ownerProvidedTimestamp {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_RevokeTokenAllowanceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".RevokeTokenAllowanceRequest"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}revoke_allowance_payload\0\u{3}owner_signature\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._revokeAllowancePayload) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.ownerSignature) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._revokeAllowancePayload {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.ownerSignature.isEmpty {
+      try visitor.visitSingularBytesField(value: self.ownerSignature, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_RevokeTokenAllowanceRequest, rhs: SparkToken_RevokeTokenAllowanceRequest) -> Bool {
+    if lhs._revokeAllowancePayload != rhs._revokeAllowancePayload {return false}
+    if lhs.ownerSignature != rhs.ownerSignature {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_RevokeTokenAllowanceResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".RevokeTokenAllowanceResponse"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}allowance_progress\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._allowanceProgress) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._allowanceProgress {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_RevokeTokenAllowanceResponse, rhs: SparkToken_RevokeTokenAllowanceResponse) -> Bool {
+    if lhs._allowanceProgress != rhs._allowanceProgress {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_TokenAllowanceInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TokenAllowanceInfo"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}allowance_payload\0\u{3}spent_amount\0\u{1}status\0\u{3}owner_signature\0\u{3}revoke_signature\0\u{3}owner_provided_revoke_timestamp\0\u{3}revoke_version\0")
+
+  fileprivate class _StorageClass {
+    var _allowancePayload: SparkToken_TokenAllowancePayload? = nil
+    var _spentAmount: Data = Data()
+    var _status: SparkToken_TokenAllowanceStatus = .unspecified
+    var _ownerSignature: Data = Data()
+    var _revokeSignature: Data = Data()
+    var _ownerProvidedRevokeTimestamp: UInt64 = 0
+    var _revokeVersion: UInt32 = 0
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _allowancePayload = source._allowancePayload
+      _spentAmount = source._spentAmount
+      _status = source._status
+      _ownerSignature = source._ownerSignature
+      _revokeSignature = source._revokeSignature
+      _ownerProvidedRevokeTimestamp = source._ownerProvidedRevokeTimestamp
+      _revokeVersion = source._revokeVersion
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._allowancePayload) }()
+        case 2: try { try decoder.decodeSingularBytesField(value: &_storage._spentAmount) }()
+        case 3: try { try decoder.decodeSingularEnumField(value: &_storage._status) }()
+        case 4: try { try decoder.decodeSingularBytesField(value: &_storage._ownerSignature) }()
+        case 5: try { try decoder.decodeSingularBytesField(value: &_storage._revokeSignature) }()
+        case 6: try { try decoder.decodeSingularUInt64Field(value: &_storage._ownerProvidedRevokeTimestamp) }()
+        case 7: try { try decoder.decodeSingularUInt32Field(value: &_storage._revokeVersion) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._allowancePayload {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      if !_storage._spentAmount.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._spentAmount, fieldNumber: 2)
+      }
+      if _storage._status != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._status, fieldNumber: 3)
+      }
+      if !_storage._ownerSignature.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._ownerSignature, fieldNumber: 4)
+      }
+      if !_storage._revokeSignature.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._revokeSignature, fieldNumber: 5)
+      }
+      if _storage._ownerProvidedRevokeTimestamp != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._ownerProvidedRevokeTimestamp, fieldNumber: 6)
+      }
+      if _storage._revokeVersion != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._revokeVersion, fieldNumber: 7)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_TokenAllowanceInfo, rhs: SparkToken_TokenAllowanceInfo) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._allowancePayload != rhs_storage._allowancePayload {return false}
+        if _storage._spentAmount != rhs_storage._spentAmount {return false}
+        if _storage._status != rhs_storage._status {return false}
+        if _storage._ownerSignature != rhs_storage._ownerSignature {return false}
+        if _storage._revokeSignature != rhs_storage._revokeSignature {return false}
+        if _storage._ownerProvidedRevokeTimestamp != rhs_storage._ownerProvidedRevokeTimestamp {return false}
+        if _storage._revokeVersion != rhs_storage._revokeVersion {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_QueryTokenAllowancesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".QueryTokenAllowancesRequest"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_public_key\0\u{3}spender_public_key\0\u{3}token_identifier\0\u{3}include_inactive\0\u{1}limit\0\u{1}offset\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBytesField(value: &self._ownerPublicKey) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self._spenderPublicKey) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self._tokenIdentifier) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.includeInactive) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.limit) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self.offset) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._ownerPublicKey {
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._spenderPublicKey {
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._tokenIdentifier {
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 3)
+    } }()
+    if self.includeInactive != false {
+      try visitor.visitSingularBoolField(value: self.includeInactive, fieldNumber: 4)
+    }
+    if self.limit != 0 {
+      try visitor.visitSingularInt64Field(value: self.limit, fieldNumber: 5)
+    }
+    if self.offset != 0 {
+      try visitor.visitSingularInt64Field(value: self.offset, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_QueryTokenAllowancesRequest, rhs: SparkToken_QueryTokenAllowancesRequest) -> Bool {
+    if lhs._ownerPublicKey != rhs._ownerPublicKey {return false}
+    if lhs._spenderPublicKey != rhs._spenderPublicKey {return false}
+    if lhs._tokenIdentifier != rhs._tokenIdentifier {return false}
+    if lhs.includeInactive != rhs.includeInactive {return false}
+    if lhs.limit != rhs.limit {return false}
+    if lhs.offset != rhs.offset {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SparkToken_QueryTokenAllowancesResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".QueryTokenAllowancesResponse"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}allowances\0\u{1}offset\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.allowances) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.offset) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.allowances.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.allowances, fieldNumber: 1)
+    }
+    if self.offset != 0 {
+      try visitor.visitSingularInt64Field(value: self.offset, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SparkToken_QueryTokenAllowancesResponse, rhs: SparkToken_QueryTokenAllowancesResponse) -> Bool {
+    if lhs.allowances != rhs.allowances {return false}
+    if lhs.offset != rhs.offset {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

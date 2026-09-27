@@ -117,6 +117,18 @@ internal enum Spark_SparkService: Sendable {
                 method: "query_all_transfers"
             )
         }
+        /// Namespace for "query_transfers_by_id" metadata.
+        internal enum query_transfers_by_id: Sendable {
+            /// Request type for "query_transfers_by_id".
+            internal typealias Input = Spark_QueryTransfersByIdRequest
+            /// Response type for "query_transfers_by_id".
+            internal typealias Output = Spark_QueryTransfersResponse
+            /// Descriptor for "query_transfers_by_id".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "query_transfers_by_id"
+            )
+        }
         /// Namespace for "claim_transfer_tweak_keys" metadata.
         internal enum claim_transfer_tweak_keys: Sendable {
             /// Request type for "claim_transfer_tweak_keys".
@@ -249,18 +261,6 @@ internal enum Spark_SparkService: Sendable {
                 method: "query_balance"
             )
         }
-        /// Namespace for "query_user_signed_refunds" metadata.
-        internal enum query_user_signed_refunds: Sendable {
-            /// Request type for "query_user_signed_refunds".
-            internal typealias Input = Spark_QueryUserSignedRefundsRequest
-            /// Response type for "query_user_signed_refunds".
-            internal typealias Output = Spark_QueryUserSignedRefundsResponse
-            /// Descriptor for "query_user_signed_refunds".
-            internal static let descriptor = GRPCCore.MethodDescriptor(
-                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
-                method: "query_user_signed_refunds"
-            )
-        }
         /// Namespace for "query_unused_deposit_addresses" metadata.
         internal enum query_unused_deposit_addresses: Sendable {
             /// Request type for "query_unused_deposit_addresses".
@@ -319,6 +319,18 @@ internal enum Spark_SparkService: Sendable {
             internal static let descriptor = GRPCCore.MethodDescriptor(
                 service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
                 method: "exit_single_node_trees"
+            )
+        }
+        /// Namespace for "recover_watchtower_exited_leaf" metadata.
+        internal enum recover_watchtower_exited_leaf: Sendable {
+            /// Request type for "recover_watchtower_exited_leaf".
+            internal typealias Input = Spark_RecoverWatchtowerExitedLeafRequest
+            /// Response type for "recover_watchtower_exited_leaf".
+            internal typealias Output = Spark_RecoverWatchtowerExitedLeafResponse
+            /// Descriptor for "recover_watchtower_exited_leaf".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "recover_watchtower_exited_leaf"
             )
         }
         /// Namespace for "cooperative_exit_v2" metadata.
@@ -381,16 +393,16 @@ internal enum Spark_SparkService: Sendable {
                 method: "initiate_preimage_swap_v3"
             )
         }
-        /// Namespace for "start_leaf_swap_v2" metadata.
-        internal enum start_leaf_swap_v2: Sendable {
-            /// Request type for "start_leaf_swap_v2".
-            internal typealias Input = Spark_StartTransferRequest
-            /// Response type for "start_leaf_swap_v2".
-            internal typealias Output = Spark_StartTransferResponse
-            /// Descriptor for "start_leaf_swap_v2".
+        /// Namespace for "initiate_preimage_swap_v4" metadata.
+        internal enum initiate_preimage_swap_v4: Sendable {
+            /// Request type for "initiate_preimage_swap_v4".
+            internal typealias Input = Spark_InitiatePreimageSwapV4Request
+            /// Response type for "initiate_preimage_swap_v4".
+            internal typealias Output = Spark_InitiatePreimageSwapResponse
+            /// Descriptor for "initiate_preimage_swap_v4".
             internal static let descriptor = GRPCCore.MethodDescriptor(
                 service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
-                method: "start_leaf_swap_v2"
+                method: "initiate_preimage_swap_v4"
             )
         }
         /// Namespace for "start_transfer_v2" metadata.
@@ -417,6 +429,18 @@ internal enum Spark_SparkService: Sendable {
                 method: "start_transfer_v3"
             )
         }
+        /// Namespace for "start_transfer_mpc" metadata.
+        internal enum start_transfer_mpc: Sendable {
+            /// Request type for "start_transfer_mpc".
+            internal typealias Input = Spark_StartTransferMpcRequest
+            /// Response type for "start_transfer_mpc".
+            internal typealias Output = Spark_StartTransferResponse
+            /// Descriptor for "start_transfer_mpc".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "start_transfer_mpc"
+            )
+        }
         /// Namespace for "claim_transfer" metadata.
         internal enum claim_transfer: Sendable {
             /// Request type for "claim_transfer".
@@ -439,6 +463,18 @@ internal enum Spark_SparkService: Sendable {
             internal static let descriptor = GRPCCore.MethodDescriptor(
                 service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
                 method: "get_utxos_for_address"
+            )
+        }
+        /// Namespace for "get_utxos_for_identity" metadata.
+        internal enum get_utxos_for_identity: Sendable {
+            /// Request type for "get_utxos_for_identity".
+            internal typealias Input = Spark_GetUtxosForIdentityRequest
+            /// Response type for "get_utxos_for_identity".
+            internal typealias Output = Spark_GetUtxosForIdentityResponse
+            /// Descriptor for "get_utxos_for_identity".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "get_utxos_for_identity"
             )
         }
         /// Namespace for "query_spark_invoices" metadata.
@@ -489,6 +525,78 @@ internal enum Spark_SparkService: Sendable {
                 method: "query_wallet_setting"
             )
         }
+        /// Namespace for "create_delegation_grant" metadata.
+        internal enum create_delegation_grant: Sendable {
+            /// Request type for "create_delegation_grant".
+            internal typealias Input = Spark_CreateDelegationGrantRequest
+            /// Response type for "create_delegation_grant".
+            internal typealias Output = Spark_CreateDelegationGrantResponse
+            /// Descriptor for "create_delegation_grant".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "create_delegation_grant"
+            )
+        }
+        /// Namespace for "revoke_delegation_grant" metadata.
+        internal enum revoke_delegation_grant: Sendable {
+            /// Request type for "revoke_delegation_grant".
+            internal typealias Input = Spark_RevokeDelegationGrantRequest
+            /// Response type for "revoke_delegation_grant".
+            internal typealias Output = Spark_RevokeDelegationGrantResponse
+            /// Descriptor for "revoke_delegation_grant".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "revoke_delegation_grant"
+            )
+        }
+        /// Namespace for "query_delegation_grants" metadata.
+        internal enum query_delegation_grants: Sendable {
+            /// Request type for "query_delegation_grants".
+            internal typealias Input = Spark_QueryDelegationGrantsRequest
+            /// Response type for "query_delegation_grants".
+            internal typealias Output = Spark_QueryDelegationGrantsResponse
+            /// Descriptor for "query_delegation_grants".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "query_delegation_grants"
+            )
+        }
+        /// Namespace for "install_leaf_decompositions" metadata.
+        internal enum install_leaf_decompositions: Sendable {
+            /// Request type for "install_leaf_decompositions".
+            internal typealias Input = Spark_InstallLeafDecompositionsRequest
+            /// Response type for "install_leaf_decompositions".
+            internal typealias Output = Spark_InstallLeafDecompositionsResponse
+            /// Descriptor for "install_leaf_decompositions".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "install_leaf_decompositions"
+            )
+        }
+        /// Namespace for "add_delegation_spender" metadata.
+        internal enum add_delegation_spender: Sendable {
+            /// Request type for "add_delegation_spender".
+            internal typealias Input = Spark_AddDelegationSpenderRequest
+            /// Response type for "add_delegation_spender".
+            internal typealias Output = Spark_AddDelegationSpenderResponse
+            /// Descriptor for "add_delegation_spender".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "add_delegation_spender"
+            )
+        }
+        /// Namespace for "revoke_delegation_spender" metadata.
+        internal enum revoke_delegation_spender: Sendable {
+            /// Request type for "revoke_delegation_spender".
+            internal typealias Input = Spark_RevokeDelegationSpenderRequest
+            /// Response type for "revoke_delegation_spender".
+            internal typealias Output = Spark_RevokeDelegationSpenderResponse
+            /// Descriptor for "revoke_delegation_spender".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "spark.SparkService"),
+                method: "revoke_delegation_spender"
+            )
+        }
         /// Descriptors for all methods in the "spark.SparkService" service.
         internal static let descriptors: [GRPCCore.MethodDescriptor] = [
             generate_deposit_address.descriptor,
@@ -499,6 +607,7 @@ internal enum Spark_SparkService: Sendable {
             finalize_transfer_with_transfer_package.descriptor,
             query_pending_transfers.descriptor,
             query_all_transfers.descriptor,
+            query_transfers_by_id.descriptor,
             claim_transfer_tweak_keys.descriptor,
             store_preimage_share.descriptor,
             store_preimage_share_v2.descriptor,
@@ -510,26 +619,34 @@ internal enum Spark_SparkService: Sendable {
             get_signing_operator_list.descriptor,
             query_nodes.descriptor,
             query_balance.descriptor,
-            query_user_signed_refunds.descriptor,
             query_unused_deposit_addresses.descriptor,
             query_static_deposit_addresses.descriptor,
             subscribe_to_events.descriptor,
             initiate_static_deposit_utxo_refund.descriptor,
             exit_single_node_trees.descriptor,
+            recover_watchtower_exited_leaf.descriptor,
             cooperative_exit_v2.descriptor,
             claim_transfer_sign_refunds_v2.descriptor,
             finalize_node_signatures_v2.descriptor,
             initiate_preimage_swap_v2.descriptor,
             initiate_preimage_swap_v3.descriptor,
-            start_leaf_swap_v2.descriptor,
+            initiate_preimage_swap_v4.descriptor,
             start_transfer_v2.descriptor,
             start_transfer_v3.descriptor,
+            start_transfer_mpc.descriptor,
             claim_transfer.descriptor,
             get_utxos_for_address.descriptor,
+            get_utxos_for_identity.descriptor,
             query_spark_invoices.descriptor,
             initiate_swap_primary_transfer.descriptor,
             update_wallet_setting.descriptor,
-            query_wallet_setting.descriptor
+            query_wallet_setting.descriptor,
+            create_delegation_grant.descriptor,
+            revoke_delegation_grant.descriptor,
+            query_delegation_grants.descriptor,
+            install_leaf_decompositions.descriptor,
+            add_delegation_spender.descriptor,
+            revoke_delegation_spender.descriptor
         ]
     }
 }
@@ -676,6 +793,20 @@ extension Spark_SparkService {
         /// - Returns: A streaming response of `Spark_QueryTransfersResponse` messages.
         func query_all_transfers(
             request: GRPCCore.StreamingServerRequest<Spark_TransferFilter>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryTransfersResponse>
+
+        /// Handle the "query_transfers_by_id" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_QueryTransfersByIdRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_QueryTransfersResponse` messages.
+        func query_transfers_by_id(
+            request: GRPCCore.StreamingServerRequest<Spark_QueryTransfersByIdRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryTransfersResponse>
 
@@ -850,20 +981,6 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryBalanceResponse>
 
-        /// Handle the "query_user_signed_refunds" method.
-        ///
-        /// - Parameters:
-        ///   - request: A streaming request of `Spark_QueryUserSignedRefundsRequest` messages.
-        ///   - context: Context providing information about the RPC.
-        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
-        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
-        ///     to an internal error.
-        /// - Returns: A streaming response of `Spark_QueryUserSignedRefundsResponse` messages.
-        func query_user_signed_refunds(
-            request: GRPCCore.StreamingServerRequest<Spark_QueryUserSignedRefundsRequest>,
-            context: GRPCCore.ServerContext
-        ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryUserSignedRefundsResponse>
-
         /// Handle the "query_unused_deposit_addresses" method.
         ///
         /// - Parameters:
@@ -941,6 +1058,31 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_ExitSingleNodeTreesResponse>
 
+        /// Handle the "recover_watchtower_exited_leaf" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+        /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+        /// > supplies the transaction and aggregates the SE's FROST shares with its own
+        /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+        /// > operation, so its value cannot also move off-chain.
+        /// > 
+        /// > Calling again re-signs a new transaction, to raise the fee say; every such
+        /// > transaction spends the same output, so at most one can confirm.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_RecoverWatchtowerExitedLeafRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_RecoverWatchtowerExitedLeafResponse` messages.
+        func recover_watchtower_exited_leaf(
+            request: GRPCCore.StreamingServerRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_RecoverWatchtowerExitedLeafResponse>
+
         /// Handle the "cooperative_exit_v2" method.
         ///
         /// > Source IDL Documentation:
@@ -1016,19 +1158,19 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_InitiatePreimageSwapResponse>
 
-        /// Handle the "start_leaf_swap_v2" method.
+        /// Handle the "initiate_preimage_swap_v4" method.
         ///
         /// - Parameters:
-        ///   - request: A streaming request of `Spark_StartTransferRequest` messages.
+        ///   - request: A streaming request of `Spark_InitiatePreimageSwapV4Request` messages.
         ///   - context: Context providing information about the RPC.
         /// - Throws: Any error which occurred during the processing of the request. Thrown errors
         ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
         ///     to an internal error.
-        /// - Returns: A streaming response of `Spark_StartTransferResponse` messages.
-        func start_leaf_swap_v2(
-            request: GRPCCore.StreamingServerRequest<Spark_StartTransferRequest>,
+        /// - Returns: A streaming response of `Spark_InitiatePreimageSwapResponse` messages.
+        func initiate_preimage_swap_v4(
+            request: GRPCCore.StreamingServerRequest<Spark_InitiatePreimageSwapV4Request>,
             context: GRPCCore.ServerContext
-        ) async throws -> GRPCCore.StreamingServerResponse<Spark_StartTransferResponse>
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_InitiatePreimageSwapResponse>
 
         /// Handle the "start_transfer_v2" method.
         ///
@@ -1055,6 +1197,26 @@ extension Spark_SparkService {
         /// - Returns: A streaming response of `Spark_StartTransferResponse` messages.
         func start_transfer_v3(
             request: GRPCCore.StreamingServerRequest<Spark_StartTransferV3Request>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_StartTransferResponse>
+
+        /// Handle the "start_transfer_mpc" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+        /// > group. The receiver may be any Spark user: everything receiver-facing
+        /// > is byte-identical to a single-party send.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_StartTransferMpcRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_StartTransferResponse` messages.
+        func start_transfer_mpc(
+            request: GRPCCore.StreamingServerRequest<Spark_StartTransferMpcRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_StartTransferResponse>
 
@@ -1085,6 +1247,20 @@ extension Spark_SparkService {
             request: GRPCCore.StreamingServerRequest<Spark_GetUtxosForAddressRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_GetUtxosForAddressResponse>
+
+        /// Handle the "get_utxos_for_identity" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_GetUtxosForIdentityRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_GetUtxosForIdentityResponse` messages.
+        func get_utxos_for_identity(
+            request: GRPCCore.StreamingServerRequest<Spark_GetUtxosForIdentityRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_GetUtxosForIdentityResponse>
 
         /// Handle the "query_spark_invoices" method.
         ///
@@ -1147,6 +1323,102 @@ extension Spark_SparkService {
             request: GRPCCore.StreamingServerRequest<Spark_QueryWalletSettingRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryWalletSettingResponse>
+
+        /// Handle the "create_delegation_grant" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+        /// > installs a second key decomposition (delegate share + SE2 keyshare)
+        /// > alongside the primary one, bounded by an owner-signed grant the SO
+        /// > federation enforces at signing time.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_CreateDelegationGrantRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_CreateDelegationGrantResponse` messages.
+        func create_delegation_grant(
+            request: GRPCCore.StreamingServerRequest<Spark_CreateDelegationGrantRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_CreateDelegationGrantResponse>
+
+        /// Handle the "revoke_delegation_grant" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_RevokeDelegationGrantRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_RevokeDelegationGrantResponse` messages.
+        func revoke_delegation_grant(
+            request: GRPCCore.StreamingServerRequest<Spark_RevokeDelegationGrantRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_RevokeDelegationGrantResponse>
+
+        /// Handle the "query_delegation_grants" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_QueryDelegationGrantsRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_QueryDelegationGrantsResponse` messages.
+        func query_delegation_grants(
+            request: GRPCCore.StreamingServerRequest<Spark_QueryDelegationGrantsRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryDelegationGrantsResponse>
+
+        /// Handle the "install_leaf_decompositions" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_InstallLeafDecompositionsRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_InstallLeafDecompositionsResponse` messages.
+        func install_leaf_decompositions(
+            request: GRPCCore.StreamingServerRequest<Spark_InstallLeafDecompositionsRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_InstallLeafDecompositionsResponse>
+
+        /// Handle the "add_delegation_spender" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Owner-signed addition / removal of an authorized spender on an existing
+        /// > grant's delegate path. No new key material — a metering record only.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_AddDelegationSpenderRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_AddDelegationSpenderResponse` messages.
+        func add_delegation_spender(
+            request: GRPCCore.StreamingServerRequest<Spark_AddDelegationSpenderRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_AddDelegationSpenderResponse>
+
+        /// Handle the "revoke_delegation_spender" method.
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Spark_RevokeDelegationSpenderRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Spark_RevokeDelegationSpenderResponse` messages.
+        func revoke_delegation_spender(
+            request: GRPCCore.StreamingServerRequest<Spark_RevokeDelegationSpenderRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Spark_RevokeDelegationSpenderResponse>
     }
 
     /// Service protocol for the "spark.SparkService" service.
@@ -1278,6 +1550,20 @@ extension Spark_SparkService {
         /// - Returns: A response containing a single `Spark_QueryTransfersResponse` message.
         func query_all_transfers(
             request: GRPCCore.ServerRequest<Spark_TransferFilter>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_QueryTransfersResponse>
+
+        /// Handle the "query_transfers_by_id" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_QueryTransfersByIdRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_QueryTransfersResponse` message.
+        func query_transfers_by_id(
+            request: GRPCCore.ServerRequest<Spark_QueryTransfersByIdRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_QueryTransfersResponse>
 
@@ -1452,20 +1738,6 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_QueryBalanceResponse>
 
-        /// Handle the "query_user_signed_refunds" method.
-        ///
-        /// - Parameters:
-        ///   - request: A request containing a single `Spark_QueryUserSignedRefundsRequest` message.
-        ///   - context: Context providing information about the RPC.
-        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
-        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
-        ///     to an internal error.
-        /// - Returns: A response containing a single `Spark_QueryUserSignedRefundsResponse` message.
-        func query_user_signed_refunds(
-            request: GRPCCore.ServerRequest<Spark_QueryUserSignedRefundsRequest>,
-            context: GRPCCore.ServerContext
-        ) async throws -> GRPCCore.ServerResponse<Spark_QueryUserSignedRefundsResponse>
-
         /// Handle the "query_unused_deposit_addresses" method.
         ///
         /// - Parameters:
@@ -1543,6 +1815,31 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_ExitSingleNodeTreesResponse>
 
+        /// Handle the "recover_watchtower_exited_leaf" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+        /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+        /// > supplies the transaction and aggregates the SE's FROST shares with its own
+        /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+        /// > operation, so its value cannot also move off-chain.
+        /// > 
+        /// > Calling again re-signs a new transaction, to raise the fee say; every such
+        /// > transaction spends the same output, so at most one can confirm.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RecoverWatchtowerExitedLeafRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_RecoverWatchtowerExitedLeafResponse` message.
+        func recover_watchtower_exited_leaf(
+            request: GRPCCore.ServerRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_RecoverWatchtowerExitedLeafResponse>
+
         /// Handle the "cooperative_exit_v2" method.
         ///
         /// > Source IDL Documentation:
@@ -1618,19 +1915,19 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_InitiatePreimageSwapResponse>
 
-        /// Handle the "start_leaf_swap_v2" method.
+        /// Handle the "initiate_preimage_swap_v4" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Spark_StartTransferRequest` message.
+        ///   - request: A request containing a single `Spark_InitiatePreimageSwapV4Request` message.
         ///   - context: Context providing information about the RPC.
         /// - Throws: Any error which occurred during the processing of the request. Thrown errors
         ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
         ///     to an internal error.
-        /// - Returns: A response containing a single `Spark_StartTransferResponse` message.
-        func start_leaf_swap_v2(
-            request: GRPCCore.ServerRequest<Spark_StartTransferRequest>,
+        /// - Returns: A response containing a single `Spark_InitiatePreimageSwapResponse` message.
+        func initiate_preimage_swap_v4(
+            request: GRPCCore.ServerRequest<Spark_InitiatePreimageSwapV4Request>,
             context: GRPCCore.ServerContext
-        ) async throws -> GRPCCore.ServerResponse<Spark_StartTransferResponse>
+        ) async throws -> GRPCCore.ServerResponse<Spark_InitiatePreimageSwapResponse>
 
         /// Handle the "start_transfer_v2" method.
         ///
@@ -1657,6 +1954,26 @@ extension Spark_SparkService {
         /// - Returns: A response containing a single `Spark_StartTransferResponse` message.
         func start_transfer_v3(
             request: GRPCCore.ServerRequest<Spark_StartTransferV3Request>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_StartTransferResponse>
+
+        /// Handle the "start_transfer_mpc" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+        /// > group. The receiver may be any Spark user: everything receiver-facing
+        /// > is byte-identical to a single-party send.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_StartTransferMpcRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_StartTransferResponse` message.
+        func start_transfer_mpc(
+            request: GRPCCore.ServerRequest<Spark_StartTransferMpcRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_StartTransferResponse>
 
@@ -1687,6 +2004,20 @@ extension Spark_SparkService {
             request: GRPCCore.ServerRequest<Spark_GetUtxosForAddressRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_GetUtxosForAddressResponse>
+
+        /// Handle the "get_utxos_for_identity" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_GetUtxosForIdentityRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_GetUtxosForIdentityResponse` message.
+        func get_utxos_for_identity(
+            request: GRPCCore.ServerRequest<Spark_GetUtxosForIdentityRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_GetUtxosForIdentityResponse>
 
         /// Handle the "query_spark_invoices" method.
         ///
@@ -1749,6 +2080,102 @@ extension Spark_SparkService {
             request: GRPCCore.ServerRequest<Spark_QueryWalletSettingRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Spark_QueryWalletSettingResponse>
+
+        /// Handle the "create_delegation_grant" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+        /// > installs a second key decomposition (delegate share + SE2 keyshare)
+        /// > alongside the primary one, bounded by an owner-signed grant the SO
+        /// > federation enforces at signing time.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_CreateDelegationGrantRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_CreateDelegationGrantResponse` message.
+        func create_delegation_grant(
+            request: GRPCCore.ServerRequest<Spark_CreateDelegationGrantRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_CreateDelegationGrantResponse>
+
+        /// Handle the "revoke_delegation_grant" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RevokeDelegationGrantRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_RevokeDelegationGrantResponse` message.
+        func revoke_delegation_grant(
+            request: GRPCCore.ServerRequest<Spark_RevokeDelegationGrantRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_RevokeDelegationGrantResponse>
+
+        /// Handle the "query_delegation_grants" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_QueryDelegationGrantsRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_QueryDelegationGrantsResponse` message.
+        func query_delegation_grants(
+            request: GRPCCore.ServerRequest<Spark_QueryDelegationGrantsRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_QueryDelegationGrantsResponse>
+
+        /// Handle the "install_leaf_decompositions" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_InstallLeafDecompositionsRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_InstallLeafDecompositionsResponse` message.
+        func install_leaf_decompositions(
+            request: GRPCCore.ServerRequest<Spark_InstallLeafDecompositionsRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_InstallLeafDecompositionsResponse>
+
+        /// Handle the "add_delegation_spender" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Owner-signed addition / removal of an authorized spender on an existing
+        /// > grant's delegate path. No new key material — a metering record only.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_AddDelegationSpenderRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_AddDelegationSpenderResponse` message.
+        func add_delegation_spender(
+            request: GRPCCore.ServerRequest<Spark_AddDelegationSpenderRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_AddDelegationSpenderResponse>
+
+        /// Handle the "revoke_delegation_spender" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RevokeDelegationSpenderRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Spark_RevokeDelegationSpenderResponse` message.
+        func revoke_delegation_spender(
+            request: GRPCCore.ServerRequest<Spark_RevokeDelegationSpenderRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Spark_RevokeDelegationSpenderResponse>
     }
 
     /// Simple service protocol for the "spark.SparkService" service.
@@ -1878,6 +2305,20 @@ extension Spark_SparkService {
         /// - Returns: A `Spark_QueryTransfersResponse` to respond with.
         func query_all_transfers(
             request: Spark_TransferFilter,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_QueryTransfersResponse
+
+        /// Handle the "query_transfers_by_id" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_QueryTransfersByIdRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_QueryTransfersResponse` to respond with.
+        func query_transfers_by_id(
+            request: Spark_QueryTransfersByIdRequest,
             context: GRPCCore.ServerContext
         ) async throws -> Spark_QueryTransfersResponse
 
@@ -2052,20 +2493,6 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> Spark_QueryBalanceResponse
 
-        /// Handle the "query_user_signed_refunds" method.
-        ///
-        /// - Parameters:
-        ///   - request: A `Spark_QueryUserSignedRefundsRequest` message.
-        ///   - context: Context providing information about the RPC.
-        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
-        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
-        ///     to an internal error.
-        /// - Returns: A `Spark_QueryUserSignedRefundsResponse` to respond with.
-        func query_user_signed_refunds(
-            request: Spark_QueryUserSignedRefundsRequest,
-            context: GRPCCore.ServerContext
-        ) async throws -> Spark_QueryUserSignedRefundsResponse
-
         /// Handle the "query_unused_deposit_addresses" method.
         ///
         /// - Parameters:
@@ -2144,6 +2571,31 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> Spark_ExitSingleNodeTreesResponse
 
+        /// Handle the "recover_watchtower_exited_leaf" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+        /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+        /// > supplies the transaction and aggregates the SE's FROST shares with its own
+        /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+        /// > operation, so its value cannot also move off-chain.
+        /// > 
+        /// > Calling again re-signs a new transaction, to raise the fee say; every such
+        /// > transaction spends the same output, so at most one can confirm.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_RecoverWatchtowerExitedLeafRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_RecoverWatchtowerExitedLeafResponse` to respond with.
+        func recover_watchtower_exited_leaf(
+            request: Spark_RecoverWatchtowerExitedLeafRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_RecoverWatchtowerExitedLeafResponse
+
         /// Handle the "cooperative_exit_v2" method.
         ///
         /// > Source IDL Documentation:
@@ -2219,19 +2671,19 @@ extension Spark_SparkService {
             context: GRPCCore.ServerContext
         ) async throws -> Spark_InitiatePreimageSwapResponse
 
-        /// Handle the "start_leaf_swap_v2" method.
+        /// Handle the "initiate_preimage_swap_v4" method.
         ///
         /// - Parameters:
-        ///   - request: A `Spark_StartTransferRequest` message.
+        ///   - request: A `Spark_InitiatePreimageSwapV4Request` message.
         ///   - context: Context providing information about the RPC.
         /// - Throws: Any error which occurred during the processing of the request. Thrown errors
         ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
         ///     to an internal error.
-        /// - Returns: A `Spark_StartTransferResponse` to respond with.
-        func start_leaf_swap_v2(
-            request: Spark_StartTransferRequest,
+        /// - Returns: A `Spark_InitiatePreimageSwapResponse` to respond with.
+        func initiate_preimage_swap_v4(
+            request: Spark_InitiatePreimageSwapV4Request,
             context: GRPCCore.ServerContext
-        ) async throws -> Spark_StartTransferResponse
+        ) async throws -> Spark_InitiatePreimageSwapResponse
 
         /// Handle the "start_transfer_v2" method.
         ///
@@ -2258,6 +2710,26 @@ extension Spark_SparkService {
         /// - Returns: A `Spark_StartTransferResponse` to respond with.
         func start_transfer_v3(
             request: Spark_StartTransferV3Request,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_StartTransferResponse
+
+        /// Handle the "start_transfer_mpc" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+        /// > group. The receiver may be any Spark user: everything receiver-facing
+        /// > is byte-identical to a single-party send.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_StartTransferMpcRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_StartTransferResponse` to respond with.
+        func start_transfer_mpc(
+            request: Spark_StartTransferMpcRequest,
             context: GRPCCore.ServerContext
         ) async throws -> Spark_StartTransferResponse
 
@@ -2288,6 +2760,20 @@ extension Spark_SparkService {
             request: Spark_GetUtxosForAddressRequest,
             context: GRPCCore.ServerContext
         ) async throws -> Spark_GetUtxosForAddressResponse
+
+        /// Handle the "get_utxos_for_identity" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_GetUtxosForIdentityRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_GetUtxosForIdentityResponse` to respond with.
+        func get_utxos_for_identity(
+            request: Spark_GetUtxosForIdentityRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_GetUtxosForIdentityResponse
 
         /// Handle the "query_spark_invoices" method.
         ///
@@ -2350,6 +2836,102 @@ extension Spark_SparkService {
             request: Spark_QueryWalletSettingRequest,
             context: GRPCCore.ServerContext
         ) async throws -> Spark_QueryWalletSettingResponse
+
+        /// Handle the "create_delegation_grant" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+        /// > installs a second key decomposition (delegate share + SE2 keyshare)
+        /// > alongside the primary one, bounded by an owner-signed grant the SO
+        /// > federation enforces at signing time.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_CreateDelegationGrantRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_CreateDelegationGrantResponse` to respond with.
+        func create_delegation_grant(
+            request: Spark_CreateDelegationGrantRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_CreateDelegationGrantResponse
+
+        /// Handle the "revoke_delegation_grant" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_RevokeDelegationGrantRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_RevokeDelegationGrantResponse` to respond with.
+        func revoke_delegation_grant(
+            request: Spark_RevokeDelegationGrantRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_RevokeDelegationGrantResponse
+
+        /// Handle the "query_delegation_grants" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_QueryDelegationGrantsRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_QueryDelegationGrantsResponse` to respond with.
+        func query_delegation_grants(
+            request: Spark_QueryDelegationGrantsRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_QueryDelegationGrantsResponse
+
+        /// Handle the "install_leaf_decompositions" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_InstallLeafDecompositionsRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_InstallLeafDecompositionsResponse` to respond with.
+        func install_leaf_decompositions(
+            request: Spark_InstallLeafDecompositionsRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_InstallLeafDecompositionsResponse
+
+        /// Handle the "add_delegation_spender" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Owner-signed addition / removal of an authorized spender on an existing
+        /// > grant's delegate path. No new key material — a metering record only.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_AddDelegationSpenderRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_AddDelegationSpenderResponse` to respond with.
+        func add_delegation_spender(
+            request: Spark_AddDelegationSpenderRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_AddDelegationSpenderResponse
+
+        /// Handle the "revoke_delegation_spender" method.
+        ///
+        /// - Parameters:
+        ///   - request: A `Spark_RevokeDelegationSpenderRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Spark_RevokeDelegationSpenderResponse` to respond with.
+        func revoke_delegation_spender(
+            request: Spark_RevokeDelegationSpenderRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Spark_RevokeDelegationSpenderResponse
     }
 }
 
@@ -2440,6 +3022,17 @@ extension Spark_SparkService.StreamingServiceProtocol {
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryTransfersResponse>(),
             handler: { request, context in
                 try await self.query_all_transfers(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.query_transfers_by_id.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryTransfersByIdRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryTransfersResponse>(),
+            handler: { request, context in
+                try await self.query_transfers_by_id(
                     request: request,
                     context: context
                 )
@@ -2567,17 +3160,6 @@ extension Spark_SparkService.StreamingServiceProtocol {
             }
         )
         router.registerHandler(
-            forMethod: Spark_SparkService.Method.query_user_signed_refunds.descriptor,
-            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryUserSignedRefundsRequest>(),
-            serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryUserSignedRefundsResponse>(),
-            handler: { request, context in
-                try await self.query_user_signed_refunds(
-                    request: request,
-                    context: context
-                )
-            }
-        )
-        router.registerHandler(
             forMethod: Spark_SparkService.Method.query_unused_deposit_addresses.descriptor,
             deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryUnusedDepositAddressesRequest>(),
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryUnusedDepositAddressesResponse>(),
@@ -2627,6 +3209,17 @@ extension Spark_SparkService.StreamingServiceProtocol {
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_ExitSingleNodeTreesResponse>(),
             handler: { request, context in
                 try await self.exit_single_node_trees(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.recover_watchtower_exited_leaf.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_RecoverWatchtowerExitedLeafRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_RecoverWatchtowerExitedLeafResponse>(),
+            handler: { request, context in
+                try await self.recover_watchtower_exited_leaf(
                     request: request,
                     context: context
                 )
@@ -2688,11 +3281,11 @@ extension Spark_SparkService.StreamingServiceProtocol {
             }
         )
         router.registerHandler(
-            forMethod: Spark_SparkService.Method.start_leaf_swap_v2.descriptor,
-            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_StartTransferRequest>(),
-            serializer: GRPCProtobuf.ProtobufSerializer<Spark_StartTransferResponse>(),
+            forMethod: Spark_SparkService.Method.initiate_preimage_swap_v4.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_InitiatePreimageSwapV4Request>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_InitiatePreimageSwapResponse>(),
             handler: { request, context in
-                try await self.start_leaf_swap_v2(
+                try await self.initiate_preimage_swap_v4(
                     request: request,
                     context: context
                 )
@@ -2721,6 +3314,17 @@ extension Spark_SparkService.StreamingServiceProtocol {
             }
         )
         router.registerHandler(
+            forMethod: Spark_SparkService.Method.start_transfer_mpc.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_StartTransferMpcRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_StartTransferResponse>(),
+            handler: { request, context in
+                try await self.start_transfer_mpc(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
             forMethod: Spark_SparkService.Method.claim_transfer.descriptor,
             deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_ClaimTransferRequest>(),
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_ClaimTransferResponse>(),
@@ -2737,6 +3341,17 @@ extension Spark_SparkService.StreamingServiceProtocol {
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_GetUtxosForAddressResponse>(),
             handler: { request, context in
                 try await self.get_utxos_for_address(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.get_utxos_for_identity.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_GetUtxosForIdentityRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_GetUtxosForIdentityResponse>(),
+            handler: { request, context in
+                try await self.get_utxos_for_identity(
                     request: request,
                     context: context
                 )
@@ -2781,6 +3396,72 @@ extension Spark_SparkService.StreamingServiceProtocol {
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryWalletSettingResponse>(),
             handler: { request, context in
                 try await self.query_wallet_setting(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.create_delegation_grant.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_CreateDelegationGrantRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_CreateDelegationGrantResponse>(),
+            handler: { request, context in
+                try await self.create_delegation_grant(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.revoke_delegation_grant.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_RevokeDelegationGrantRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_RevokeDelegationGrantResponse>(),
+            handler: { request, context in
+                try await self.revoke_delegation_grant(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.query_delegation_grants.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryDelegationGrantsRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryDelegationGrantsResponse>(),
+            handler: { request, context in
+                try await self.query_delegation_grants(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.install_leaf_decompositions.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_InstallLeafDecompositionsRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_InstallLeafDecompositionsResponse>(),
+            handler: { request, context in
+                try await self.install_leaf_decompositions(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.add_delegation_spender.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_AddDelegationSpenderRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_AddDelegationSpenderResponse>(),
+            handler: { request, context in
+                try await self.add_delegation_spender(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.revoke_delegation_spender.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_RevokeDelegationSpenderRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_RevokeDelegationSpenderResponse>(),
+            handler: { request, context in
+                try await self.revoke_delegation_spender(
                     request: request,
                     context: context
                 )
@@ -2874,6 +3555,17 @@ extension Spark_SparkService.ServiceProtocol {
         context: GRPCCore.ServerContext
     ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryTransfersResponse> {
         let response = try await self.query_all_transfers(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func query_transfers_by_id(
+        request: GRPCCore.StreamingServerRequest<Spark_QueryTransfersByIdRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryTransfersResponse> {
+        let response = try await self.query_transfers_by_id(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -3001,17 +3693,6 @@ extension Spark_SparkService.ServiceProtocol {
         return GRPCCore.StreamingServerResponse(single: response)
     }
 
-    internal func query_user_signed_refunds(
-        request: GRPCCore.StreamingServerRequest<Spark_QueryUserSignedRefundsRequest>,
-        context: GRPCCore.ServerContext
-    ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryUserSignedRefundsResponse> {
-        let response = try await self.query_user_signed_refunds(
-            request: GRPCCore.ServerRequest(stream: request),
-            context: context
-        )
-        return GRPCCore.StreamingServerResponse(single: response)
-    }
-
     internal func query_unused_deposit_addresses(
         request: GRPCCore.StreamingServerRequest<Spark_QueryUnusedDepositAddressesRequest>,
         context: GRPCCore.ServerContext
@@ -3061,6 +3742,17 @@ extension Spark_SparkService.ServiceProtocol {
         context: GRPCCore.ServerContext
     ) async throws -> GRPCCore.StreamingServerResponse<Spark_ExitSingleNodeTreesResponse> {
         let response = try await self.exit_single_node_trees(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func recover_watchtower_exited_leaf(
+        request: GRPCCore.StreamingServerRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_RecoverWatchtowerExitedLeafResponse> {
+        let response = try await self.recover_watchtower_exited_leaf(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -3122,11 +3814,11 @@ extension Spark_SparkService.ServiceProtocol {
         return GRPCCore.StreamingServerResponse(single: response)
     }
 
-    internal func start_leaf_swap_v2(
-        request: GRPCCore.StreamingServerRequest<Spark_StartTransferRequest>,
+    internal func initiate_preimage_swap_v4(
+        request: GRPCCore.StreamingServerRequest<Spark_InitiatePreimageSwapV4Request>,
         context: GRPCCore.ServerContext
-    ) async throws -> GRPCCore.StreamingServerResponse<Spark_StartTransferResponse> {
-        let response = try await self.start_leaf_swap_v2(
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_InitiatePreimageSwapResponse> {
+        let response = try await self.initiate_preimage_swap_v4(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -3155,6 +3847,17 @@ extension Spark_SparkService.ServiceProtocol {
         return GRPCCore.StreamingServerResponse(single: response)
     }
 
+    internal func start_transfer_mpc(
+        request: GRPCCore.StreamingServerRequest<Spark_StartTransferMpcRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_StartTransferResponse> {
+        let response = try await self.start_transfer_mpc(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
     internal func claim_transfer(
         request: GRPCCore.StreamingServerRequest<Spark_ClaimTransferRequest>,
         context: GRPCCore.ServerContext
@@ -3171,6 +3874,17 @@ extension Spark_SparkService.ServiceProtocol {
         context: GRPCCore.ServerContext
     ) async throws -> GRPCCore.StreamingServerResponse<Spark_GetUtxosForAddressResponse> {
         let response = try await self.get_utxos_for_address(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func get_utxos_for_identity(
+        request: GRPCCore.StreamingServerRequest<Spark_GetUtxosForIdentityRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_GetUtxosForIdentityResponse> {
+        let response = try await self.get_utxos_for_identity(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -3215,6 +3929,72 @@ extension Spark_SparkService.ServiceProtocol {
         context: GRPCCore.ServerContext
     ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryWalletSettingResponse> {
         let response = try await self.query_wallet_setting(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func create_delegation_grant(
+        request: GRPCCore.StreamingServerRequest<Spark_CreateDelegationGrantRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_CreateDelegationGrantResponse> {
+        let response = try await self.create_delegation_grant(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func revoke_delegation_grant(
+        request: GRPCCore.StreamingServerRequest<Spark_RevokeDelegationGrantRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_RevokeDelegationGrantResponse> {
+        let response = try await self.revoke_delegation_grant(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func query_delegation_grants(
+        request: GRPCCore.StreamingServerRequest<Spark_QueryDelegationGrantsRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_QueryDelegationGrantsResponse> {
+        let response = try await self.query_delegation_grants(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func install_leaf_decompositions(
+        request: GRPCCore.StreamingServerRequest<Spark_InstallLeafDecompositionsRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_InstallLeafDecompositionsResponse> {
+        let response = try await self.install_leaf_decompositions(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func add_delegation_spender(
+        request: GRPCCore.StreamingServerRequest<Spark_AddDelegationSpenderRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_AddDelegationSpenderResponse> {
+        let response = try await self.add_delegation_spender(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func revoke_delegation_spender(
+        request: GRPCCore.StreamingServerRequest<Spark_RevokeDelegationSpenderRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Spark_RevokeDelegationSpenderResponse> {
+        let response = try await self.revoke_delegation_spender(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -3322,6 +4102,19 @@ extension Spark_SparkService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<Spark_QueryTransfersResponse> {
         return GRPCCore.ServerResponse<Spark_QueryTransfersResponse>(
             message: try await self.query_all_transfers(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func query_transfers_by_id(
+        request: GRPCCore.ServerRequest<Spark_QueryTransfersByIdRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_QueryTransfersResponse> {
+        return GRPCCore.ServerResponse<Spark_QueryTransfersResponse>(
+            message: try await self.query_transfers_by_id(
                 request: request.message,
                 context: context
             ),
@@ -3472,19 +4265,6 @@ extension Spark_SparkService.SimpleServiceProtocol {
         )
     }
 
-    internal func query_user_signed_refunds(
-        request: GRPCCore.ServerRequest<Spark_QueryUserSignedRefundsRequest>,
-        context: GRPCCore.ServerContext
-    ) async throws -> GRPCCore.ServerResponse<Spark_QueryUserSignedRefundsResponse> {
-        return GRPCCore.ServerResponse<Spark_QueryUserSignedRefundsResponse>(
-            message: try await self.query_user_signed_refunds(
-                request: request.message,
-                context: context
-            ),
-            metadata: [:]
-        )
-    }
-
     internal func query_unused_deposit_addresses(
         request: GRPCCore.ServerRequest<Spark_QueryUnusedDepositAddressesRequest>,
         context: GRPCCore.ServerContext
@@ -3547,6 +4327,19 @@ extension Spark_SparkService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<Spark_ExitSingleNodeTreesResponse> {
         return GRPCCore.ServerResponse<Spark_ExitSingleNodeTreesResponse>(
             message: try await self.exit_single_node_trees(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func recover_watchtower_exited_leaf(
+        request: GRPCCore.ServerRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_RecoverWatchtowerExitedLeafResponse> {
+        return GRPCCore.ServerResponse<Spark_RecoverWatchtowerExitedLeafResponse>(
+            message: try await self.recover_watchtower_exited_leaf(
                 request: request.message,
                 context: context
             ),
@@ -3619,12 +4412,12 @@ extension Spark_SparkService.SimpleServiceProtocol {
         )
     }
 
-    internal func start_leaf_swap_v2(
-        request: GRPCCore.ServerRequest<Spark_StartTransferRequest>,
+    internal func initiate_preimage_swap_v4(
+        request: GRPCCore.ServerRequest<Spark_InitiatePreimageSwapV4Request>,
         context: GRPCCore.ServerContext
-    ) async throws -> GRPCCore.ServerResponse<Spark_StartTransferResponse> {
-        return GRPCCore.ServerResponse<Spark_StartTransferResponse>(
-            message: try await self.start_leaf_swap_v2(
+    ) async throws -> GRPCCore.ServerResponse<Spark_InitiatePreimageSwapResponse> {
+        return GRPCCore.ServerResponse<Spark_InitiatePreimageSwapResponse>(
+            message: try await self.initiate_preimage_swap_v4(
                 request: request.message,
                 context: context
             ),
@@ -3658,6 +4451,19 @@ extension Spark_SparkService.SimpleServiceProtocol {
         )
     }
 
+    internal func start_transfer_mpc(
+        request: GRPCCore.ServerRequest<Spark_StartTransferMpcRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_StartTransferResponse> {
+        return GRPCCore.ServerResponse<Spark_StartTransferResponse>(
+            message: try await self.start_transfer_mpc(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
     internal func claim_transfer(
         request: GRPCCore.ServerRequest<Spark_ClaimTransferRequest>,
         context: GRPCCore.ServerContext
@@ -3677,6 +4483,19 @@ extension Spark_SparkService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<Spark_GetUtxosForAddressResponse> {
         return GRPCCore.ServerResponse<Spark_GetUtxosForAddressResponse>(
             message: try await self.get_utxos_for_address(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func get_utxos_for_identity(
+        request: GRPCCore.ServerRequest<Spark_GetUtxosForIdentityRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_GetUtxosForIdentityResponse> {
+        return GRPCCore.ServerResponse<Spark_GetUtxosForIdentityResponse>(
+            message: try await self.get_utxos_for_identity(
                 request: request.message,
                 context: context
             ),
@@ -3729,6 +4548,84 @@ extension Spark_SparkService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<Spark_QueryWalletSettingResponse> {
         return GRPCCore.ServerResponse<Spark_QueryWalletSettingResponse>(
             message: try await self.query_wallet_setting(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func create_delegation_grant(
+        request: GRPCCore.ServerRequest<Spark_CreateDelegationGrantRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_CreateDelegationGrantResponse> {
+        return GRPCCore.ServerResponse<Spark_CreateDelegationGrantResponse>(
+            message: try await self.create_delegation_grant(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func revoke_delegation_grant(
+        request: GRPCCore.ServerRequest<Spark_RevokeDelegationGrantRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_RevokeDelegationGrantResponse> {
+        return GRPCCore.ServerResponse<Spark_RevokeDelegationGrantResponse>(
+            message: try await self.revoke_delegation_grant(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func query_delegation_grants(
+        request: GRPCCore.ServerRequest<Spark_QueryDelegationGrantsRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_QueryDelegationGrantsResponse> {
+        return GRPCCore.ServerResponse<Spark_QueryDelegationGrantsResponse>(
+            message: try await self.query_delegation_grants(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func install_leaf_decompositions(
+        request: GRPCCore.ServerRequest<Spark_InstallLeafDecompositionsRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_InstallLeafDecompositionsResponse> {
+        return GRPCCore.ServerResponse<Spark_InstallLeafDecompositionsResponse>(
+            message: try await self.install_leaf_decompositions(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func add_delegation_spender(
+        request: GRPCCore.ServerRequest<Spark_AddDelegationSpenderRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_AddDelegationSpenderResponse> {
+        return GRPCCore.ServerResponse<Spark_AddDelegationSpenderResponse>(
+            message: try await self.add_delegation_spender(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func revoke_delegation_spender(
+        request: GRPCCore.ServerRequest<Spark_RevokeDelegationSpenderRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Spark_RevokeDelegationSpenderResponse> {
+        return GRPCCore.ServerResponse<Spark_RevokeDelegationSpenderResponse>(
+            message: try await self.revoke_delegation_spender(
                 request: request.message,
                 context: context
             ),
@@ -3905,6 +4802,25 @@ extension Spark_SparkService {
         func query_all_transfers<Result>(
             request: GRPCCore.ClientRequest<Spark_TransferFilter>,
             serializer: some GRPCCore.MessageSerializer<Spark_TransferFilter>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_QueryTransfersResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryTransfersResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "query_transfers_by_id" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_QueryTransfersByIdRequest` message.
+        ///   - serializer: A serializer for `Spark_QueryTransfersByIdRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_QueryTransfersResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func query_transfers_by_id<Result>(
+            request: GRPCCore.ClientRequest<Spark_QueryTransfersByIdRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_QueryTransfersByIdRequest>,
             deserializer: some GRPCCore.MessageDeserializer<Spark_QueryTransfersResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryTransfersResponse>) async throws -> Result
@@ -4136,25 +5052,6 @@ extension Spark_SparkService {
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryBalanceResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
-        /// Call the "query_user_signed_refunds" method.
-        ///
-        /// - Parameters:
-        ///   - request: A request containing a single `Spark_QueryUserSignedRefundsRequest` message.
-        ///   - serializer: A serializer for `Spark_QueryUserSignedRefundsRequest` messages.
-        ///   - deserializer: A deserializer for `Spark_QueryUserSignedRefundsResponse` messages.
-        ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
-        /// - Returns: The result of `handleResponse`.
-        func query_user_signed_refunds<Result>(
-            request: GRPCCore.ClientRequest<Spark_QueryUserSignedRefundsRequest>,
-            serializer: some GRPCCore.MessageSerializer<Spark_QueryUserSignedRefundsRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Spark_QueryUserSignedRefundsResponse>,
-            options: GRPCCore.CallOptions,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryUserSignedRefundsResponse>) async throws -> Result
-        ) async throws -> Result where Result: Sendable
-
         /// Call the "query_unused_deposit_addresses" method.
         ///
         /// - Parameters:
@@ -4257,6 +5154,36 @@ extension Spark_SparkService {
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_ExitSingleNodeTreesResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
+        /// Call the "recover_watchtower_exited_leaf" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+        /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+        /// > supplies the transaction and aggregates the SE's FROST shares with its own
+        /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+        /// > operation, so its value cannot also move off-chain.
+        /// > 
+        /// > Calling again re-signs a new transaction, to raise the fee say; every such
+        /// > transaction spends the same output, so at most one can confirm.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RecoverWatchtowerExitedLeafRequest` message.
+        ///   - serializer: A serializer for `Spark_RecoverWatchtowerExitedLeafRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_RecoverWatchtowerExitedLeafResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func recover_watchtower_exited_leaf<Result>(
+            request: GRPCCore.ClientRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_RecoverWatchtowerExitedLeafRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_RecoverWatchtowerExitedLeafResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RecoverWatchtowerExitedLeafResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
         /// Call the "cooperative_exit_v2" method.
         ///
         /// > Source IDL Documentation:
@@ -4357,23 +5284,23 @@ extension Spark_SparkService {
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InitiatePreimageSwapResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
-        /// Call the "start_leaf_swap_v2" method.
+        /// Call the "initiate_preimage_swap_v4" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Spark_StartTransferRequest` message.
-        ///   - serializer: A serializer for `Spark_StartTransferRequest` messages.
-        ///   - deserializer: A deserializer for `Spark_StartTransferResponse` messages.
+        ///   - request: A request containing a single `Spark_InitiatePreimageSwapV4Request` message.
+        ///   - serializer: A serializer for `Spark_InitiatePreimageSwapV4Request` messages.
+        ///   - deserializer: A deserializer for `Spark_InitiatePreimageSwapResponse` messages.
         ///   - options: Options to apply to this RPC.
         ///   - handleResponse: A closure which handles the response, the result of which is
         ///       returned to the caller. Returning from the closure will cancel the RPC if it
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
-        func start_leaf_swap_v2<Result>(
-            request: GRPCCore.ClientRequest<Spark_StartTransferRequest>,
-            serializer: some GRPCCore.MessageSerializer<Spark_StartTransferRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Spark_StartTransferResponse>,
+        func initiate_preimage_swap_v4<Result>(
+            request: GRPCCore.ClientRequest<Spark_InitiatePreimageSwapV4Request>,
+            serializer: some GRPCCore.MessageSerializer<Spark_InitiatePreimageSwapV4Request>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_InitiatePreimageSwapResponse>,
             options: GRPCCore.CallOptions,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InitiatePreimageSwapResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "start_transfer_v2" method.
@@ -4409,6 +5336,31 @@ extension Spark_SparkService {
         func start_transfer_v3<Result>(
             request: GRPCCore.ClientRequest<Spark_StartTransferV3Request>,
             serializer: some GRPCCore.MessageSerializer<Spark_StartTransferV3Request>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_StartTransferResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "start_transfer_mpc" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+        /// > group. The receiver may be any Spark user: everything receiver-facing
+        /// > is byte-identical to a single-party send.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_StartTransferMpcRequest` message.
+        ///   - serializer: A serializer for `Spark_StartTransferMpcRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_StartTransferResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func start_transfer_mpc<Result>(
+            request: GRPCCore.ClientRequest<Spark_StartTransferMpcRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_StartTransferMpcRequest>,
             deserializer: some GRPCCore.MessageDeserializer<Spark_StartTransferResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result
@@ -4450,6 +5402,25 @@ extension Spark_SparkService {
             deserializer: some GRPCCore.MessageDeserializer<Spark_GetUtxosForAddressResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_GetUtxosForAddressResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "get_utxos_for_identity" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_GetUtxosForIdentityRequest` message.
+        ///   - serializer: A serializer for `Spark_GetUtxosForIdentityRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_GetUtxosForIdentityResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func get_utxos_for_identity<Result>(
+            request: GRPCCore.ClientRequest<Spark_GetUtxosForIdentityRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_GetUtxosForIdentityRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_GetUtxosForIdentityResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_GetUtxosForIdentityResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "query_spark_invoices" method.
@@ -4532,6 +5503,132 @@ extension Spark_SparkService {
             deserializer: some GRPCCore.MessageDeserializer<Spark_QueryWalletSettingResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryWalletSettingResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "create_delegation_grant" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+        /// > installs a second key decomposition (delegate share + SE2 keyshare)
+        /// > alongside the primary one, bounded by an owner-signed grant the SO
+        /// > federation enforces at signing time.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_CreateDelegationGrantRequest` message.
+        ///   - serializer: A serializer for `Spark_CreateDelegationGrantRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_CreateDelegationGrantResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func create_delegation_grant<Result>(
+            request: GRPCCore.ClientRequest<Spark_CreateDelegationGrantRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_CreateDelegationGrantRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_CreateDelegationGrantResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_CreateDelegationGrantResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "revoke_delegation_grant" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RevokeDelegationGrantRequest` message.
+        ///   - serializer: A serializer for `Spark_RevokeDelegationGrantRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_RevokeDelegationGrantResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func revoke_delegation_grant<Result>(
+            request: GRPCCore.ClientRequest<Spark_RevokeDelegationGrantRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_RevokeDelegationGrantRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_RevokeDelegationGrantResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationGrantResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "query_delegation_grants" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_QueryDelegationGrantsRequest` message.
+        ///   - serializer: A serializer for `Spark_QueryDelegationGrantsRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_QueryDelegationGrantsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func query_delegation_grants<Result>(
+            request: GRPCCore.ClientRequest<Spark_QueryDelegationGrantsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_QueryDelegationGrantsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_QueryDelegationGrantsResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryDelegationGrantsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "install_leaf_decompositions" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_InstallLeafDecompositionsRequest` message.
+        ///   - serializer: A serializer for `Spark_InstallLeafDecompositionsRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_InstallLeafDecompositionsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func install_leaf_decompositions<Result>(
+            request: GRPCCore.ClientRequest<Spark_InstallLeafDecompositionsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_InstallLeafDecompositionsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_InstallLeafDecompositionsResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InstallLeafDecompositionsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "add_delegation_spender" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Owner-signed addition / removal of an authorized spender on an existing
+        /// > grant's delegate path. No new key material — a metering record only.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_AddDelegationSpenderRequest` message.
+        ///   - serializer: A serializer for `Spark_AddDelegationSpenderRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_AddDelegationSpenderResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func add_delegation_spender<Result>(
+            request: GRPCCore.ClientRequest<Spark_AddDelegationSpenderRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_AddDelegationSpenderRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_AddDelegationSpenderResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_AddDelegationSpenderResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "revoke_delegation_spender" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RevokeDelegationSpenderRequest` message.
+        ///   - serializer: A serializer for `Spark_RevokeDelegationSpenderRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_RevokeDelegationSpenderResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func revoke_delegation_spender<Result>(
+            request: GRPCCore.ClientRequest<Spark_RevokeDelegationSpenderRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_RevokeDelegationSpenderRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_RevokeDelegationSpenderResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationSpenderResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
     }
 
@@ -4796,6 +5893,36 @@ extension Spark_SparkService {
             try await self.client.unary(
                 request: request,
                 descriptor: Spark_SparkService.Method.query_all_transfers.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "query_transfers_by_id" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_QueryTransfersByIdRequest` message.
+        ///   - serializer: A serializer for `Spark_QueryTransfersByIdRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_QueryTransfersResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func query_transfers_by_id<Result>(
+            request: GRPCCore.ClientRequest<Spark_QueryTransfersByIdRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_QueryTransfersByIdRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_QueryTransfersResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryTransfersResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.query_transfers_by_id.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -5150,36 +6277,6 @@ extension Spark_SparkService {
             )
         }
 
-        /// Call the "query_user_signed_refunds" method.
-        ///
-        /// - Parameters:
-        ///   - request: A request containing a single `Spark_QueryUserSignedRefundsRequest` message.
-        ///   - serializer: A serializer for `Spark_QueryUserSignedRefundsRequest` messages.
-        ///   - deserializer: A deserializer for `Spark_QueryUserSignedRefundsResponse` messages.
-        ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
-        /// - Returns: The result of `handleResponse`.
-        internal func query_user_signed_refunds<Result>(
-            request: GRPCCore.ClientRequest<Spark_QueryUserSignedRefundsRequest>,
-            serializer: some GRPCCore.MessageSerializer<Spark_QueryUserSignedRefundsRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Spark_QueryUserSignedRefundsResponse>,
-            options: GRPCCore.CallOptions = .defaults,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryUserSignedRefundsResponse>) async throws -> Result = { response in
-                try response.message
-            }
-        ) async throws -> Result where Result: Sendable {
-            try await self.client.unary(
-                request: request,
-                descriptor: Spark_SparkService.Method.query_user_signed_refunds.descriptor,
-                serializer: serializer,
-                deserializer: deserializer,
-                options: options,
-                onResponse: handleResponse
-            )
-        }
-
         /// Call the "query_unused_deposit_addresses" method.
         ///
         /// - Parameters:
@@ -5328,6 +6425,47 @@ extension Spark_SparkService {
             try await self.client.unary(
                 request: request,
                 descriptor: Spark_SparkService.Method.exit_single_node_trees.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "recover_watchtower_exited_leaf" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+        /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+        /// > supplies the transaction and aggregates the SE's FROST shares with its own
+        /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+        /// > operation, so its value cannot also move off-chain.
+        /// > 
+        /// > Calling again re-signs a new transaction, to raise the fee say; every such
+        /// > transaction spends the same output, so at most one can confirm.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RecoverWatchtowerExitedLeafRequest` message.
+        ///   - serializer: A serializer for `Spark_RecoverWatchtowerExitedLeafRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_RecoverWatchtowerExitedLeafResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func recover_watchtower_exited_leaf<Result>(
+            request: GRPCCore.ClientRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_RecoverWatchtowerExitedLeafRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_RecoverWatchtowerExitedLeafResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RecoverWatchtowerExitedLeafResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.recover_watchtower_exited_leaf.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -5490,29 +6628,29 @@ extension Spark_SparkService {
             )
         }
 
-        /// Call the "start_leaf_swap_v2" method.
+        /// Call the "initiate_preimage_swap_v4" method.
         ///
         /// - Parameters:
-        ///   - request: A request containing a single `Spark_StartTransferRequest` message.
-        ///   - serializer: A serializer for `Spark_StartTransferRequest` messages.
-        ///   - deserializer: A deserializer for `Spark_StartTransferResponse` messages.
+        ///   - request: A request containing a single `Spark_InitiatePreimageSwapV4Request` message.
+        ///   - serializer: A serializer for `Spark_InitiatePreimageSwapV4Request` messages.
+        ///   - deserializer: A deserializer for `Spark_InitiatePreimageSwapResponse` messages.
         ///   - options: Options to apply to this RPC.
         ///   - handleResponse: A closure which handles the response, the result of which is
         ///       returned to the caller. Returning from the closure will cancel the RPC if it
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
-        internal func start_leaf_swap_v2<Result>(
-            request: GRPCCore.ClientRequest<Spark_StartTransferRequest>,
-            serializer: some GRPCCore.MessageSerializer<Spark_StartTransferRequest>,
-            deserializer: some GRPCCore.MessageDeserializer<Spark_StartTransferResponse>,
+        internal func initiate_preimage_swap_v4<Result>(
+            request: GRPCCore.ClientRequest<Spark_InitiatePreimageSwapV4Request>,
+            serializer: some GRPCCore.MessageSerializer<Spark_InitiatePreimageSwapV4Request>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_InitiatePreimageSwapResponse>,
             options: GRPCCore.CallOptions = .defaults,
-            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result = { response in
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InitiatePreimageSwapResponse>) async throws -> Result = { response in
                 try response.message
             }
         ) async throws -> Result where Result: Sendable {
             try await self.client.unary(
                 request: request,
-                descriptor: Spark_SparkService.Method.start_leaf_swap_v2.descriptor,
+                descriptor: Spark_SparkService.Method.initiate_preimage_swap_v4.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -5580,6 +6718,42 @@ extension Spark_SparkService {
             )
         }
 
+        /// Call the "start_transfer_mpc" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+        /// > group. The receiver may be any Spark user: everything receiver-facing
+        /// > is byte-identical to a single-party send.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_StartTransferMpcRequest` message.
+        ///   - serializer: A serializer for `Spark_StartTransferMpcRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_StartTransferResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func start_transfer_mpc<Result>(
+            request: GRPCCore.ClientRequest<Spark_StartTransferMpcRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_StartTransferMpcRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_StartTransferResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.start_transfer_mpc.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
         /// Call the "claim_transfer" method.
         ///
         /// - Parameters:
@@ -5633,6 +6807,36 @@ extension Spark_SparkService {
             try await self.client.unary(
                 request: request,
                 descriptor: Spark_SparkService.Method.get_utxos_for_address.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "get_utxos_for_identity" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_GetUtxosForIdentityRequest` message.
+        ///   - serializer: A serializer for `Spark_GetUtxosForIdentityRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_GetUtxosForIdentityResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func get_utxos_for_identity<Result>(
+            request: GRPCCore.ClientRequest<Spark_GetUtxosForIdentityRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_GetUtxosForIdentityRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_GetUtxosForIdentityResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_GetUtxosForIdentityResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.get_utxos_for_identity.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -5759,6 +6963,198 @@ extension Spark_SparkService {
             try await self.client.unary(
                 request: request,
                 descriptor: Spark_SparkService.Method.query_wallet_setting.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "create_delegation_grant" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+        /// > installs a second key decomposition (delegate share + SE2 keyshare)
+        /// > alongside the primary one, bounded by an owner-signed grant the SO
+        /// > federation enforces at signing time.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_CreateDelegationGrantRequest` message.
+        ///   - serializer: A serializer for `Spark_CreateDelegationGrantRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_CreateDelegationGrantResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func create_delegation_grant<Result>(
+            request: GRPCCore.ClientRequest<Spark_CreateDelegationGrantRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_CreateDelegationGrantRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_CreateDelegationGrantResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_CreateDelegationGrantResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.create_delegation_grant.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "revoke_delegation_grant" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RevokeDelegationGrantRequest` message.
+        ///   - serializer: A serializer for `Spark_RevokeDelegationGrantRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_RevokeDelegationGrantResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func revoke_delegation_grant<Result>(
+            request: GRPCCore.ClientRequest<Spark_RevokeDelegationGrantRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_RevokeDelegationGrantRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_RevokeDelegationGrantResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationGrantResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.revoke_delegation_grant.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "query_delegation_grants" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_QueryDelegationGrantsRequest` message.
+        ///   - serializer: A serializer for `Spark_QueryDelegationGrantsRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_QueryDelegationGrantsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func query_delegation_grants<Result>(
+            request: GRPCCore.ClientRequest<Spark_QueryDelegationGrantsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_QueryDelegationGrantsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_QueryDelegationGrantsResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryDelegationGrantsResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.query_delegation_grants.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "install_leaf_decompositions" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_InstallLeafDecompositionsRequest` message.
+        ///   - serializer: A serializer for `Spark_InstallLeafDecompositionsRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_InstallLeafDecompositionsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func install_leaf_decompositions<Result>(
+            request: GRPCCore.ClientRequest<Spark_InstallLeafDecompositionsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_InstallLeafDecompositionsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_InstallLeafDecompositionsResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InstallLeafDecompositionsResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.install_leaf_decompositions.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "add_delegation_spender" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > Owner-signed addition / removal of an authorized spender on an existing
+        /// > grant's delegate path. No new key material — a metering record only.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_AddDelegationSpenderRequest` message.
+        ///   - serializer: A serializer for `Spark_AddDelegationSpenderRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_AddDelegationSpenderResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func add_delegation_spender<Result>(
+            request: GRPCCore.ClientRequest<Spark_AddDelegationSpenderRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_AddDelegationSpenderRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_AddDelegationSpenderResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_AddDelegationSpenderResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.add_delegation_spender.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "revoke_delegation_spender" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Spark_RevokeDelegationSpenderRequest` message.
+        ///   - serializer: A serializer for `Spark_RevokeDelegationSpenderRequest` messages.
+        ///   - deserializer: A deserializer for `Spark_RevokeDelegationSpenderResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func revoke_delegation_spender<Result>(
+            request: GRPCCore.ClientRequest<Spark_RevokeDelegationSpenderRequest>,
+            serializer: some GRPCCore.MessageSerializer<Spark_RevokeDelegationSpenderRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Spark_RevokeDelegationSpenderResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationSpenderResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Spark_SparkService.Method.revoke_delegation_spender.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -5977,6 +7373,31 @@ extension Spark_SparkService.ClientProtocol {
         try await self.query_all_transfers(
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_TransferFilter>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryTransfersResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "query_transfers_by_id" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_QueryTransfersByIdRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func query_transfers_by_id<Result>(
+        request: GRPCCore.ClientRequest<Spark_QueryTransfersByIdRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryTransfersResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.query_transfers_by_id(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryTransfersByIdRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryTransfersResponse>(),
             options: options,
             onResponse: handleResponse
@@ -6275,31 +7696,6 @@ extension Spark_SparkService.ClientProtocol {
         )
     }
 
-    /// Call the "query_user_signed_refunds" method.
-    ///
-    /// - Parameters:
-    ///   - request: A request containing a single `Spark_QueryUserSignedRefundsRequest` message.
-    ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
-    /// - Returns: The result of `handleResponse`.
-    internal func query_user_signed_refunds<Result>(
-        request: GRPCCore.ClientRequest<Spark_QueryUserSignedRefundsRequest>,
-        options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryUserSignedRefundsResponse>) async throws -> Result = { response in
-            try response.message
-        }
-    ) async throws -> Result where Result: Sendable {
-        try await self.query_user_signed_refunds(
-            request: request,
-            serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryUserSignedRefundsRequest>(),
-            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryUserSignedRefundsResponse>(),
-            options: options,
-            onResponse: handleResponse
-        )
-    }
-
     /// Call the "query_unused_deposit_addresses" method.
     ///
     /// - Parameters:
@@ -6425,6 +7821,42 @@ extension Spark_SparkService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_ExitSingleNodeTreesRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_ExitSingleNodeTreesResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "recover_watchtower_exited_leaf" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+    /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+    /// > supplies the transaction and aggregates the SE's FROST shares with its own
+    /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+    /// > operation, so its value cannot also move off-chain.
+    /// > 
+    /// > Calling again re-signs a new transaction, to raise the fee say; every such
+    /// > transaction spends the same output, so at most one can confirm.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_RecoverWatchtowerExitedLeafRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func recover_watchtower_exited_leaf<Result>(
+        request: GRPCCore.ClientRequest<Spark_RecoverWatchtowerExitedLeafRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RecoverWatchtowerExitedLeafResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.recover_watchtower_exited_leaf(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_RecoverWatchtowerExitedLeafRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_RecoverWatchtowerExitedLeafResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -6560,26 +7992,26 @@ extension Spark_SparkService.ClientProtocol {
         )
     }
 
-    /// Call the "start_leaf_swap_v2" method.
+    /// Call the "initiate_preimage_swap_v4" method.
     ///
     /// - Parameters:
-    ///   - request: A request containing a single `Spark_StartTransferRequest` message.
+    ///   - request: A request containing a single `Spark_InitiatePreimageSwapV4Request` message.
     ///   - options: Options to apply to this RPC.
     ///   - handleResponse: A closure which handles the response, the result of which is
     ///       returned to the caller. Returning from the closure will cancel the RPC if it
     ///       hasn't already finished.
     /// - Returns: The result of `handleResponse`.
-    internal func start_leaf_swap_v2<Result>(
-        request: GRPCCore.ClientRequest<Spark_StartTransferRequest>,
+    internal func initiate_preimage_swap_v4<Result>(
+        request: GRPCCore.ClientRequest<Spark_InitiatePreimageSwapV4Request>,
         options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result = { response in
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InitiatePreimageSwapResponse>) async throws -> Result = { response in
             try response.message
         }
     ) async throws -> Result where Result: Sendable {
-        try await self.start_leaf_swap_v2(
+        try await self.initiate_preimage_swap_v4(
             request: request,
-            serializer: GRPCProtobuf.ProtobufSerializer<Spark_StartTransferRequest>(),
-            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_StartTransferResponse>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_InitiatePreimageSwapV4Request>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_InitiatePreimageSwapResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -6635,6 +8067,37 @@ extension Spark_SparkService.ClientProtocol {
         )
     }
 
+    /// Call the "start_transfer_mpc" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+    /// > group. The receiver may be any Spark user: everything receiver-facing
+    /// > is byte-identical to a single-party send.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_StartTransferMpcRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func start_transfer_mpc<Result>(
+        request: GRPCCore.ClientRequest<Spark_StartTransferMpcRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.start_transfer_mpc(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_StartTransferMpcRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_StartTransferResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "claim_transfer" method.
     ///
     /// - Parameters:
@@ -6680,6 +8143,31 @@ extension Spark_SparkService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_GetUtxosForAddressRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_GetUtxosForAddressResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "get_utxos_for_identity" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_GetUtxosForIdentityRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func get_utxos_for_identity<Result>(
+        request: GRPCCore.ClientRequest<Spark_GetUtxosForIdentityRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_GetUtxosForIdentityResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.get_utxos_for_identity(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_GetUtxosForIdentityRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_GetUtxosForIdentityResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -6786,6 +8274,168 @@ extension Spark_SparkService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryWalletSettingRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryWalletSettingResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "create_delegation_grant" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+    /// > installs a second key decomposition (delegate share + SE2 keyshare)
+    /// > alongside the primary one, bounded by an owner-signed grant the SO
+    /// > federation enforces at signing time.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_CreateDelegationGrantRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func create_delegation_grant<Result>(
+        request: GRPCCore.ClientRequest<Spark_CreateDelegationGrantRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_CreateDelegationGrantResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.create_delegation_grant(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_CreateDelegationGrantRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_CreateDelegationGrantResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "revoke_delegation_grant" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_RevokeDelegationGrantRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func revoke_delegation_grant<Result>(
+        request: GRPCCore.ClientRequest<Spark_RevokeDelegationGrantRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationGrantResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.revoke_delegation_grant(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_RevokeDelegationGrantRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_RevokeDelegationGrantResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "query_delegation_grants" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_QueryDelegationGrantsRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func query_delegation_grants<Result>(
+        request: GRPCCore.ClientRequest<Spark_QueryDelegationGrantsRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryDelegationGrantsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.query_delegation_grants(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_QueryDelegationGrantsRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_QueryDelegationGrantsResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "install_leaf_decompositions" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_InstallLeafDecompositionsRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func install_leaf_decompositions<Result>(
+        request: GRPCCore.ClientRequest<Spark_InstallLeafDecompositionsRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InstallLeafDecompositionsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.install_leaf_decompositions(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_InstallLeafDecompositionsRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_InstallLeafDecompositionsResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "add_delegation_spender" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Owner-signed addition / removal of an authorized spender on an existing
+    /// > grant's delegate path. No new key material — a metering record only.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_AddDelegationSpenderRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func add_delegation_spender<Result>(
+        request: GRPCCore.ClientRequest<Spark_AddDelegationSpenderRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_AddDelegationSpenderResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.add_delegation_spender(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_AddDelegationSpenderRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_AddDelegationSpenderResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "revoke_delegation_spender" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Spark_RevokeDelegationSpenderRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func revoke_delegation_spender<Result>(
+        request: GRPCCore.ClientRequest<Spark_RevokeDelegationSpenderRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationSpenderResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.revoke_delegation_spender(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Spark_RevokeDelegationSpenderRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Spark_RevokeDelegationSpenderResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -7033,6 +8683,35 @@ extension Spark_SparkService.ClientProtocol {
             metadata: metadata
         )
         return try await self.query_all_transfers(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "query_transfers_by_id" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func query_transfers_by_id<Result>(
+        _ message: Spark_QueryTransfersByIdRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryTransfersResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_QueryTransfersByIdRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.query_transfers_by_id(
             request: request,
             options: options,
             onResponse: handleResponse
@@ -7375,35 +9054,6 @@ extension Spark_SparkService.ClientProtocol {
         )
     }
 
-    /// Call the "query_user_signed_refunds" method.
-    ///
-    /// - Parameters:
-    ///   - message: request message to send.
-    ///   - metadata: Additional metadata to send, defaults to empty.
-    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
-    /// - Returns: The result of `handleResponse`.
-    internal func query_user_signed_refunds<Result>(
-        _ message: Spark_QueryUserSignedRefundsRequest,
-        metadata: GRPCCore.Metadata = [:],
-        options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryUserSignedRefundsResponse>) async throws -> Result = { response in
-            try response.message
-        }
-    ) async throws -> Result where Result: Sendable {
-        let request = GRPCCore.ClientRequest<Spark_QueryUserSignedRefundsRequest>(
-            message: message,
-            metadata: metadata
-        )
-        return try await self.query_user_signed_refunds(
-            request: request,
-            options: options,
-            onResponse: handleResponse
-        )
-    }
-
     /// Call the "query_unused_deposit_addresses" method.
     ///
     /// - Parameters:
@@ -7548,6 +9198,46 @@ extension Spark_SparkService.ClientProtocol {
             metadata: metadata
         )
         return try await self.exit_single_node_trees(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "recover_watchtower_exited_leaf" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Co-signs a transaction spending the on-chain output a watchtower exit left
+    /// > behind, for a leaf whose own exit path that exit destroyed. The caller
+    /// > supplies the transaction and aggregates the SE's FROST shares with its own
+    /// > to broadcast on L1. The leaf becomes WATCHTOWER_EXIT_RECOVERED in the same
+    /// > operation, so its value cannot also move off-chain.
+    /// > 
+    /// > Calling again re-signs a new transaction, to raise the fee say; every such
+    /// > transaction spends the same output, so at most one can confirm.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func recover_watchtower_exited_leaf<Result>(
+        _ message: Spark_RecoverWatchtowerExitedLeafRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RecoverWatchtowerExitedLeafResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_RecoverWatchtowerExitedLeafRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.recover_watchtower_exited_leaf(
             request: request,
             options: options,
             onResponse: handleResponse
@@ -7704,7 +9394,7 @@ extension Spark_SparkService.ClientProtocol {
         )
     }
 
-    /// Call the "start_leaf_swap_v2" method.
+    /// Call the "initiate_preimage_swap_v4" method.
     ///
     /// - Parameters:
     ///   - message: request message to send.
@@ -7714,19 +9404,19 @@ extension Spark_SparkService.ClientProtocol {
     ///       returned to the caller. Returning from the closure will cancel the RPC if it
     ///       hasn't already finished.
     /// - Returns: The result of `handleResponse`.
-    internal func start_leaf_swap_v2<Result>(
-        _ message: Spark_StartTransferRequest,
+    internal func initiate_preimage_swap_v4<Result>(
+        _ message: Spark_InitiatePreimageSwapV4Request,
         metadata: GRPCCore.Metadata = [:],
         options: GRPCCore.CallOptions = .defaults,
-        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result = { response in
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InitiatePreimageSwapResponse>) async throws -> Result = { response in
             try response.message
         }
     ) async throws -> Result where Result: Sendable {
-        let request = GRPCCore.ClientRequest<Spark_StartTransferRequest>(
+        let request = GRPCCore.ClientRequest<Spark_InitiatePreimageSwapV4Request>(
             message: message,
             metadata: metadata
         )
-        return try await self.start_leaf_swap_v2(
+        return try await self.initiate_preimage_swap_v4(
             request: request,
             options: options,
             onResponse: handleResponse
@@ -7791,6 +9481,41 @@ extension Spark_SparkService.ClientProtocol {
         )
     }
 
+    /// Call the "start_transfer_mpc" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Initiates a transfer whose sender is a multiparty (user-side MPC)
+    /// > group. The receiver may be any Spark user: everything receiver-facing
+    /// > is byte-identical to a single-party send.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func start_transfer_mpc<Result>(
+        _ message: Spark_StartTransferMpcRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_StartTransferResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_StartTransferMpcRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.start_transfer_mpc(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "claim_transfer" method.
     ///
     /// - Parameters:
@@ -7843,6 +9568,35 @@ extension Spark_SparkService.ClientProtocol {
             metadata: metadata
         )
         return try await self.get_utxos_for_address(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "get_utxos_for_identity" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func get_utxos_for_identity<Result>(
+        _ message: Spark_GetUtxosForIdentityRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_GetUtxosForIdentityResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_GetUtxosForIdentityRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.get_utxos_for_identity(
             request: request,
             options: options,
             onResponse: handleResponse
@@ -7965,6 +9719,192 @@ extension Spark_SparkService.ClientProtocol {
             metadata: metadata
         )
         return try await self.query_wallet_setting(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "create_delegation_grant" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Spark Pull: delegated spending via parallel key decomposition. An owner
+    /// > installs a second key decomposition (delegate share + SE2 keyshare)
+    /// > alongside the primary one, bounded by an owner-signed grant the SO
+    /// > federation enforces at signing time.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func create_delegation_grant<Result>(
+        _ message: Spark_CreateDelegationGrantRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_CreateDelegationGrantResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_CreateDelegationGrantRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.create_delegation_grant(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "revoke_delegation_grant" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func revoke_delegation_grant<Result>(
+        _ message: Spark_RevokeDelegationGrantRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationGrantResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_RevokeDelegationGrantRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.revoke_delegation_grant(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "query_delegation_grants" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func query_delegation_grants<Result>(
+        _ message: Spark_QueryDelegationGrantsRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_QueryDelegationGrantsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_QueryDelegationGrantsRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.query_delegation_grants(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "install_leaf_decompositions" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func install_leaf_decompositions<Result>(
+        _ message: Spark_InstallLeafDecompositionsRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_InstallLeafDecompositionsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_InstallLeafDecompositionsRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.install_leaf_decompositions(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "add_delegation_spender" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > Owner-signed addition / removal of an authorized spender on an existing
+    /// > grant's delegate path. No new key material — a metering record only.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func add_delegation_spender<Result>(
+        _ message: Spark_AddDelegationSpenderRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_AddDelegationSpenderResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_AddDelegationSpenderRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.add_delegation_spender(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "revoke_delegation_spender" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func revoke_delegation_spender<Result>(
+        _ message: Spark_RevokeDelegationSpenderRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Spark_RevokeDelegationSpenderResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Spark_RevokeDelegationSpenderRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.revoke_delegation_spender(
             request: request,
             options: options,
             onResponse: handleResponse

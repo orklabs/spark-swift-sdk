@@ -37,6 +37,11 @@ migration note.
   renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Changed
+- The protos are re-vendored from `buildonspark/spark` at `0b3a32a` (2026-08-24; they dated from
+  May) and the Swift code regenerated. They carry the event-stream heartbeat, typed leaf
+  signatures, transfer receivers, `query_transfers_by_id`, watchtower tree-node statuses and
+  invoice statuses 5–7 that the next changes use, and no longer have the reserved legacy
+  `InitiatePreimageSwapRequest.transfer` and `StorePreimageShareV2Request.user_signature` fields.
 - Static-deposit calls take `outputIndex: UInt32? = nil`: without an index,
   `getDepositFeeEstimate`, `claimStaticDeposit`, `claimStaticDepositWithMaxFee`,
   `refundStaticDeposit` and `refundAndBroadcastStaticDeposit` use the output that pays the
