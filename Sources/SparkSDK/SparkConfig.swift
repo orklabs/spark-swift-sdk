@@ -72,45 +72,26 @@ public struct SparkConfig: Sendable {
         max(2, (UInt32(max(operatorCount, 0)) + 2) / 2)
     }
 
+    /// The hosted operators. Regtest uses them too, as the reference SDK's REGTEST preset does:
+    /// they serve both networks under the same keys.
     public static func defaultOperators(for network: SparkNetwork) -> [SigningOperatorConfig] {
-        switch network {
-        case .mainnet:
-            return [
-                SigningOperatorConfig(
-                    address: "https://0.spark.lightspark.com",
-                    identifier: "0000000000000000000000000000000000000000000000000000000000000001",
-                    identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
-                ),
-                SigningOperatorConfig(
-                    address: "https://spark-operator.breez.technology",
-                    identifier: "0000000000000000000000000000000000000000000000000000000000000002",
-                    identityPublicKeyHex: "03e625e9768651c9be268e287245cc33f96a68ce9141b0b4769205db027ee8ed77"
-                ),
-                SigningOperatorConfig(
-                    address: "https://2.spark.flashnet.xyz",
-                    identifier: "0000000000000000000000000000000000000000000000000000000000000003",
-                    identityPublicKeyHex: "022eda13465a59205413086130a65dc0ed1b8f8e51937043161f8be0c369b1a410"
-                ),
-            ]
-        case .regtest:
-            return [
-                SigningOperatorConfig(
-                    address: "http://localhost:9001",
-                    identifier: "0000000000000000000000000000000000000000000000000000000000000001",
-                    identityPublicKeyHex: ""
-                ),
-                SigningOperatorConfig(
-                    address: "http://localhost:9002",
-                    identifier: "0000000000000000000000000000000000000000000000000000000000000002",
-                    identityPublicKeyHex: ""
-                ),
-                SigningOperatorConfig(
-                    address: "http://localhost:9003",
-                    identifier: "0000000000000000000000000000000000000000000000000000000000000003",
-                    identityPublicKeyHex: ""
-                ),
-            ]
-        }
+        [
+            SigningOperatorConfig(
+                address: "https://0.spark.lightspark.com",
+                identifier: "0000000000000000000000000000000000000000000000000000000000000001",
+                identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
+            ),
+            SigningOperatorConfig(
+                address: "https://spark-operator.breez.technology",
+                identifier: "0000000000000000000000000000000000000000000000000000000000000002",
+                identityPublicKeyHex: "03e625e9768651c9be268e287245cc33f96a68ce9141b0b4769205db027ee8ed77"
+            ),
+            SigningOperatorConfig(
+                address: "https://2.spark.flashnet.xyz",
+                identifier: "0000000000000000000000000000000000000000000000000000000000000003",
+                identityPublicKeyHex: "022eda13465a59205413086130a65dc0ed1b8f8e51937043161f8be0c369b1a410"
+            ),
+        ]
     }
 
     var signingOperatorAddresses: [String] {

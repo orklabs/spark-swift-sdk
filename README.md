@@ -288,13 +288,16 @@ let page = try await wallet.getTransferHistory(direction: .all, limit: 20, curso
 
 ```swift
 let mainnet = SparkConfig(network: .mainnet)
+// Regtest on the hosted operators and SSP. One-time deposit claims and static-deposit refunds
+// fetch transactions from a local explorer at http://localhost:3000.
 let regtest = SparkConfig(network: .regtest)
 
-// Custom operators / SSP
+// Custom operators / SSP: a custom SSP needs its identity key too
 let custom = SparkConfig(
     network: .mainnet,
     signingOperators: [...],
-    sspURL: URL(string: "https://...")!
+    sspURL: "https://ssp.example/graphql",
+    sspIdentityPublicKeyHex: "02..."
 )
 ```
 

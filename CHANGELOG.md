@@ -75,6 +75,10 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- The regtest preset (`SparkConfig(network: .regtest)`) can be used: it named operators on
+  localhost with empty identity keys, which nothing could talk to. It now uses the hosted
+  operators under their keys, as the reference SDK's REGTEST preset does. The block explorer for
+  regtest is still http://localhost:3000.
 - SSP requests are retried as in the reference SDK: up to 5 more attempts, 1 s doubling to 10 s,
   on HTTP 502, 503 and 504 and on a lost or failed connection (not on a timeout or cancellation).
   A single attempt failed fee quotes, invoices and Lightning payments on any transient SSP or

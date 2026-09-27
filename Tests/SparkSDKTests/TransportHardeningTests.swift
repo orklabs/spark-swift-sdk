@@ -191,6 +191,27 @@ struct TransportHardeningTests {
         }
     }
 
+    @Test("The regtest preset uses the hosted operators and keys, as the reference SDK's REGTEST preset")
+    func regtestPreset() {
+        let regtest = SparkConfig(network: .regtest)
+        let mainnet = SparkConfig()
+        #expect(regtest.signingOperators.map(\.address) == mainnet.signingOperators.map(\.address))
+        #expect(regtest.signingOperators.map(\.identityPublicKeyHex) == mainnet.signingOperators.map(\.identityPublicKeyHex))
+        #expect(regtest.signingOperators.allSatisfy { $0.address.hasPrefix("https://") && $0.identityPublicKeyHex.count == 66 })
+        #expect(regtest.signingThreshold == 2)
+    }
+
+    @Test("A new regtest wallet on the default preset authenticates and reads its leaves",
+          .enabled(if: TestConfig.hasIntegrationCredentials), .timeLimit(.minutes(1)))
+    func regtestPresetLive() async throws {
+        // A throwaway account: random key and chain code.
+        let accountKey = try randomSecretKeyBytes() + (try randomSecretKeyBytes())
+        let wallet = try SparkWallet(config: SparkConfig(network: .regtest), accountKey: accountKey)
+        defer { Task { await wallet.close() } }
+        #expect(try await wallet.getLeaves().isEmpty)
+        #expect(wallet.serverClock.isSynced)
+    }
+
     @Test("An SSP auth rejection is recognised, other failures are not")
     func sspAuthFailureClassifier() {
         #expect(SspGraphQLClient.isAuthFailure(.graphqlError("HTTP 401")))
