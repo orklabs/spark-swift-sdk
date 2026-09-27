@@ -58,8 +58,8 @@ extension SparkWallet {
     /// automatically during operations; this is the Swift equivalent, ported
     /// from its leaf-manager/transfer flows.
     ///
-    /// Three protocol variants, chosen per leaf like the TS SDK does:
-    /// - node timelock == 0 → renew_node_zero_timelock (L1-deposit roots)
+    /// Three protocol variants, chosen per leaf like the TS SDK does (`renewalVariant`):
+    /// - node timelock == 0, or a final node sequence → renew_node_zero_timelock (L1-deposit roots)
     /// - node timelock < 200 → renew_node_timelock (splices in a zero-timelock
     ///   "split node", resets node+refund to 2000)
     /// - otherwise → renew_refund_timelock (decrements node by 100, resets
@@ -125,16 +125,35 @@ extension SparkWallet {
         return (renewable, stuck)
     }
 
+    enum RenewalVariant: Equatable {
+        case zeroTimelock
+        case nodeTimelock
+        case refundTimelock
+    }
+
+    /// The renewal the coordinator accepts for a leaf, from its node transaction's sequence:
+    /// zero-timelock renewal for a node timelock of 0 or a final (timelock-disabled, bit 31)
+    /// sequence — a legacy deposit root's, which cannot be decremented
+    /// (`validateRenewZeroTimelock`) — node renewal below 200, refund renewal otherwise.
+    static func renewalVariant(nodeSequence: UInt32) -> RenewalVariant {
+        let timelockDisabled = nodeSequence & (1 << 31) != 0
+        let nodeTimelock = nodeSequence & 0xFFFF
+        if nodeTimelock == 0 || timelockDisabled {
+            return .zeroTimelock
+        }
+        return nodeTimelock < renewalThreshold ? .nodeTimelock : .refundTimelock
+    }
+
     private func renewLeaf(_ node: Spark_TreeNode, parents: [String: Spark_TreeNode]) async throws {
-        let nodeTimelock = try Self.parseSequenceFromRawTx(Data(node.nodeTx)) & 0xFFFF
-        if nodeTimelock == 0 {
+        let variant = Self.renewalVariant(nodeSequence: try Self.parseSequenceFromRawTx(Data(node.nodeTx)))
+        if variant == .zeroTimelock {
             try await renewZeroTimelockNode(node)
             return
         }
         guard node.hasParentNodeID, let parent = parents[node.parentNodeID] else {
             throw SparkError.invalidResponse("Parent node \(node.parentNodeID) not found for leaf \(node.id)")
         }
-        if nodeTimelock < renewalThreshold {
+        if variant == .nodeTimelock {
             try await renewNodeTimelock(node, parent: parent)
         } else {
             try await renewRefundTimelock(node, parent: parent)

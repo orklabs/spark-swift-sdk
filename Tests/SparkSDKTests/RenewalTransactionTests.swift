@@ -111,4 +111,18 @@ struct RenewalTransactionTests {
         #expect(nodeTx.outputs[0].scriptPubKey == (try p2tr(verifyingKey)))
         #expect(txs.refunds.directRefund == nil)
     }
+
+    @Test("The renewal variant follows the operators' rules, including final-sequence deposit roots")
+    func renewalVariant() {
+        #expect(SparkWallet.renewalVariant(nodeSequence: 0) == .zeroTimelock)
+        #expect(SparkWallet.renewalVariant(nodeSequence: 1 << 30) == .zeroTimelock)
+        // A legacy deposit root's final sequence cannot be decremented; the operators renew it
+        // like a zero-timelock node (renew_leaf_handler.go validateRenewZeroTimelock).
+        #expect(SparkWallet.renewalVariant(nodeSequence: 0xFFFF_FFFF) == .zeroTimelock)
+        #expect(SparkWallet.renewalVariant(nodeSequence: 0xFFFF_FFFE) == .zeroTimelock)
+        #expect(SparkWallet.renewalVariant(nodeSequence: (1 << 30) | 100) == .nodeTimelock)
+        #expect(SparkWallet.renewalVariant(nodeSequence: (1 << 30) | 199) == .nodeTimelock)
+        #expect(SparkWallet.renewalVariant(nodeSequence: (1 << 30) | 200) == .refundTimelock)
+        #expect(SparkWallet.renewalVariant(nodeSequence: (1 << 30) | 2000) == .refundTimelock)
+    }
 }

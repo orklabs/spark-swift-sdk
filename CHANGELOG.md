@@ -28,6 +28,9 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Legacy deposit-root leaves whose node transaction has a final (timelock-disabled) sequence can
+  be renewed. The operators renew them like zero-timelock nodes; the SDK read the final sequence
+  as timelock 65535, went looking for a parent the root does not have, and failed.
 - Claimed leaves and swap outputs in the renewal range are renewed, as the reference SDK does.
   A transfer from a leaf at 200 delivers it at 100; the claim now renews such leaves right away
   (best effort). A send or withdrawal that swapped for change filtered the SSP's new leaves by
