@@ -140,14 +140,17 @@ struct HardeningIntegrationTests {
         defer { Task { await pair.sender.close(); await pair.receiver.close() } }
         let invoice = try await pair.receiver.createLightningInvoice(amountSats: 10, memo: "fee cap test")
         let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest)
+        guard fee >= 1 else {
+            Issue.record(Comment(rawValue: "the SSP quotes no fee for this invoice, so no cap can fall below it"))
+            return
+        }
         let before = try await pair.sender.getBalance()
-        // The SDK never sends a fee below 1 sat, so a cap of 0 must always be refused.
         do {
-            _ = try await pair.sender.payLightningInvoice(paymentRequest: invoice.paymentRequest, maxFeeSats: 0)
-            Issue.record(Comment(rawValue: "payment went through with a zero fee cap (estimate \(fee))"))
+            _ = try await pair.sender.payLightningInvoice(paymentRequest: invoice.paymentRequest, maxFeeSats: fee - 1)
+            Issue.record(Comment(rawValue: "payment went through with a cap of \(fee - 1) (estimate \(fee))"))
         } catch SparkError.feeExceedsLimit(let quoted, let cap) {
-            #expect(cap == 0)
-            #expect(quoted >= 1)
+            #expect(cap == fee - 1)
+            #expect(quoted >= fee)
         }
         let after = try await pair.sender.getBalance()
         #expect(after.satsBalance.owned == before.satsBalance.owned)

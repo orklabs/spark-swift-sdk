@@ -395,6 +395,21 @@ struct LightningValidatorTests {
         #expect(request.invoiceAmount.invoiceAmountProof.bolt11Invoice == "lnbc120n1...")
     }
 
+    @Test("The SSP is offered its fee estimate as is, and an estimate above the cap is refused")
+    func sendFee() throws {
+        #expect(try LightningValidator.sendFeeSats(estimate: 0, maxFeeSats: 0) == 0)
+        #expect(try LightningValidator.sendFeeSats(estimate: 2, maxFeeSats: 2) == 2)
+        #expect(try LightningValidator.sendFeeSats(estimate: 2, maxFeeSats: 50) == 2)
+        do {
+            _ = try LightningValidator.sendFeeSats(estimate: 3, maxFeeSats: 2)
+            Issue.record("an estimate above the cap was accepted")
+        } catch SparkError.feeExceedsLimit(let fee, let cap) {
+            #expect(fee == 3)
+            #expect(cap == 2)
+        }
+        #expect(throws: SparkError.self) { _ = try LightningValidator.sendFeeSats(estimate: -1, maxFeeSats: 5) }
+    }
+
     @Test("A payment forwards the invoice it validated: trimmed and lower case, mixed case still refused")
     func paymentForwardsValidatedInvoice() throws {
         let upper = try LightningPayment(

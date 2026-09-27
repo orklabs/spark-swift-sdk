@@ -350,6 +350,19 @@ enum LightningValidator {
         return invoice
     }
 
+    /// The fee a Lightning send offers the SSP: its estimate, refused above the caller's cap — the
+    /// reference SDK's `maxFeeSats < feeEstimate` check. No floor: an estimate of 0 is offered as
+    /// 0, so `maxFeeSats: estimate` always goes through.
+    static func sendFeeSats(estimate: Int64, maxFeeSats: Int64) throws -> UInt64 {
+        guard estimate >= 0 else {
+            throw SparkError.invalidResponse("negative lightning fee estimate: \(estimate)")
+        }
+        guard estimate <= maxFeeSats else {
+            throw SparkError.feeExceedsLimit(feeSats: estimate, maxFeeSats: maxFeeSats)
+        }
+        return UInt64(estimate)
+    }
+
     /// Check the Lightning send the coordinator holds under a transfer id the caller is resuming,
     /// before the SSP is asked to pay from it: this wallet's HTLC to the SSP for this invoice's
     /// payment hash, neither returned nor expired, whose leaves cover the amount with at most

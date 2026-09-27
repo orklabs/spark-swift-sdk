@@ -155,10 +155,7 @@ extension SparkWallet {
         let feeEstimate = try await getLightningSendFeeEstimate(
             encodedInvoice: payment.encodedInvoice, amountSats: payment.amountlessInvoiceAmountSats
         )
-        let feeSats = UInt64(max(feeEstimate, 1))
-        guard Int64(feeSats) <= payment.maxFeeSats else {
-            throw SparkError.feeExceedsLimit(feeSats: Int64(feeSats), maxFeeSats: payment.maxFeeSats)
-        }
+        let feeSats = try LightningValidator.sendFeeSats(estimate: feeEstimate, maxFeeSats: payment.maxFeeSats)
 
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)

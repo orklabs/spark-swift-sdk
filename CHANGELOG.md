@@ -42,6 +42,9 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `payLightningInvoice` offers the SSP its fee estimate as is, as the reference SDK does. A 1-sat
+  floor turned an estimate of 0 into a 1-sat fee and refused the README's
+  `maxFeeSats: estimate` pattern with `feeExceedsLimit`.
 - `payLightningInvoice` sends on the invoice it validated. An invoice pasted with surrounding
   whitespace or in upper case passed the SDK's checks, but the raw string went to the SSP, which
   refused it ("not a valid Lightning Network invoice"). The trimmed, lower-case form now goes to
