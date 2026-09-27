@@ -37,6 +37,12 @@ actor FakeOperatorState {
     private let rejects: @Sendable (_ token: String) -> Bool
     /// Session tokens handed out by `verify_challenge`, in order.
     private(set) var issuedTokens: [String] = []
+    /// Challenges handed out by `get_challenge`.
+    private(set) var challengesIssued = 0
+    /// Errors the next `verify_challenge` calls fail with, in order.
+    private var verifyFailures: [RPCError] = []
+    /// How long `verify_challenge` takes.
+    private(set) var verifyDelay: Duration = .zero
     /// `"<method> <authorization header>"` for every SparkService call received.
     private(set) var calls: [String] = []
     /// Lightning sends `query_htlc` reports as held, matched by transfer id.
@@ -60,6 +66,23 @@ actor FakeOperatorState {
         self.rejection = rejection
         self.depositAddress = depositAddress
         self.rejects = rejects
+    }
+
+    func failNextVerifications(with errors: [RPCError]) {
+        verifyFailures = errors
+    }
+
+    func setVerifyDelay(_ delay: Duration) {
+        verifyDelay = delay
+    }
+
+    func issueChallenge() {
+        challengesIssued += 1
+    }
+
+    /// The error the current `verify_challenge` fails with, if any.
+    func nextVerifyFailure() -> RPCError? {
+        verifyFailures.isEmpty ? nil : verifyFailures.removeFirst()
     }
 
     func issueToken() -> String {
@@ -148,6 +171,7 @@ struct FakeOperator: RegistrableRPCService {
             deserializer: ProtobufDeserializer<SparkAuthn_GetChallengeRequest>(),
             serializer: ProtobufSerializer<SparkAuthn_GetChallengeResponse>()
         ) { [state] _, _ in
+            await state.issueChallenge()
             var response = SparkAuthn_GetChallengeResponse()
             response.protectedChallenge.challenge.nonce = Data(repeating: 7, count: 32)
             response.protectedChallenge.challenge.timestamp = Int64(await state.now.timeIntervalSince1970)
@@ -158,6 +182,10 @@ struct FakeOperator: RegistrableRPCService {
             deserializer: ProtobufDeserializer<SparkAuthn_VerifyChallengeRequest>(),
             serializer: ProtobufSerializer<SparkAuthn_VerifyChallengeResponse>()
         ) { [state] _, _ in
+            try await Task.sleep(for: await state.verifyDelay)
+            if let failure = await state.nextVerifyFailure() {
+                return StreamingServerResponse(error: failure)
+            }
             var response = SparkAuthn_VerifyChallengeResponse()
             response.sessionToken = await state.issueToken()
             response.expirationTimestamp = Int64(await state.now.addingTimeInterval(3_600).timeIntervalSince1970)

@@ -64,6 +64,12 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Authentication is shared and retried as in the reference SDK. Concurrent calls each ran their
+  own challenge — `getBalance` alone started three — and the transport retried `verify_challenge`
+  with a challenge the operator may already have consumed, which fails as "challenge reused".
+  Callers now share one authentication per operator, the token service is not retried by the
+  transport, and up to 8 challenge exchanges are made: a fresh challenge at once when one expired
+  or was already used, after 250 ms when the connection failed.
 - The SDK keeps time by the operators' clock, as the reference SDK does. Session-token expiry
   (the operators' time) was compared with the device clock, so a device clock running ahead
   re-authenticated on every call once the skew passed the token lifetime, and one running behind

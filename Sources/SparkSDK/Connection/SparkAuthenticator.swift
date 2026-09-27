@@ -11,7 +11,12 @@ actor SparkAuthenticator {
     }
 
     private var tokenCache: [String: CachedToken] = [:]
+    /// The authentication in progress per operator and identity: concurrent callers share it
+    /// instead of each running a challenge (the reference SDK's `authInflight`).
+    private var inFlight: [String: Task<CachedToken, any Swift.Error>] = [:]
     private static let refreshBuffer: TimeInterval = 60
+    /// Challenge exchanges tried before authentication fails, as in the reference SDK.
+    static let maxAttempts = 8
     /// Token expiry is the operators' time, so it is compared with their clock, not the device's.
     private let clock: ServerClock
 
@@ -30,12 +35,16 @@ actor SparkAuthenticator {
            cached.expiresAt > clock.now().addingTimeInterval(Self.refreshBuffer) {
             return cached.token
         }
+        if let pending = inFlight[cacheKey] {
+            return try await pending.value.token
+        }
 
-        let token = try await authenticate(
-            connectionManager: connectionManager,
-            soAddress: soAddress,
-            signer: signer
-        )
+        let authentication = Task {
+            try await self.authenticate(connectionManager: connectionManager, soAddress: soAddress, signer: signer)
+        }
+        inFlight[cacheKey] = authentication
+        defer { inFlight[cacheKey] = nil }
+        let token = try await authentication.value
         tokenCache[cacheKey] = token
         return token.token
     }
@@ -63,7 +72,40 @@ actor SparkAuthenticator {
         return metadata
     }
 
+    /// Up to `maxAttempts` challenge exchanges, as the reference SDK makes them: a fresh challenge
+    /// at once when the last one expired or was already used (a lost answer), after 250 ms when
+    /// the connection failed; any other failure ends authentication.
     private func authenticate(
+        connectionManager: GrpcConnectionManager,
+        soAddress: String,
+        signer: SparkSignerProtocol
+    ) async throws -> CachedToken {
+        var lastError: (any Swift.Error)?
+        for _ in 0..<Self.maxAttempts {
+            do {
+                return try await exchangeChallenge(connectionManager: connectionManager, soAddress: soAddress, signer: signer)
+            } catch let error as RPCError where Self.isStaleChallenge(error) {
+                lastError = error
+            } catch let error as RPCError where Self.isConnectionFailure(error) {
+                lastError = error
+                try await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        throw lastError ?? SparkError.authenticationFailed("authentication failed after \(Self.maxAttempts) attempts")
+    }
+
+    /// The operator refused the challenge as expired or already used; a fresh one will do.
+    static func isStaleChallenge(_ error: RPCError) -> Bool {
+        error.code == .failedPrecondition
+            && (error.message.contains("challenge expired") || error.message.contains("challenge reused"))
+    }
+
+    /// The exchange failed on the way rather than on its content.
+    static func isConnectionFailure(_ error: RPCError) -> Bool {
+        [.unavailable, .internalError, .unknown, .cancelled, .deadlineExceeded].contains(error.code)
+    }
+
+    private func exchangeChallenge(
         connectionManager: GrpcConnectionManager,
         soAddress: String,
         signer: SparkSignerProtocol

@@ -52,6 +52,13 @@ actor GrpcConnectionManager {
                      maxRequestMessageBytes: maxMessageBytes,
                      maxResponseMessageBytes: maxMessageBytes,
                      executionPolicy: nil),
+        // Not retried here: a retried verify_challenge re-sends a challenge the operator may already
+        // have consumed ("challenge reused"). The authenticator retries whole exchanges instead.
+        MethodConfig(names: [MethodConfig.Name(service: AuthRetryInterceptor.authnService, method: "")],
+                     timeout: defaultRPCTimeout,
+                     maxRequestMessageBytes: maxMessageBytes,
+                     maxResponseMessageBytes: maxMessageBytes,
+                     executionPolicy: nil),
     ])
 
     init(addresses: [String],

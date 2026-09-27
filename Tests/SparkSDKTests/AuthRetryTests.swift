@@ -65,6 +65,48 @@ struct AuthRetryTests {
         #expect(await state.calls.count == Int(GrpcConnectionManager.retryPolicy.maxAttempts))
     }
 
+    @Test("Concurrent calls share one authentication", .timeLimit(.minutes(1)))
+    func coalescedAuthentication() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setVerifyDelay(.milliseconds(300))
+        try await withFakeOperator(state) { wallet in
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for _ in 0..<5 {
+                    group.addTask { _ = try await wallet.getLeaves() }
+                }
+                try await group.waitForAll()
+            }
+        }
+        #expect(await state.challengesIssued == 1)
+        #expect(await state.issuedTokens == ["session-1"])
+        #expect(await state.calls.count == 5)
+    }
+
+    @Test("An expired or already used challenge is replaced by a fresh one; other refusals end authentication",
+          .timeLimit(.minutes(1)))
+    func staleChallenges() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.failNextVerifications(with: [
+            RPCError(code: .failedPrecondition, message: "challenge validation failed: expired: challenge expired 3 seconds ago"),
+            RPCError(code: .failedPrecondition, message: "challenge validation failed: challenge reused: nonce already used"),
+        ])
+        try await withFakeOperator(state) { wallet in
+            _ = try await wallet.getLeaves()
+        }
+        #expect(await state.challengesIssued == 3)
+        #expect(await state.issuedTokens == ["session-1"])
+
+        let refused = FakeOperatorState { _ in false }
+        await refused.failNextVerifications(with: [
+            RPCError(code: .failedPrecondition, message: "signature verification failed under both ECDSA and Schnorr")
+        ])
+        try await withFakeOperator(refused) { wallet in
+            await #expect(throws: RPCError.self) { _ = try await wallet.getLeaves() }
+        }
+        #expect(await refused.challengesIssued == 1)
+        #expect(await refused.issuedTokens.isEmpty)
+    }
+
     @Test("Calls without a token and the token-issuing service pass through untouched")
     func passThrough() async throws {
         let interceptor = AuthRetryInterceptor(

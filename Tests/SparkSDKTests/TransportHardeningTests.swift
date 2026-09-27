@@ -86,9 +86,15 @@ struct TransportHardeningTests {
         #expect(stream?.executionPolicy == nil)
     }
 
-    @Test("The auth interceptor leaves the token-issuing service alone")
+    @Test("The auth interceptor leaves the token-issuing service alone, and the transport never retries it")
     func authnServiceIsExempt() {
         #expect(AuthRetryInterceptor.authnService == "spark_authn.SparkAuthnService")
+        let authn = GrpcConnectionManager.serviceConfig.methodConfig.first {
+            $0.names.contains(MethodConfig.Name(service: "spark_authn.SparkAuthnService", method: ""))
+        }
+        #expect(authn != nil)
+        #expect(authn?.executionPolicy == nil)
+        #expect(authn?.timeout == GrpcConnectionManager.defaultRPCTimeout)
     }
 
     @Test("SSP amounts are read in their reported unit; other units are refused")
