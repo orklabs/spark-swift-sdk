@@ -273,13 +273,24 @@ struct DepositTests {
         let wallet = try await makeWallet(walletAMnemonic)
         defer { Task { await wallet.close() } }
 
-        let countBefore = try await wallet.queryUnusedDepositAddresses().count
+        // Every page: the test wallet accumulates unused addresses across runs, well past one page.
+        func unusedCount() async throws -> Int {
+            var count = 0
+            var offset = 0
+            while true {
+                let page = try await wallet.queryUnusedDepositAddresses(limit: 100, offset: offset)
+                count += page.count
+                if page.count < 100 { return count }
+                offset += page.count
+            }
+        }
+        let countBefore = try await unusedCount()
 
         // Generate 2 new addresses
         let _ = try await wallet.getDepositAddress()
         let _ = try await wallet.getDepositAddress()
 
-        let countAfter = try await wallet.queryUnusedDepositAddresses().count
+        let countAfter = try await unusedCount()
         #expect(countAfter >= countBefore + 2)
     }
 
