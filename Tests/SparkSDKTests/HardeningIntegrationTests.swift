@@ -206,6 +206,7 @@ struct HardeningIntegrationTests {
         }
         _ = try await pair.receiver.claimPendingTransfers()
         let before = try await pair.sender.getBalance().satsBalance
+        let receiverBefore = try await pair.receiver.getBalance().satsBalance
         #expect(before.locked == 0)
         let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: 1)
         #expect(transfer.status == "senderKeyTweaked")
@@ -216,8 +217,9 @@ struct HardeningIntegrationTests {
         print("[\(pair.senderLabel)] owned \(before.owned) -> \(sent.owned), locked \(before.locked) -> \(sent.locked)")
         #expect(sent.owned == before.owned - 1)
         #expect(sent.locked == 0)
-        let incoming = try await pair.receiver.getBalance().satsBalance.incoming
-        #expect(incoming >= 1)
+        let receiverPending = try await pair.receiver.getBalance().satsBalance
+        #expect(receiverPending.incoming == receiverBefore.incoming + 1)
+        #expect(receiverPending.owned == receiverBefore.owned)
         _ = try await pair.receiver.claimPendingTransfers()
     }
 

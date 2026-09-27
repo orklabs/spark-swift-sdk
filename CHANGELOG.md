@@ -28,6 +28,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `SatsBalance.incoming` no longer counts a swap's counter-transfer, which `locked` already
+  counts, so every swap (a send that needs change, a withdrawal, a Lightning payment,
+  consolidation) briefly reported the same sats twice. Incoming now sums the leaves of every page
+  of pending inbound transfers, as the reference SDK does, instead of the first page's transfer
+  totals, and leaves a self-transfer's leaves to `locked`.
 - `SatsBalance.owned` and `locked` no longer grow permanently with every node-level renewal. A
   node or zero-timelock renewal leaves a SPLIT_LOCKED split node that keeps the owner key and the
   leaf's full value (`renew_leaf_handler.go`), and the balance counted every SPLIT_LOCKED node

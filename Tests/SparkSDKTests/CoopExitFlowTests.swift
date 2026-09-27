@@ -152,11 +152,27 @@ struct BalanceSummaryTests {
             transfer("counter", leaves: [("l2", 20), ("l3", 8)]),
             transfer("claimed", leaves: [("available-leaf", 64)]),
         ]
-        #expect(SparkWallet.inFlightSats(transfers, excludingLeafIds: ["available-leaf"]) == 500 + 20 + 8)
-        #expect(SparkWallet.inFlightSats([], excludingLeafIds: []) == 0)
+        #expect(SparkWallet.leafSats(transfers, excludingLeafIds: ["available-leaf"]) == 500 + 20 + 8)
+        #expect(SparkWallet.leafSats([], excludingLeafIds: []) == 0)
         var withoutNode = Spark_Transfer()
         withoutNode.leaves = [Spark_TransferLeaf()]
-        #expect(SparkWallet.inFlightSats([withoutNode], excludingLeafIds: []) == 0)
+        #expect(SparkWallet.leafSats([withoutNode], excludingLeafIds: []) == 0)
+    }
+
+    @Test("Incoming leaves out counter-transfers of the wallet's own swaps and leaves counted elsewhere")
+    func incoming() {
+        var counterSwap = transfer("counter", leaves: [("c1", 512)])
+        counterSwap.type = .counterSwapV3
+        var legacyCounterSwap = transfer("legacy-counter", leaves: [("c2", 256)])
+        legacyCounterSwap.type = .counterSwap
+        var payment = transfer("lightning", leaves: [("p1", 1_000), ("p2", 24)])
+        payment.type = .preimageSwap
+        var selfTransfer = transfer("self", leaves: [("s1", 7)])
+        selfTransfer.type = .transfer
+        let pending = [counterSwap, legacyCounterSwap, payment, selfTransfer]
+        // The self-transfer's leaf is already counted as outgoing.
+        #expect(SparkWallet.incomingSats(pending, excludingLeafIds: ["s1"]) == 1_000 + 24)
+        #expect(SparkWallet.incomingSats(pending, excludingLeafIds: []) == 1_000 + 24 + 7)
     }
 
     @Test("In-flight transfers are queried with the reference SDK's types and statuses")

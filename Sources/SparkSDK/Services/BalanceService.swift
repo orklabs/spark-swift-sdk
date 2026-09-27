@@ -9,15 +9,20 @@ extension SparkWallet {
     ///   outgoing transfer, Lightning payment or cooperative exit before the operators apply
     ///   the sender's key tweak, a swap the wallet started, and its counter-transfer until
     ///   claimed. Once the sender's key tweak is applied the sats belong to the receiver.
+    /// - `incoming`: the leaves of pending inbound transfers, except counter-transfers of the
+    ///   wallet's own swaps (already counted as locked) and leaves counted above.
     public func getBalance() async throws -> WalletBalance {
         async let nodes = queryAvailableNodes()
         async let inFlight = queryInFlightTransfers()
-        async let pendingTransfers = queryPendingTransfers()
+        async let pending = queryAllPendingTransfers()
         let summary = Self.summarizeNodes(try await nodes)
-        let lockedSats = Self.inFlightSats(try await inFlight, excludingLeafIds: Set(summary.leaves.map(\.id)))
-
-        // Incoming: pending inbound transfers
-        let incomingSats = try await pendingTransfers.reduce(Int64(0)) { $0 + Int64($1.totalValue) }
+        let availableIds = Set(summary.leaves.map(\.id))
+        let inFlightTransfers = try await inFlight
+        let lockedSats = Self.leafSats(inFlightTransfers, excludingLeafIds: availableIds)
+        let incomingSats = Self.incomingSats(
+            try await pending,
+            excludingLeafIds: availableIds.union(inFlightTransfers.flatMap { $0.leaves.map(\.leaf.id) })
+        )
 
         let satsBalance = SatsBalance(
             available: summary.available,
@@ -85,16 +90,38 @@ extension SparkWallet {
         return try await outgoing + primarySwaps + counterSwaps
     }
 
-    /// Sats in the leaves of `transfers`, each leaf counted once and none that is already an
-    /// AVAILABLE leaf of the wallet.
-    static func inFlightSats(_ transfers: [Spark_Transfer], excludingLeafIds available: Set<String>) -> Int64 {
+    /// Sats in the leaves of `transfers`, each leaf counted once and none in `excluded` (leaves
+    /// already counted, e.g. the wallet's AVAILABLE leaves).
+    static func leafSats(_ transfers: [Spark_Transfer], excludingLeafIds excluded: Set<String>) -> Int64 {
         var values: [String: Int64] = [:]
         for transfer in transfers {
-            for transferLeaf in transfer.leaves where transferLeaf.hasLeaf && !available.contains(transferLeaf.leaf.id) {
+            for transferLeaf in transfer.leaves where transferLeaf.hasLeaf && !excluded.contains(transferLeaf.leaf.id) {
                 values[transferLeaf.leaf.id] = Int64(transferLeaf.leaf.value)
             }
         }
         return values.values.reduce(0, +)
+    }
+
+    /// Sats pending inbound: the leaves of `pending`, except counter-transfers of the wallet's own
+    /// swaps — the reference SDK leaves those out of incoming because the swap already counts
+    /// them — and leaves in `excluded` (a self-transfer shows up as outgoing too).
+    static func incomingSats(_ pending: [Spark_Transfer], excludingLeafIds excluded: Set<String>) -> Int64 {
+        leafSats(pending.filter { !counterSwapTypes.contains($0.type) }, excludingLeafIds: excluded)
+    }
+
+    /// Every page of the wallet's pending inbound transfers.
+    func queryAllPendingTransfers() async throws -> [Spark_Transfer] {
+        let pageSize = 100
+        var transfers: [Spark_Transfer] = []
+        var offset = 0
+        while true {
+            let page = try await queryPendingTransfers(limit: pageSize, offset: offset)
+            transfers += page
+            if page.count < pageSize {
+                return transfers
+            }
+            offset += page.count
+        }
     }
 
     /// Every page of the wallet's transfers of `types` in `statuses` (100 per page, the server's
