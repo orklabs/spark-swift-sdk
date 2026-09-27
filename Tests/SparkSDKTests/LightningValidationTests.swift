@@ -65,6 +65,32 @@ struct Bolt11InvoiceTests {
         #expect(try Bolt11Invoice.decode("  \(Self.coffee2500u)\n") == coffee)
     }
 
+    /// The reference SDK's vector (`bolt11-spark.test.ts`): a mainnet invoice whose sentinel
+    /// route hint carries the receiver's Spark identity.
+    static let sparkRouteHintInvoice = "lnbc13u1p5xalmkpp5z79uwgne7znz76plf0q4zxmh8t3wke6gsnm5kn67h4satpgflkmssp5azht5ywc5s4m40jf9h0nwlr959a34n72pns50lfm93zz8lvs7nqsxq9z0rgqnp4q0p92sfan5vj2a4f8q3gsfsy8qp60maeuxz858c5x0hvt5u0p0h9jr9yqtqd37k2ya0pv8pqeyjs4lklcexjyw600g9qqp62r4j0ph8fcmlfwqqqqzfv7u6g85qqqqqqqqqqthqq9qpz9cat0ndmwmfx036y9fxfhdufta3mn95ta9xw34ynlwg7euxjck85ysq0gfqqqqq7u6egqrhxk2qqn3qqcqzpgdq2w3jhxap3xv9qyyssqfahd64hu0lffl7cw2e4evu400s09yeupypvnfjvjjyq8rh05y9gzd3dqnmkvuyd9jszyhmdey75dujz8xaufgahsxkqktf3wxny8ghsqpk4mg8"
+
+    @Test("A Spark identity in the sentinel route hint is decoded, as in the reference SDK's vector")
+    func sparkFallbackInRouteHint() throws {
+        let invoice = try Bolt11Invoice.decode(Self.sparkRouteHintInvoice)
+        #expect(invoice.sparkFallback == "0222e3ab7cdbb76d267c7442a4c9bb7895f63b9968be94ce8d493fb91ecf0d2c58")
+        #expect(invoice.amountMsat == 1_300_000)
+        #expect(invoice.paymentHash.hexString == "178bc72279f0a62f683f4bc1511b773ae2eb674884f74b4f5ebd61d58509fdb7")
+        // An on-chain fallback address (version 17, P2PKH) is not a Spark fallback.
+        #expect(try Bolt11Invoice.decode(Self.testnet20m).sparkFallback == nil)
+        #expect(try Bolt11Invoice.decode(Self.coffee2500u).sparkFallback == nil)
+    }
+
+    @Test("A Spark invoice in a version-31 fallback address field is decoded")
+    func sparkInvoiceFallback() throws {
+        let sparkInvoice = "spark1pgssyut2gu37y00dg7pf5d2uc6nm00tdu4xujpmfykg24mjy9rzvt4w3me9q6g"
+        let (hrp, words, _) = try Bech32.decode(Self.coffee2500u, maxLength: nil)
+        let fieldWords = [UInt8(31)] + (try #require(Bech32.convertBits(Array(sparkInvoice.utf8), fromBits: 8, toBits: 5, pad: true)))
+        let tagged = [UInt8(9), UInt8(fieldWords.count / 32), UInt8(fieldWords.count % 32)] + fieldWords
+        // Tagged fields follow the 7-word timestamp; their order does not matter.
+        let rebuilt = Bech32.encode(hrp: hrp, data: Array(words.prefix(7)) + tagged + Array(words.dropFirst(7)), encoding: .bech32)
+        #expect(try Bolt11Invoice.decode(rebuilt).sparkFallback == sparkInvoice)
+    }
+
     @Test("Specification's invalid invoices are rejected")
     func specInvalid() {
         let invalid = [
@@ -202,6 +228,22 @@ struct LightningValidatorTests {
         }
         #expect(throws: SparkError.self) {
             _ = try LightningValidator.verifyCreatedInvoice(encodedInvoice: "garbage", reportedPaymentHashHex: nil, expectedPaymentHash: hash, expectedAmountSats: 250_000, network: .mainnet)
+        }
+    }
+
+    @Test("An SSP-created invoice that carries a Spark fallback is refused")
+    func unrequestedSparkFallback() throws {
+        do {
+            _ = try LightningValidator.verifyCreatedInvoice(
+                encodedInvoice: Bolt11InvoiceTests.sparkRouteHintInvoice,
+                reportedPaymentHashHex: nil,
+                expectedPaymentHash: try #require(Data(hexString: "178bc72279f0a62f683f4bc1511b773ae2eb674884f74b4f5ebd61d58509fdb7")),
+                expectedAmountSats: 1_300,
+                network: .mainnet
+            )
+            Issue.record("an invoice with an unrequested Spark fallback was accepted")
+        } catch SparkError.untrustedResponse(let reason) {
+            #expect(reason.contains("Spark fallback"))
         }
     }
 

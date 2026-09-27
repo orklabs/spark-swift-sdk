@@ -36,6 +36,13 @@ migration note.
   committed instead of when the receiver claims it, and `getBalance`/`getLeaves` query only
   AVAILABLE nodes.
 
+### Security
+- `createLightningInvoice` refuses an SSP-created invoice that carries a Spark fallback — a
+  Spark identity in the sentinel route hint (`f42400f424000001`) or a Spark invoice in a
+  version-31 fallback field — which the wallet never asks for. A malicious SSP could otherwise
+  name its own identity there, and payers that prefer paying over Spark would pay the SSP instead
+  of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
+
 ### Fixed
 - Lightning preimage shares go to the operator that validates them. Share `i` went to the `i`-th
   configured operator, but each operator validates the share at its own index (encoded in its

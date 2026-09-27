@@ -26,6 +26,10 @@ struct Bolt11Invoice: Sendable, Equatable {
     let paymentSecret: Data?
     /// Short description (tag `d`), if present.
     let description: String?
+    /// A Spark payment target embedded in the invoice, decoded as the reference SDK does: a Spark
+    /// invoice in a fallback-address field (tag `f`, version 31), or else a Spark identity public
+    /// key (hex) in a route hint whose short channel id is the sentinel `f42400f424000001`.
+    let sparkFallback: String?
 
     var expiresAt: Date {
         Date(timeIntervalSince1970: TimeInterval(timestamp) + TimeInterval(expirySeconds))
@@ -70,6 +74,8 @@ struct Bolt11Invoice: Sendable, Equatable {
         var paymentSecret: Data?
         var expiry: UInt64?
         var description: String?
+        var sparkInvoiceFallback: String?
+        var routeHintFallback: String?
 
         var pos = 0
         while pos + 3 <= fields.count {
@@ -96,6 +102,17 @@ struct Bolt11Invoice: Sendable, Equatable {
                 if let bytes = Bech32.convertBits(data, fromBits: 5, toBits: 8, pad: false) {
                     description = String(decoding: bytes, as: UTF8.self)
                 }
+            case 9:                      // f: fallback address; version 31 carries a Spark invoice
+                if sparkInvoiceFallback == nil, data.first == sparkInvoiceFallbackVersion {
+                    // Lossy on purpose, like the reference SDK's TextDecoder: a version-31 field
+                    // counts as a Spark fallback even when its bytes are not valid UTF-8.
+                    // swiftlint:disable:next optional_data_string_conversion
+                    sparkInvoiceFallback = String(decoding: lenientBytes(fromWords: Array(data.dropFirst())), as: UTF8.self)
+                }
+            case 3:                      // r: route hints; the sentinel hop names a Spark identity
+                if routeHintFallback == nil {
+                    routeHintFallback = sparkIdentityInRouteHint(lenientBytes(fromWords: data))
+                }
             default:
                 continue                 // unknown or wrongly-sized fields are skipped (BOLT-11)
             }
@@ -114,8 +131,45 @@ struct Bolt11Invoice: Sendable, Equatable {
             timestamp: timestamp,
             expirySeconds: expiry ?? 3600,
             paymentSecret: paymentSecret,
-            description: description
+            description: description,
+            sparkFallback: sparkInvoiceFallback ?? routeHintFallback
         )
+    }
+
+    /// Fallback-address version the reference SDK uses for an embedded Spark invoice.
+    private static let sparkInvoiceFallbackVersion: UInt8 = 31
+    /// Short channel id of the route hint hop that carries a Spark identity public key.
+    private static let sparkIdentityShortChannelId: [UInt8] = [0xF4, 0x24, 0x00, 0xF4, 0x24, 0x00, 0x00, 0x01]
+
+    /// The public key (hex) of the first route-hint hop with the Spark sentinel short channel id.
+    /// A hop is 51 bytes: pubkey (33), short channel id (8), base fee (4), proportional fee (4),
+    /// CLTV delta (2).
+    private static func sparkIdentityInRouteHint(_ bytes: [UInt8]) -> String? {
+        var offset = 0
+        while offset + 51 <= bytes.count {
+            if Array(bytes[(offset + 33)..<(offset + 41)]) == sparkIdentityShortChannelId {
+                return Data(bytes[offset..<(offset + 33)]).hexString
+            }
+            offset += 51
+        }
+        return nil
+    }
+
+    /// 5-bit words to bytes, ignoring leftover padding bits (the reference SDK's
+    /// `fromWordsLenient`).
+    private static func lenientBytes(fromWords words: [UInt8]) -> [UInt8] {
+        var accumulator = 0
+        var bits = 0
+        var result: [UInt8] = []
+        for word in words {
+            accumulator = ((accumulator << 5) | Int(word & 0x1F)) & 0xFFFF
+            bits += 5
+            if bits >= 8 {
+                bits -= 8
+                result.append(UInt8((accumulator >> bits) & 0xFF))
+            }
+        }
+        return result
     }
 
     /// `ln` + currency + optional amount + optional multiplier.
@@ -235,6 +289,12 @@ enum LightningValidator {
         }
         if let reportedPaymentHashHex, reportedPaymentHashHex.lowercased() != expectedPaymentHash.hexString {
             throw SparkError.untrustedResponse("SSP reported payment hash \(reportedPaymentHashHex) does not match ours \(expectedPaymentHash.hexString)")
+        }
+        // The wallet never asks for a Spark fallback. One in the invoice would let a payer that
+        // prefers Spark pay whoever it names instead of this wallet (reference SDK: "Spark fallback
+        // address found in lightning invoice but includeSparkAddress is false").
+        if let sparkFallback = invoice.sparkFallback {
+            throw SparkError.untrustedResponse("SSP invoice carries a Spark fallback (\(sparkFallback)) the wallet did not ask for")
         }
         if expectedAmountSats == 0 {
             if let amountMsat = invoice.amountMsat {
