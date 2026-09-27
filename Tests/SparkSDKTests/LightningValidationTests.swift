@@ -30,7 +30,7 @@ struct Bolt11InvoiceTests {
         #expect(donation.paymentHash.hexString == Self.specPaymentHash)
         #expect(donation.timestamp == Self.specTimestamp)
         #expect(donation.expirySeconds == 3600)
-        #expect(donation.paymentSecret?.hexString == String(repeating: "11", count: 32))
+        #expect(donation.paymentSecret.hexString == String(repeating: "11", count: 32))
         #expect(donation.description == "Please consider supporting this project")
 
         let coffee = try Bolt11Invoice.decode(Self.coffee2500u)
@@ -107,6 +107,8 @@ struct Bolt11InvoiceTests {
             "lnbc2500x1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpusp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9qrsgqrrzc4cvfue4zp3hggxp47ag7xnrlr8vgcmkjxk3j5jqethnumgkpqp23z9jclu3v0a7e0aruz366e9wqdykw6dxhdzcjjhldxq0w6wgqcnu43j",
             // Invalid sub-millisatoshi precision.
             "lnbc2500000001p1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpusp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9qrsgq0lzc236j96a95uv0m3umg28gclm5lqxtqqwk32uuk4k6673k6n5kfvx3d2h8s295fad45fdhmusm8sjudfhlf6dcsxmfvkeywmjdkxcp99202x",
+            // Missing required s field (the reference SDK's "invalid payment secret" vector).
+            "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqs9qrsgq7ea976txfraylvgzuxs8kgcw23ezlrszfnh8r6qtfpr6cxga50aj6txm9rxrydzd06dfeawfk6swupvz4erwnyutnjq7x39ymw6j38gp49qdkj",
             "",
             "lnbc",
             "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
@@ -115,6 +117,36 @@ struct Bolt11InvoiceTests {
             #expect(throws: SparkError.self, Comment(rawValue: String(invoice.prefix(24)))) {
                 _ = try Bolt11Invoice.decode(invoice)
             }
+        }
+    }
+
+    @Test("An invoice without a payment secret is refused, as BOLT-11 readers and the reference SDK do")
+    func paymentSecretRequired() throws {
+        let missing = "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqs9qrsgq7ea976txfraylvgzuxs8kgcw23ezlrszfnh8r6qtfpr6cxga50aj6txm9rxrydzd06dfeawfk6swupvz4erwnyutnjq7x39ymw6j38gp49qdkj"
+        do {
+            _ = try Bolt11Invoice.decode(missing)
+            Issue.record("an invoice without a payment secret was accepted")
+        } catch SparkError.invalidInvoice(let reason) {
+            #expect(reason.contains("payment secret"))
+        }
+        // An s field of the wrong length is skipped as BOLT-11 requires, which leaves none.
+        let (hrp, words, _) = try Bech32.decode(Self.coffee2500u, maxLength: nil)
+        let fields = Array(words.dropFirst(7).dropLast(104))
+        var rebuilt: [UInt8] = []
+        var position = 0
+        while position + 3 <= fields.count {
+            let length = Int(fields[position + 1]) * 32 + Int(fields[position + 2])
+            let field = Array(fields[position..<(position + 3 + length)])
+            // Shorten the 52-word payment secret to 51 words.
+            rebuilt += field[0] == 16 ? [16, 1, 19] + Array(field[3..<(field.count - 1)]) : field
+            position += 3 + length
+        }
+        let shortSecret = Bech32.encode(hrp: hrp, data: Array(words.prefix(7)) + rebuilt + Array(words.suffix(104)), encoding: .bech32)
+        do {
+            _ = try Bolt11Invoice.decode(shortSecret)
+            Issue.record("an invoice with a 51-word payment secret was accepted")
+        } catch SparkError.invalidInvoice(let reason) {
+            #expect(reason.contains("payment secret"))
         }
     }
 

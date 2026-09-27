@@ -42,6 +42,9 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- BOLT-11 invoices without a payment secret (`s` field) are refused, as BOLT-11 readers must
+  and the reference SDK does. They were accepted for payment, and an SSP-created invoice without
+  one passed the receive checks.
 - A Lightning send whose preimage swap fails without a clear refusal — a connection lost after
   the request went out, a deadline, a cancelled task, an internal error — throws
   `lightningSendIncomplete` with the transfer id. The coordinator may have committed such a swap

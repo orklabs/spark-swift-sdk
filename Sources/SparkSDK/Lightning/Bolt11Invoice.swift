@@ -22,8 +22,9 @@ struct Bolt11Invoice: Sendable, Equatable {
     let timestamp: UInt64
     /// Seconds after `timestamp` until the invoice expires (tag `x`, default 3600).
     let expirySeconds: UInt64
-    /// Payment secret (tag `s`), if present.
-    let paymentSecret: Data?
+    /// Payment secret (tag `s`). BOLT-11 readers must fail a payment without one, and the
+    /// reference SDK refuses such invoices, so decoding does too.
+    let paymentSecret: Data
     /// Short description (tag `d`), if present.
     let description: String?
     /// A Spark payment target embedded in the invoice, decoded as the reference SDK does: a Spark
@@ -122,6 +123,9 @@ struct Bolt11Invoice: Sendable, Equatable {
         }
         guard let paymentHash else {
             throw SparkError.invalidInvoice("missing payment hash (p field)")
+        }
+        guard let paymentSecret else {
+            throw SparkError.invalidInvoice("missing payment secret (s field)")
         }
 
         return Bolt11Invoice(
