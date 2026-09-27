@@ -709,7 +709,8 @@ struct StaticDepositTests {
         let balanceBefore = try await wallet.getBalance()
         print("Balance before claim: \(balanceBefore.satsBalance.available) sats")
 
-        let transferId = try await wallet.claimStaticDeposit(transactionId: txID, outputIndex: 0)
+        let quote = try await wallet.getDepositFeeEstimate(transactionId: txID, outputIndex: 0)
+        let transferId = try await wallet.claimStaticDeposit(transactionId: txID, outputIndex: 0, quote: quote)
         print("Claim transfer ID: \(transferId)")
 
         try await Task.sleep(for: .seconds(3))

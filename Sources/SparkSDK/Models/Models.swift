@@ -153,9 +153,15 @@ public struct UnusedDepositAddress: Sendable {
     public let verifyingPublicKey: Data
 }
 
+/// The SSP's signed quote for claiming one static deposit output: the sats it will credit.
 public struct DepositFeeEstimate: Sendable {
     public let creditAmountSats: Int64
     public let quoteSignature: String
+
+    public init(creditAmountSats: Int64, quoteSignature: String) {
+        self.creditAmountSats = creditAmountSats
+        self.quoteSignature = quoteSignature
+    }
 }
 
 public struct DepositUtxo: Sendable {

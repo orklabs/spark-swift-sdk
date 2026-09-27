@@ -132,3 +132,53 @@ struct StaticDepositRefundTests {
         #expect(regtest == expected(network: "regtest", requestType: 0, credit: 1, authorization: Data([0xAB])))
     }
 }
+
+/// Static deposit claims sign exactly the quote that was checked.
+@Suite("Static deposit claim")
+struct StaticDepositClaimTests {
+    @Test("A claim statement commits to the quote's credit and the SSP's signature bytes")
+    func claimStatement() throws {
+        let outpoint = try DepositOutpoint(txid: StaticDepositRefundTests.txid.uppercased(), vout: 3)
+        let quote = DepositFeeEstimate(creditAmountSats: 49_000, quoteSignature: "3045022100aabb")
+        let statement = SparkWallet.staticDepositStatement(
+            outpoint, network: .mainnet, requestType: .fixed,
+            creditAmountSats: UInt64(quote.creditAmountSats), authorization: try #require(Data(hexString: quote.quoteSignature))
+        )
+        // What the SDK signed before: the lower-case txid as given, the hex-decoded quote signature.
+        var previous = Data("claim_static_deposit".utf8)
+        previous += Data("MAINNET".lowercased().utf8)
+        previous += Data(StaticDepositRefundTests.txid.utf8)
+        previous += withUnsafeBytes(of: UInt32(3).littleEndian) { Data($0) }
+        previous += Data([0])
+        previous += withUnsafeBytes(of: UInt64(49_000).littleEndian) { Data($0) }
+        previous += try #require(Data(hexString: "3045022100aabb"))
+        #expect(statement == previous)
+        #expect(SparkWallet.staticDepositFee(depositSats: 50_000, quote: quote) == 1_000)
+    }
+
+    @Test("A quote with no credit or a signature that is not hex is refused before the SSP is asked",
+          .timeLimit(.minutes(1)))
+    func invalidQuotes() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            let txid = StaticDepositRefundTests.txid
+            do {
+                _ = try await wallet.claimStaticDeposit(
+                    transactionId: txid, quote: DepositFeeEstimate(creditAmountSats: 0, quoteSignature: "aa")
+                )
+                Issue.record("a quote crediting nothing was claimed")
+            } catch SparkError.invalidArgument {}
+            do {
+                _ = try await wallet.claimStaticDeposit(
+                    transactionId: txid, quote: DepositFeeEstimate(creditAmountSats: 10, quoteSignature: "not hex")
+                )
+                Issue.record("a quote whose signature is not hex was claimed")
+            } catch SparkError.invalidResponse {}
+            await #expect(throws: SparkError.self) {
+                _ = try await wallet.claimStaticDeposit(
+                    transactionId: "abc", quote: DepositFeeEstimate(creditAmountSats: 10, quoteSignature: "aa")
+                )
+            }
+        }
+    }
+}

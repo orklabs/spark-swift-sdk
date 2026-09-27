@@ -28,12 +28,17 @@ migration note.
   of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Added
+- `claimStaticDeposit(transactionId:outputIndex:quote:)`: claims a static deposit for exactly the
+  credit of a quote from `getDepositFeeEstimate`, as the reference SDK's `claimStaticDeposit`
+  does. `DepositFeeEstimate` has a public initializer.
 - `claimPendingTransfers()`: claims every pending inbound transfer and returns the claimed
   transfer ids plus the transfers that could not be claimed, with their errors.
 - `SparkLeaf.isFrozen`, and `unrenewedSats` on `WithdrawAllQuote` and `WithdrawAllResult`:
   renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Changed
+- `claimStaticDeposit(transactionId:outputIndex:)` is deprecated: it signs whatever credit the SSP
+  quotes. Use `claimStaticDepositWithMaxFee` or the `quote:` variant.
 - `subscribeToEvents()` streams until the caller stops iterating or the wallet is closed: it
   reconnects by itself and reports `SparkEvent.reconnecting(attempt:retryIn:reason:)` before
   each wait — a new case that exhaustive `switch`es over `SparkEvent` must handle — and it claims
@@ -46,6 +51,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `claimStaticDepositWithMaxFee` claims the quote it checked. It compared one SSP quote with
+  `maxFee`, then fetched a second quote and signed that one unchecked, so the SSP could credit
+  less than the checked amount; the deposit value it compared against also came from the block
+  explorer without checking that the transaction hashes to the txid. Claims now take txids in any
+  case (the operators and the SSP use the lower-case form).
 - `refundStaticDeposit` and `refundAndBroadcastStaticDeposit` work. Three defects each stopped
   every refund: the unsigned spend transaction was serialised with the segwit marker and an empty
   witness, which the signing library refuses to parse ("witness flag set but no witnesses

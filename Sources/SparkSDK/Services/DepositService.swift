@@ -194,60 +194,57 @@ extension SparkWallet {
         )
     }
 
-    /// Claim a static deposit via the SSP.
+    /// Claim a static deposit for whatever credit the SSP quotes, unchecked.
     /// - Parameters:
     ///   - transactionId: The on-chain tx id
     ///   - outputIndex: The output index (vout)
     /// Returns the Spark transfer ID for the claimed deposit.
+    @available(*, deprecated, message: """
+        Signs whatever credit the SSP quotes. Use claimStaticDepositWithMaxFee, or \
+        claimStaticDeposit(transactionId:outputIndex:quote:) with a quote you checked.
+        """)
     @discardableResult
     public func claimStaticDeposit(transactionId: String, outputIndex: UInt32 = 0) async throws -> String {
-        // Step 1: Get quote from SSP
-        let quoteResponse = try await sspClient.executeRaw(
-            query: GraphQLQueries.staticDepositQuote,
-            variables: [
-                "transaction_id": transactionId,
-                "output_index": Int(outputIndex),
-                "network": config.networkGraphQL,
-            ] as [String: any Sendable]
-        )
+        let quote = try await getDepositFeeEstimate(transactionId: transactionId, outputIndex: outputIndex)
+        return try await claimStaticDeposit(transactionId: transactionId, outputIndex: outputIndex, quote: quote)
+    }
 
-        guard let quoteData = quoteResponse["static_deposit_quote"] as? [String: Any],
-              let creditAmountSats = quoteData["credit_amount_sats"] as? Int64,
-              let quoteSignature = quoteData["signature"] as? String else {
-            throw SparkError.invalidResponse("Invalid static deposit quote response")
+    /// Claim a static deposit for exactly the credit of `quote` — the SSP-signed quote
+    /// `getDepositFeeEstimate` returned for this output — as the reference SDK's
+    /// `claimStaticDeposit` does: the wallet signs a fixed-amount claim for that credit and the
+    /// SSP's quote signature, so the SSP cannot credit less.
+    /// Returns the Spark transfer ID for the claimed deposit.
+    @discardableResult
+    public func claimStaticDeposit(
+        transactionId: String,
+        outputIndex: UInt32 = 0,
+        quote: DepositFeeEstimate
+    ) async throws -> String {
+        let outpoint = try DepositOutpoint(txid: transactionId, vout: outputIndex)
+        guard quote.creditAmountSats > 0 else {
+            throw SparkError.invalidArgument("the quote credits \(quote.creditAmountSats) sats; nothing to claim")
         }
-
-        // Step 2: Build signing payload
+        guard let quoteSignature = Data(hexString: quote.quoteSignature), !quoteSignature.isEmpty else {
+            throw SparkError.invalidResponse("the SSP's quote signature is not hex")
+        }
+        let statement = Self.staticDepositStatement(
+            outpoint, network: config.network, requestType: .fixed,
+            creditAmountSats: UInt64(quote.creditAmountSats), authorization: quoteSignature
+        )
+        let signature = try signer.signWithIdentityKey(Data(CryptoKit.SHA256.hash(data: statement)))
         let staticSecretKey = try signer.deriveStaticDepositKey(0)
-        let depositSecretKeyHex = staticSecretKey.hexString
 
-        // Payload: "claim_static_deposit" + network(lowercase) + txid + outputIndex(LE u32) + requestType(u8: 0=Fixed) + creditAmountSats(LE u64) + sspSignature
-        var payload = Data("claim_static_deposit".utf8)
-        payload.append(Data(config.networkGraphQL.lowercased().utf8))
-        payload.append(Data(transactionId.utf8))
-        var outputIndexLE = outputIndex.littleEndian
-        payload.append(Data(bytes: &outputIndexLE, count: 4))
-        payload.append(UInt8(0)) // requestType = Fixed
-        var creditLE = UInt64(creditAmountSats).littleEndian
-        payload.append(Data(bytes: &creditLE, count: 8))
-        let sigBytes = Data(hexString: quoteSignature) ?? Data(quoteSignature.utf8)
-        payload.append(sigBytes)
-
-        let payloadHash = Data(CryptoKit.SHA256.hash(data: payload))
-        let signature = try signer.signWithIdentityKey(payloadHash)
-
-        // Step 3: Call SSP to claim
         let claimResponse = try await sspClient.executeRaw(
             query: GraphQLMutations.claimStaticDeposit,
             variables: [
-                "transaction_id": transactionId,
-                "output_index": Int(outputIndex),
+                "transaction_id": outpoint.txid,
+                "output_index": Int(outpoint.vout),
                 "network": config.networkGraphQL,
                 "request_type": "FIXED_AMOUNT",
-                "credit_amount_sats": creditAmountSats,
-                "deposit_secret_key": depositSecretKeyHex,
+                "credit_amount_sats": quote.creditAmountSats,
+                "deposit_secret_key": staticSecretKey.hexString,
                 "signature": signature.hexString,
-                "quote_signature": quoteSignature,
+                "quote_signature": quote.quoteSignature,
             ] as [String: any Sendable]
         )
 
@@ -332,7 +329,9 @@ extension SparkWallet {
         }
     }
 
-    /// Claim a static deposit, but only if the fee is at or below `maxFee` sats.
+    /// Claim a static deposit, but only if the fee is at or below `maxFee` sats: the SSP's quote
+    /// is checked against the deposit's value (from a transaction that hashes to the txid) and
+    /// then claimed exactly, as the reference SDK does.
     /// Returns nil if the fee exceeds the max.
     @discardableResult
     public func claimStaticDepositWithMaxFee(
@@ -340,20 +339,23 @@ extension SparkWallet {
         maxFee: Int64,
         outputIndex: UInt32 = 0
     ) async throws -> String? {
-        // Get quote first
-        let quote = try await getDepositFeeEstimate(transactionId: transactionId, outputIndex: outputIndex)
+        let outpoint = try DepositOutpoint(txid: transactionId, vout: outputIndex)
+        let rawTx = try await fetchRawTransaction(txID: outpoint.txid)
+        guard try RawTransaction.parse(rawTx, context: "deposit tx").txid == outpoint.internalOrderTxid else {
+            throw SparkError.untrustedResponse("block explorer returned a transaction that does not hash to \(outpoint.txid)")
+        }
+        let depositSats = Int64(reportedSats: try Self.parseTxOutput(rawTx, vout: outputIndex).value)
 
-        // Fetch the raw tx to determine the output value
-        let rawTx = try await fetchRawTransaction(txID: transactionId)
-        let output = try Self.parseTxOutput(rawTx, vout: outputIndex)
-        let totalAmount = Int64(reportedSats: output.value)
-        let fee = totalAmount - quote.creditAmountSats
-
-        guard fee <= maxFee else {
+        let quote = try await getDepositFeeEstimate(transactionId: outpoint.txid, outputIndex: outputIndex)
+        guard Self.staticDepositFee(depositSats: depositSats, quote: quote) <= maxFee else {
             return nil
         }
+        return try await claimStaticDeposit(transactionId: outpoint.txid, outputIndex: outputIndex, quote: quote)
+    }
 
-        return try await claimStaticDeposit(transactionId: transactionId, outputIndex: outputIndex)
+    /// What the SSP keeps of a deposit under `quote`.
+    static func staticDepositFee(depositSats: Int64, quote: DepositFeeEstimate) -> Int64 {
+        depositSats - quote.creditAmountSats
     }
 
     /// Get fee quote for claiming a static deposit (how much will be credited after fees).

@@ -156,11 +156,14 @@ await wallet.start()
 let staticDeposit = try await wallet.getStaticDepositAddress()
 let utxos = try await wallet.getUtxosForDepositAddress(address: staticDeposit.address)
 
-// Once a UTXO confirms on-chain, claim it into your Spark balance
-let transferId = try await wallet.claimStaticDeposit(
-    transactionId: utxo.txid,
-    outputIndex: utxo.vout
+// Once a UTXO confirms on-chain, claim it into your Spark balance — only if the SSP's fee is
+// at most `maxFee` (nil otherwise); the checked quote is the one claimed
+let transferId = try await wallet.claimStaticDepositWithMaxFee(
+    transactionId: utxo.txid, maxFee: 1_000, outputIndex: utxo.vout
 )
+// Or check the SSP's quote yourself and claim exactly that credit
+let quote = try await wallet.getDepositFeeEstimate(transactionId: utxo.txid, outputIndex: utxo.vout)
+let claimId = try await wallet.claimStaticDeposit(transactionId: utxo.txid, outputIndex: utxo.vout, quote: quote)
 
 // One-time deposit addresses: the SDK locates the output that pays one of your unused
 // deposit addresses (pass `vout:` to insist on a specific output).

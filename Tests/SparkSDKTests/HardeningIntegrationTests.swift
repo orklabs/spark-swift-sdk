@@ -376,7 +376,7 @@ struct HardeningIntegrationTests {
         for utxo in utxos {
             let quote = try await wallet.getDepositFeeEstimate(transactionId: utxo.txid, outputIndex: utxo.vout)
             print("  \(utxo.txid):\(utxo.vout) credits \(quote.creditAmountSats) sats after the SSP fee")
-            let transferId = try await wallet.claimStaticDeposit(transactionId: utxo.txid, outputIndex: utxo.vout)
+            let transferId = try await wallet.claimStaticDeposit(transactionId: utxo.txid, outputIndex: utxo.vout, quote: quote)
             #expect(!transferId.isEmpty)
             print("  claim transfer \(transferId)")
         }
