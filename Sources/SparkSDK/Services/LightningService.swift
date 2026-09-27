@@ -218,14 +218,9 @@ extension SparkWallet {
             transferRequest: transferRequest
         )
 
-        // A caller-supplied transfer id doubles as the coordinator idempotency key, so a retry
-        // after a partial failure resumes the existing swap instead of starting a second one.
-        let swapMetadata: Metadata
-        if let coordinatorIdempotencyKey = idempotencyKey ?? resumeTransferId {
-            swapMetadata = metadataWithIdempotencyKey(coordinatorIdempotencyKey, base: metadata)
-        } else {
-            swapMetadata = metadata
-        }
+        let swapMetadata = metadataWithIdempotencyKey(
+            Self.preimageSwapIdempotencyKey(idempotencyKey: idempotencyKey, transferId: transferID), base: metadata
+        )
 
         let swapResponse = try await client.initiate_preimage_swap_v3(
             request: ClientRequest(message: swapRequest, metadata: swapMetadata)
@@ -331,6 +326,16 @@ extension SparkWallet {
         }
         request.transferRequest = transferRequest
         return request
+    }
+
+    /// The coordinator idempotency key of a Lightning send's preimage swap: the caller's key, else
+    /// the transfer id — never none. The coordinator answers a repeated key with the transfer it
+    /// already committed instead of running the swap again, so a transport retry of a swap whose
+    /// answer was lost, or a retry after `lightningSendIncomplete`, gets that transfer rather than
+    /// a duplicate-transfer rejection. The reference SDK always sends one
+    /// (`idempotencyKey: transferId`).
+    static func preimageSwapIdempotencyKey(idempotencyKey: String?, transferId: String) -> String {
+        idempotencyKey ?? transferId
     }
 
     /// Variables of the SSP's `request_lightning_send`. `amount_sats` is set for an amountless

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import CryptoKit
 import secp256k1
+import GRPCCore
 @testable import SparkSDK
 
 /// BOLT-11 decoding against the specification's test vectors, plus the client-side checks on
@@ -360,6 +361,15 @@ struct LightningValidatorTests {
         #expect(request.feeSats == 2)
         #expect(request.invoiceAmount.valueSats == 12)
         #expect(request.invoiceAmount.invoiceAmountProof.bolt11Invoice == "lnbc120n1...")
+    }
+
+    @Test("Every preimage swap carries an idempotency key: the caller's, else the transfer id")
+    func preimageSwapIdempotencyKey() {
+        #expect(SparkWallet.preimageSwapIdempotencyKey(idempotencyKey: nil, transferId: "t") == "t")
+        #expect(SparkWallet.preimageSwapIdempotencyKey(idempotencyKey: "key", transferId: "t") == "key")
+        // The header the operators' idempotency interceptor reads (`common.IdempotencyKeyHeader`).
+        let metadata = metadataWithIdempotencyKey(SparkWallet.preimageSwapIdempotencyKey(idempotencyKey: nil, transferId: "t"))
+        #expect(Array(metadata[stringValues: "x-idempotency-key"]) == ["t"])
     }
 
     @Test("Resumable transfer ids must be UUIDs and are normalised to lower case")

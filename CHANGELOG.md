@@ -44,6 +44,12 @@ migration note.
   of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Fixed
+- A Lightning send's preimage swap always carries an idempotency key — the caller's
+  `idempotencyKey`, else the transfer id — as the reference SDK's does. Without either argument
+  it carried none, so when the coordinator committed the swap but its answer was lost, the
+  transport's retry was refused as a second transfer and the caller never learnt the transfer id;
+  and a first attempt without a key that ended in `lightningSendIncomplete` could not be resumed
+  with the reported transfer id. Either way the leaves stayed locked until the transfer expired.
 - SSP fee amounts are read in the unit the SSP reports. The Lightning fee estimate was always
   divided by 1000 as if it were in millisatoshi, and the cooperative-exit fees were taken as
   sats; an estimate reported in another unit would have been misread, capped against the wrong
