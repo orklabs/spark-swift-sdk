@@ -234,56 +234,21 @@ extension SparkWallet {
             transferPackage.keyTweakPackage[soID] = cipher
         }
 
-        // ── Step 3: Get signing commitments for the swap transfer field (regular refunds) ──
+        // ── Step 3: Single call to initiate_preimage_swap_v3 ──
 
-        var swapCommitmentsReq = Spark_GetSigningCommitmentsRequest()
-        swapCommitmentsReq.count = 3
-        swapCommitmentsReq.nodeIds = leafIDs
-        let swapCommitmentsResp = try await client.get_signing_commitments(
-            request: ClientRequest(message: swapCommitmentsReq, metadata: metadata)
-        )
-        let swapCommitments = swapCommitmentsResp.signingCommitments
-        guard swapCommitments.count >= selectedLeaves.count else {
-            throw SparkError.invalidResponse("Got \(swapCommitments.count) signing commitments, need \(selectedLeaves.count)")
-        }
-
-        let swapCpfpJobs = try buildSwapRefundJobs(
-            selectedLeaves: selectedLeaves, receiverPubKey: receiverPubKey,
-            swapCommitments: swapCommitments, networkStr: networkStr
-        )
-
-        // ── Step 4: Single call to initiate_preimage_swap_v3 ──
-
-        var swapRequest = Spark_InitiatePreimageSwapRequest()
-        swapRequest.paymentHash = paymentHash
-        swapRequest.reason = .send
-        swapRequest.receiverIdentityPublicKey = receiverPubKey
-        swapRequest.feeSats = feeSats
-
-        var invoiceAmount = Spark_InvoiceAmount()
-        invoiceAmount.valueSats = UInt64(invoiceAmountSats)
-        invoiceAmount.invoiceAmountProof = Spark_InvoiceAmountProof.with {
-            $0.bolt11Invoice = paymentRequest
-        }
-        swapRequest.invoiceAmount = invoiceAmount
-
-        // transfer field (field 4): only cpfp regular refund jobs (direct/directFromCpfp undefined when transferRequest exists)
-        var transferField = Spark_StartUserSignedTransferRequest()
-        transferField.transferID = transferID
-        transferField.ownerIdentityPublicKey = signer.identityPublicKey
-        transferField.receiverIdentityPublicKey = receiverPubKey
-        transferField.expiryTime = expiryTime
-        transferField.leavesToSend = swapCpfpJobs
-        swapRequest.transfer = transferField
-
-        // transferRequest field (field 7): full StartTransferRequest with HTLC TransferPackage
         var transferRequest = Spark_StartTransferRequest()
         transferRequest.transferID = transferID
         transferRequest.ownerIdentityPublicKey = signer.identityPublicKey
         transferRequest.receiverIdentityPublicKey = receiverPubKey
         transferRequest.expiryTime = expiryTime
         transferRequest.transferPackage = transferPackage
-        swapRequest.transferRequest = transferRequest
+        let swapRequest = Self.preimageSwapRequest(
+            paymentHash: paymentHash,
+            invoiceAmountSats: invoiceAmountSats,
+            bolt11Invoice: paymentRequest,
+            feeSats: feeSats,
+            transferRequest: transferRequest
+        )
 
         // A caller-supplied transfer id doubles as the coordinator idempotency key, so a retry
         // after a partial failure resumes the existing swap instead of starting a second one.
@@ -298,7 +263,7 @@ extension SparkWallet {
             request: ClientRequest(message: swapRequest, metadata: swapMetadata)
         )
 
-        // ── Step 5: SSP call with transfer external ID ──
+        // ── Step 4: SSP call with transfer external ID ──
 
         let sspVariables = Self.lightningSendVariables(
             encodedInvoice: paymentRequest,
@@ -330,6 +295,31 @@ extension SparkWallet {
         }
 
         return id
+    }
+
+    /// The `initiate_preimage_swap_v3` request of a Lightning send: the HTLC transfer to the SSP
+    /// in `transfer_request`, whose receiver the top-level receiver must equal. Only
+    /// `transfer_request`: the operators build the swap from it alone, and the legacy `transfer`
+    /// field — plain, non-HTLC refunds signed over to the SSP — is reserved in the current
+    /// protocol; the reference SDK stopped sending it in 0.9.0.
+    static func preimageSwapRequest(
+        paymentHash: Data,
+        invoiceAmountSats: Int64,
+        bolt11Invoice: String,
+        feeSats: UInt64,
+        transferRequest: Spark_StartTransferRequest
+    ) -> Spark_InitiatePreimageSwapRequest {
+        var request = Spark_InitiatePreimageSwapRequest()
+        request.paymentHash = paymentHash
+        request.reason = .send
+        request.receiverIdentityPublicKey = transferRequest.receiverIdentityPublicKey
+        request.feeSats = feeSats
+        request.invoiceAmount = Spark_InvoiceAmount.with {
+            $0.valueSats = UInt64(invoiceAmountSats)
+            $0.invoiceAmountProof = Spark_InvoiceAmountProof.with { $0.bolt11Invoice = bolt11Invoice }
+        }
+        request.transferRequest = transferRequest
+        return request
     }
 
     /// Variables of the SSP's `request_lightning_send`. `amount_sats` is set for an amountless
@@ -433,38 +423,6 @@ extension SparkWallet {
             ))
         }
         return (htlcCpfpJobs, htlcDirectJobs, htlcDirectFromCpfpJobs)
-    }
-
-    /// Regular cpfp refund signing jobs for the swap transfer field of a lightning send.
-    private func buildSwapRefundJobs(
-        selectedLeaves: [SparkLeaf],
-        receiverPubKey: Data,
-        swapCommitments: [Spark_RequestedSigningCommitments],
-        networkStr: String
-    ) throws -> [Spark_UserSignedTxSigningJob] {
-        var swapCpfpJobs: [Spark_UserSignedTxSigningJob] = []
-
-        for i in 0..<selectedLeaves.count {
-            let leaf = selectedLeaves[i]
-            let node = leaf.node
-            let signingKey = try signer.deriveLeafSigningKey(leaf.id)
-            let verifyingKey = Data(node.verifyingPublicKey)
-
-            let cpfpCommitments = swapCommitments[i].signingNonceCommitments
-
-            let (nextSequence, _) = try Self.computeNextSequences(from: Data(node.refundTx))
-
-            let cpfpRefund = try constructRefundTx(
-                tx: Data(node.nodeTx), vout: 0,
-                pubkey: receiverPubKey, network: networkStr, sequence: nextSequence
-            )
-            swapCpfpJobs.append(try FrostSigningHelper.buildSigningJob(
-                leafID: leaf.id, signingKey: signingKey, verifyingKey: verifyingKey,
-                rawTx: cpfpRefund.tx, sighash: cpfpRefund.sighash,
-                soCommitments: cpfpCommitments
-            ))
-        }
-        return swapCpfpJobs
     }
 
     /// Sequences of a Lightning send's HTLC refunds: the current refund timelock minus 100, plus

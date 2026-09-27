@@ -37,6 +37,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Lightning sends no longer sign plain refunds over to the SSP. The SDK still filled the legacy
+  `transfer` field of `initiate_preimage_swap_v3`, with an extra signing round and the user's
+  signature shares on non-HTLC refunds paying the SSP. The operators build the swap from
+  `transfer_request` alone and the current protocol reserves the field; the reference SDK stopped
+  sending it in 0.9.0. A Lightning send now makes one signing round fewer.
 - Amountless Lightning invoices can be paid. The SSP's `request_lightning_send` needs
   `amount_sats` for an invoice without an amount (and only then), and the SDK never sent it,
   although it had already quoted the fee for the caller's amount and locked the leaves with the

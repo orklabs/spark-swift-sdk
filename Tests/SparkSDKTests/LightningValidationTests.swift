@@ -224,6 +224,29 @@ struct LightningValidatorTests {
         #expect(GraphQLMutations.requestLightningSend.contains("amount_sats: $amount_sats"))
     }
 
+    @Test("A Lightning send's preimage swap carries only the HTLC transfer request")
+    func preimageSwapRequest() {
+        var transferRequest = Spark_StartTransferRequest()
+        transferRequest.transferID = "0199a8f0-0000-7000-8000-000000000001"
+        transferRequest.receiverIdentityPublicKey = Data([0x02] + Array(repeating: 0xAA, count: 32))
+        transferRequest.transferPackage.userSignature = Data([1, 2, 3])
+        let request = SparkWallet.preimageSwapRequest(
+            paymentHash: Data(repeating: 0x42, count: 32),
+            invoiceAmountSats: 12,
+            bolt11Invoice: "lnbc120n1...",
+            feeSats: 2,
+            transferRequest: transferRequest
+        )
+        // The legacy `transfer` field (reserved by the operators) is never sent.
+        #expect(!request.hasTransfer)
+        #expect(request.transferRequest == transferRequest)
+        #expect(request.receiverIdentityPublicKey == transferRequest.receiverIdentityPublicKey)
+        #expect(request.reason == .send)
+        #expect(request.feeSats == 2)
+        #expect(request.invoiceAmount.valueSats == 12)
+        #expect(request.invoiceAmount.invoiceAmountProof.bolt11Invoice == "lnbc120n1...")
+    }
+
     @Test("Resumable transfer ids must be UUIDs and are normalised to lower case")
     func transferIds() throws {
         #expect(try LightningValidator.normalizeTransferId(nil) == nil)
