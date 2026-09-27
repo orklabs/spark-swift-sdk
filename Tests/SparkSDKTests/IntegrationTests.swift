@@ -823,6 +823,32 @@ struct DebugTests {
         print("\nSingle transfer lookup OK: \(single.id)")
     }
 
+    /// One `LEDGER` line per test wallet (A, B, and the static-deposit wallet when configured),
+    /// to compare before and after a run: every sat the wallets hold is in `owned` or `incoming`.
+    @Test("Ledger of every test wallet's sats and tokens")
+    func ledger() async throws {
+        var wallets = [("A", try await makeWallet(walletAMnemonic)), ("B", try await makeWallet(walletBMnemonic))]
+        if let mnemonic = TestConfig.staticDepositMnemonic {
+            let wallet = try SparkWallet(mnemonic: mnemonic, account: TestConfig.staticDepositAccount)
+            await wallet.start()
+            wallets.append(("static", wallet))
+        }
+        var total: Int64 = 0
+        for (name, wallet) in wallets {
+            let balance = try await wallet.getBalance()
+            let sats = balance.satsBalance
+            let tokens = balance.tokenBalances
+                .map { "\($0.tokenMetadata.tokenTicker)=\($0.ownedBalance)" }
+                .sorted()
+                .joined(separator: ",")
+            print("LEDGER \(name) owned=\(sats.owned) available=\(sats.available) incoming=\(sats.incoming) "
+                + "frozen=\(sats.frozen) leaves=\(balance.leaves.count) tokens=[\(tokens)]")
+            total += sats.owned + sats.incoming
+            await wallet.close()
+        }
+        print("LEDGER total owned+incoming=\(total)")
+    }
+
     @Test("Show wallet info")
     func showWalletInfo() async throws {
         let walletA = try await makeWallet(walletAMnemonic)
