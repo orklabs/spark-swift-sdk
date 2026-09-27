@@ -400,11 +400,15 @@ extension SparkWallet {
             throw SparkError.invalidResponse("Fee must be at least 194 sats")
         }
 
+        let outpoint = try DepositOutpoint(txid: depositTransactionId, vout: outputIndex)
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
 
-        // Fetch the deposit tx to know the output value
-        let rawDepositTx = try await fetchRawTransaction(txID: depositTransactionId)
+        // The deposit output, from a transaction that hashes to the txid.
+        let rawDepositTx = try await fetchRawTransaction(txID: outpoint.txid)
+        guard try RawTransaction.parse(rawDepositTx, context: "deposit tx").txid == outpoint.internalOrderTxid else {
+            throw SparkError.untrustedResponse("block explorer returned a transaction that does not hash to \(outpoint.txid)")
+        }
         let depositOutput = try Self.parseTxOutput(rawDepositTx, vout: outputIndex)
         let totalAmount = depositOutput.value
         let creditAmountSats = Int64(reportedSats: totalAmount) - Int64(fee)
@@ -414,8 +418,7 @@ extension SparkWallet {
 
         // Build spend tx: 1 input (deposit utxo), 1 output (destination)
         let spendTx = try Self.constructSpendTx(
-            depositTxId: depositTransactionId,
-            outputIndex: outputIndex,
+            spending: outpoint,
             destinationAddress: destinationAddress,
             amountSats: UInt64(creditAmountSats),
             network: config.network
@@ -429,23 +432,15 @@ extension SparkWallet {
             prevOutValues: [depositOutput.value]
         )
 
-        // Generate nonce commitment
         let staticKey = try signer.deriveStaticDepositKey(0)
         let staticPubKey = try getPublicKeyBytes(privateKeyBytes: staticKey, compressed: true)
-        let networkStr = config.networkString.lowercased()
 
-        // Build signing payload for user signature
-        var payload = Data("claim_static_deposit".utf8)
-        payload.append(Data(networkStr.utf8))
-        payload.append(Data(depositTransactionId.utf8))
-        var outputIndexLE = outputIndex.littleEndian
-        payload.append(Data(bytes: &outputIndexLE, count: 4))
-        payload.append(UInt8(2)) // requestType = Refund
-        var creditLE = UInt64(creditAmountSats).littleEndian
-        payload.append(Data(bytes: &creditLE, count: 8))
-        payload.append(Data(sighash.hexString.utf8)) // sighash as hex string
-        let payloadHash = Data(CryptoKit.SHA256.hash(data: payload))
-        let userSignature = try signer.signWithIdentityKey(payloadHash)
+        // Authorize the refund: the statement ends with the spend transaction's raw sighash.
+        let statement = Self.staticDepositStatement(
+            outpoint, network: config.network, requestType: .refund,
+            creditAmountSats: UInt64(creditAmountSats), authorization: sighash
+        )
+        let userSignature = try signer.signWithIdentityKey(Data(CryptoKit.SHA256.hash(data: statement)))
 
         // Create nonce for FROST signing
         let keyPackage = KeyPackage(secretKey: staticKey, publicKey: staticPubKey, verifyingKey: staticPubKey)
@@ -460,16 +455,9 @@ extension SparkWallet {
             $0.binding = nonceResult.commitment.binding
         }
 
-        // UTXO (txid in internal byte order)
-        let txidBytes = try Self.txidBytes(fromDisplayHex: depositTransactionId)
-        var utxo = Spark_UTXO()
-        utxo.txid = txidBytes
-        utxo.vout = outputIndex
-        utxo.network = config.networkProto
-
         // Call gRPC
         var refundReq = Spark_InitiateStaticDepositUtxoRefundRequest()
-        refundReq.onChainUtxo = utxo
+        refundReq.onChainUtxo = outpoint.utxo(network: config.networkProto)
         refundReq.refundTxSigningJob = signingJob
         refundReq.userSignature = userSignature
 
@@ -564,11 +552,12 @@ extension SparkWallet {
         return Data(bytes.reversed())
     }
 
-    /// Build a simple 1-input 1-output spend transaction (version 3, witness serialisation with
-    /// an empty witness; the signature is attached by `addWitnessToTx`).
+    /// The unsigned 1-input 1-output transaction spending a static deposit: version 3, final
+    /// sequence, locktime 0, in the non-witness serialisation. The operators rebuild exactly that
+    /// and compare it byte for byte (`validateStaticDepositSingleInputTx`), and the reference SDK
+    /// sends `tx.toBytes()`; the signature is attached afterwards by `addWitnessToTx`.
     static func constructSpendTx(
-        depositTxId: String,
-        outputIndex: UInt32,
+        spending outpoint: DepositOutpoint,
         destinationAddress: String,
         amountSats: UInt64,
         network: SparkNetwork
@@ -576,12 +565,12 @@ extension SparkWallet {
         let scriptPubKey = try BitcoinAddress.scriptPubKey(for: destinationAddress, network: network)
         let tx = RawTransaction(
             version: 3,
-            inputs: [RawTransaction.Input(previousTxid: try txidBytes(fromDisplayHex: depositTxId), previousIndex: outputIndex)],
+            inputs: [RawTransaction.Input(previousTxid: outpoint.internalOrderTxid, previousIndex: outpoint.vout)],
             outputs: [RawTransaction.Output(value: amountSats, scriptPubKey: scriptPubKey)],
             locktime: 0,
-            hasWitnessSerialization: true
+            hasWitnessSerialization: false
         )
-        return tx.serialized(includeWitness: true)
+        return tx.serialized(includeWitness: false)
     }
 
     /// Attach a single-item witness (a schnorr signature) to the first input of a segwit tx.

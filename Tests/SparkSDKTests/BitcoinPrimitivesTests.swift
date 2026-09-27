@@ -147,11 +147,12 @@ struct RawTransactionTests {
         #expect(!legacyExtended.hasWitnessSerialization)
 
         let spend = try SparkWallet.constructSpendTx(
-            depositTxId: genesisCoinbaseTxid, outputIndex: 0,
+            spending: try DepositOutpoint(txid: genesisCoinbaseTxid, vout: 0),
             destinationAddress: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
             amountSats: 12_345, network: .mainnet
         )
         let parsedSpend = try RawTransaction.parse(spend)
+        #expect(!parsedSpend.hasWitnessSerialization)
         #expect(parsedSpend.version == 3)
         #expect(parsedSpend.inputs[0].previousTxid == Data(hex(genesisCoinbaseTxid).reversed()))
         #expect(parsedSpend.outputs[0].scriptPubKey == hex("512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"))

@@ -46,6 +46,15 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `refundStaticDeposit` and `refundAndBroadcastStaticDeposit` work. Three defects each stopped
+  every refund: the unsigned spend transaction was serialised with the segwit marker and an empty
+  witness, which the signing library refuses to parse ("witness flag set but no witnesses
+  present") and the operators would not have matched against the transaction they rebuild; the
+  deposit's txid went to the operators in internal byte order, while they look deposits up in
+  display order; and the refund statement ended with the sighash as 64 hex characters instead of
+  its 32 raw bytes, which the operators verify. The refund now matches the reference SDK and the
+  operators' checks byte for byte, takes the txid in any case, and checks that the block
+  explorer's transaction hashes to it.
 - The event stream no longer dies silently, as in the reference SDK's background stream. Any
   error, or the operator ending the subscription (a network change, a deploy), finished the
   `AsyncStream` as if it were a normal end, it never reconnected, and payments that arrived in

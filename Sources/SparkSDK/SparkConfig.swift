@@ -3,6 +3,14 @@ import Foundation
 public enum SparkNetwork: Sendable {
     case mainnet
     case regtest
+
+    /// Lower-case name, as the operators spell it in signed statements.
+    var name: String {
+        switch self {
+        case .mainnet: return "mainnet"
+        case .regtest: return "regtest"
+        }
+    }
 }
 
 public struct SigningOperatorConfig: Sendable {
@@ -97,10 +105,7 @@ public struct SparkConfig: Sendable {
     }
 
     var networkString: String {
-        switch network {
-        case .mainnet: return "mainnet"
-        case .regtest: return "regtest"
-        }
+        network.name
     }
 
     var networkProto: Spark_Network {

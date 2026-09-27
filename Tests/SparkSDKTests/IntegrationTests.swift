@@ -719,23 +719,6 @@ struct StaticDepositTests {
         print("Balance after claim: \(balanceAfter.satsBalance.available) sats")
         #expect(balanceAfter.satsBalance.available > balanceBefore.satsBalance.available)
     }
-
-    @Test("Should refund a static deposit", .disabled("Requires funded static deposit"))
-    func refundStaticDeposit() async throws {
-        let txID = "" // Set to a real static deposit txid
-        guard !txID.isEmpty else { return }
-
-        let wallet = try await makeWallet(walletAMnemonic)
-        defer { Task { await wallet.close() } }
-
-        let txHex = try await wallet.refundStaticDeposit(
-            depositTransactionId: txID,
-            destinationAddress: "bc1qhta0uu4a7yt0jp3vmzasl3srelx9v46ncl9x89",
-            satsPerVbyte: 5
-        )
-        #expect(!txHex.isEmpty)
-        print("Refund tx hex: \(txHex.prefix(80))...")
-    }
 }
 
 // =============================================================================

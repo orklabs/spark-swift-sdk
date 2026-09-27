@@ -1,6 +1,7 @@
 // swiftlint:disable line_length — carries a BOLT-11 specification vector
 import Foundation
 import Testing
+import secp256k1
 @testable import SparkSDK
 
 /// Mainnet checks for the hardening changes: exact-amount Spark transfers to a Spark address,
@@ -659,5 +660,54 @@ extension HardeningIntegrationTests {
         let after = try await pair.receiver.getBalance().satsBalance
         #expect(after.owned == before.owned + 21)
         print("[\(pair.senderLabel)] the receiver's stream claimed \(whileDown.id) on connection and \(whileUp.id) on arrival")
+    }
+}
+
+// MARK: - Static deposit refund
+
+extension HardeningIntegrationTests {
+    /// Refunds an unclaimed static deposit of either test wallet to that wallet's own static
+    /// deposit address, checks the operators' co-signature, and broadcasts it. Opt-in
+    /// (`SPARK_TEST_ALLOW_REFUND=1`): it needs a confirmed unclaimed deposit — for example from
+    /// the opt-in withdrawal test with `SPARK_TEST_WITHDRAW_DESTINATION=receiver-static-deposit`
+    /// — and pays the on-chain fee. Once refunded, the deposit can only be recovered on-chain,
+    /// so the refund is always broadcast; the new output can be claimed again later.
+    @Test("Refund an unclaimed static deposit to the wallet's own static address", .timeLimit(.minutes(10)),
+          .enabled(if: ProcessInfo.processInfo.environment["SPARK_TEST_ALLOW_REFUND"] == "1"))
+    func refundStaticDeposit() async throws {
+        for (label, mnemonic) in [("B", TestConfig.walletBMnemonic), ("A", TestConfig.walletAMnemonic)] {
+            let wallet = try await makeWallet(mnemonic)
+            defer { Task { await wallet.close() } }
+            let address = try await wallet.getStaticDepositAddress().address
+            guard let utxo = try await wallet.getUtxosForDepositAddress(address: address).first else { continue }
+            let outpoint = try DepositOutpoint(txid: utxo.txid, vout: utxo.vout)
+
+            let txHex = try await wallet.refundStaticDeposit(
+                depositTransactionId: utxo.txid, outputIndex: utxo.vout, destinationAddress: address, satsPerVbyte: 2
+            )
+            let signed = try RawTransaction.parse(try #require(Data(hexString: txHex)))
+            #expect(signed.inputs.count == 1)
+            #expect(signed.inputs.first?.previousTxid == outpoint.internalOrderTxid)
+            #expect(signed.outputs.map(\.scriptPubKey) == [try BitcoinAddress.scriptPubKey(for: address, network: .mainnet)])
+
+            // The aggregated signature must verify against the deposit output's key.
+            let deposit = try RawTransaction.parse(try await wallet.fetchRawTransaction(txID: outpoint.txid))
+            let prevout = try deposit.output(at: outpoint.vout)
+            var unsigned = signed
+            unsigned.inputs[0].witness = []
+            unsigned.hasWitnessSerialization = false
+            let sighash = StaticDepositRefundTests.taprootSighash(
+                unsigned, prevoutScript: prevout.scriptPubKey, prevoutValue: prevout.value
+            )
+            let signature = try #require(signed.inputs.first?.witness.first)
+            let schnorr = try secp256k1.Schnorr.SchnorrSignature(dataRepresentation: signature)
+            var digest = [UInt8](sighash)
+            #expect(secp256k1.Schnorr.XonlyKey(dataRepresentation: prevout.scriptPubKey.dropFirst(2)).isValid(schnorr, for: &digest))
+
+            let txid = try await wallet.broadcastTransaction(txHex)
+            print("[\(label)] refunded \(outpoint.txid):\(outpoint.vout) (\(prevout.value) sats) to its static address: \(txid)")
+            return
+        }
+        Issue.record("neither test wallet has an unclaimed static deposit to refund")
     }
 }
