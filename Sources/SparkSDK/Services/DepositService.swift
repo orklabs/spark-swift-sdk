@@ -588,8 +588,10 @@ extension SparkWallet {
 
     // MARK: - Internal helpers
 
-    /// Fetch raw transaction bytes from electrs/blockstream API
+    /// Fetch raw transaction bytes from electrs/blockstream API. Throws for a txid that is not
+    /// 64 hex characters or a reply that is not hex, instead of trapping on either.
     func fetchRawTransaction(txID: String) async throws -> Data {
+        let txid = try DepositOutpoint.normalizedTxid(txID)
         let baseURL: String
         switch config.network {
         case .mainnet:
@@ -598,13 +600,15 @@ extension SparkWallet {
             baseURL = "http://localhost:3000"
         }
 
-        let url = URL(string: "\(baseURL)/tx/\(txID)/hex")!
+        guard let url = URL(string: "\(baseURL)/tx/\(txid)/hex") else {
+            throw SparkError.invalidArgument("cannot build a block explorer URL for \(txid)")
+        }
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw SparkError.invalidResponse("Failed to fetch raw transaction \(txID)")
+            throw SparkError.invalidResponse("Failed to fetch raw transaction \(txid)")
         }
-        let hexString = String(data: data, encoding: .utf8)!.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let rawTx = Data(hexString: hexString) else {
+        guard let text = String(data: data, encoding: .utf8),
+              let rawTx = Data(hexString: text.trimmingCharacters(in: .whitespacesAndNewlines)), !rawTx.isEmpty else {
             throw SparkError.invalidResponse("Invalid hex in raw transaction response")
         }
         return rawTx

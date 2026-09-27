@@ -182,3 +182,32 @@ struct StaticDepositClaimTests {
         }
     }
 }
+
+/// Transaction ids from callers reach the block explorer only once they are known to be txids.
+@Suite("Block explorer lookups")
+struct BlockExplorerTests {
+    @Test("A txid that is not 64 hex characters throws before any request, instead of trapping",
+          .timeLimit(.minutes(1)))
+    func malformedTxids() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            for bad in ["", "not a txid", "zz" + String(repeating: "0", count: 62), "a b", String(repeating: "0", count: 65)] {
+                do {
+                    _ = try await wallet.fetchRawTransaction(txID: bad)
+                    Issue.record("fetched '\(bad)'")
+                } catch SparkError.invalidArgument {}
+            }
+        }
+        #expect(try DepositOutpoint.normalizedTxid(" \(StaticDepositRefundTests.txid.uppercased()) ") == StaticDepositRefundTests.txid)
+    }
+
+    @Test("A mainnet transaction fetched by an upper-case txid hashes to it",
+          .enabled(if: TestConfig.hasIntegrationCredentials), .timeLimit(.minutes(1)))
+    func fetchKnownTransaction() async throws {
+        // The first bitcoin transaction between people: Satoshi to Hal Finney, block 170.
+        let txid = "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16"
+        let wallet = try SparkWallet(mnemonic: TestConfig.walletAMnemonic)
+        let raw = try await wallet.fetchRawTransaction(txID: txid.uppercased())
+        #expect(try RawTransaction.parse(raw).txidHex == txid)
+    }
+}

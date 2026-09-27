@@ -51,6 +51,9 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Fetching a deposit transaction from the block explorer no longer traps on a malformed txid or a
+  reply that is not UTF-8: the txid must be 64 hex characters (any case) and the reply hex, or
+  the call throws.
 - `claimStaticDepositWithMaxFee` claims the quote it checked. It compared one SSP quote with
   `maxFee`, then fetched a second quote and signed that one unchecked, so the SSP could credit
   less than the checked amount; the deposit value it compared against also came from the block

@@ -8,12 +8,18 @@ struct DepositOutpoint: Sendable, Equatable {
 
     /// Throws `SparkError.invalidArgument` unless `txid` is 64 hex characters.
     init(txid: String, vout: UInt32) throws {
+        self.txid = try Self.normalizedTxid(txid)
+        self.vout = vout
+    }
+
+    /// A display-order txid in the lower-case form the operators print; throws
+    /// `SparkError.invalidArgument` unless it is 64 hex characters.
+    static func normalizedTxid(_ txid: String) throws -> String {
         let normalized = txid.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard normalized.count == 64, normalized.allSatisfy(\.isHexDigit) else {
             throw SparkError.invalidArgument("transaction id must be 64 hex characters, got '\(txid)'")
         }
-        self.txid = normalized
-        self.vout = vout
+        return normalized
     }
 
     /// The txid bytes in display order: how the operators store and look up deposit UTXOs.
