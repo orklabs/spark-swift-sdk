@@ -196,6 +196,32 @@ struct HardeningIntegrationTests {
         #expect(try await pair.receiver.queryTransferById(sent.id).status == .completed)
     }
 
+    @Test("Frozen sats are exactly the leaves below the renewal minimum, and the drain quote agrees", .timeLimit(.minutes(5)))
+    func frozenClassification() async throws {
+        let a = try await makeWallet(TestConfig.walletAMnemonic)
+        let b = try await makeWallet(TestConfig.walletBMnemonic)
+        defer { Task { await a.close(); await b.close() } }
+        for (label, wallet, other) in [("A", a, b), ("B", b, a)] {
+            let balance = try await wallet.getBalance()
+            let frozenLeaves = balance.leaves.filter(\.isFrozen)
+            let sum: ([SparkLeaf]) -> Int64 = { $0.reduce(0) { $0 + $1.valueSats } }
+            #expect(balance.satsBalance.frozen == sum(frozenLeaves), "\(label)")
+            #expect(balance.satsBalance.available == sum(balance.leaves.filter { !$0.isFrozen }), "\(label)")
+            #expect(frozenLeaves.allSatisfy { $0.refundTimelockBlocks < sparkTimeLockInterval }, "\(label)")
+
+            // The quote claims, renews what the operators will renew, and fetches a fee quote;
+            // nothing leaves the wallet.
+            let destination = try await other.getStaticDepositAddress().address
+            let quote = try await wallet.quoteWithdrawAll(onChainAddress: destination)
+            let after = try await wallet.getBalance().satsBalance
+            print("[\(label)] available \(balance.satsBalance.available) frozen \(balance.satsBalance.frozen) -> quote spendable "
+                  + "\(quote.spendableSats) frozen \(quote.frozenSats) unrenewed \(quote.unrenewedSats) locked \(quote.lockedSats)")
+            #expect(quote.frozenSats == after.frozen, "\(label)")
+            #expect(quote.unrenewedSats == 0, "\(label): every renewable leaf should have been renewed")
+            #expect(quote.spendableSats + quote.unrenewedSats == after.available, "\(label)")
+        }
+    }
+
     /// Destination: `SPARK_TEST_WITHDRAW_DESTINATION` may be an address, or
     /// `receiver-static-deposit` to pay the other test wallet's static deposit address so the
     /// sats stay inside the test setup and can be claimed back with `claimStaticDeposit`.

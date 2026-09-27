@@ -225,6 +225,12 @@ struct SpendableLeafTests {
         #expect(leaf("c", sats: 1, timelock: 200).isSpendable)
         #expect(leaf("c", sats: 1, timelock: 740).isSpendable)
         #expect(leaf("d", sats: 1, timelock: 2000).isSpendable)
+        // Frozen means below the renewal minimum; a leaf at exactly 100 is renewable.
+        #expect(leaf("a", sats: 1, timelock: 0).isFrozen)
+        #expect(leaf("a", sats: 1, timelock: 99).isFrozen)
+        #expect(!leaf("b", sats: 1, timelock: 100).isFrozen)
+        #expect(!leaf("c", sats: 1, timelock: 150).isFrozen)
+        #expect(!leaf("d", sats: 1, timelock: 2000).isFrozen)
         #expect(!leaf("a", sats: 1, timelock: 99).isRenewable)
         #expect(leaf("b", sats: 1, timelock: 100).isRenewable)
         #expect(leaf("c", sats: 1, timelock: 199).isRenewable)
@@ -234,6 +240,7 @@ struct SpendableLeafTests {
         let garbage = SparkLeaf(id: "garbage", treeID: "t", valueSats: 5, status: "AVAILABLE", node: empty)
         #expect(!garbage.isSpendable)
         #expect(!garbage.isRenewable)
+        #expect(garbage.isFrozen)
         // The public flag and the internal selection filter agree.
         let leaves = [leaf("x", sats: 1, timelock: 0), leaf("y", sats: 1, timelock: 100), leaf("z", sats: 1, timelock: 150),
                       leaf("w", sats: 1, timelock: 250)]
@@ -257,28 +264,28 @@ struct SpendableLeafTests {
 struct WithdrawAllTypesTests {
     @Test("Quote derives payout, frozen share and fee coverage")
     func quote() {
-        let q = WithdrawAllQuote(spendableSats: 9_700, quotedFeeSats: 1_950, frozenSats: 300, lockedSats: 0, incomingSats: 0, leafCount: 4)
+        let q = WithdrawAllQuote(spendableSats: 9_700, quotedFeeSats: 1_950, frozenSats: 300, unrenewedSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 4)
         #expect(q.estimatedPayoutSats == 7_750)
         #expect(abs(q.frozenFraction - 0.03) < 1e-9)
         #expect(q.coversFee)
 
-        let tiny = WithdrawAllQuote(spendableSats: 1_000, quotedFeeSats: 1_950, frozenSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 1)
+        let tiny = WithdrawAllQuote(spendableSats: 1_000, quotedFeeSats: 1_950, frozenSats: 0, unrenewedSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 1)
         #expect(!tiny.coversFee)
         #expect(tiny.estimatedPayoutSats < 0)
         #expect(tiny.frozenFraction == 0)
 
-        let onlyFrozen = WithdrawAllQuote(spendableSats: 0, quotedFeeSats: 0, frozenSats: 66, lockedSats: 0, incomingSats: 0, leafCount: 0)
+        let onlyFrozen = WithdrawAllQuote(spendableSats: 0, quotedFeeSats: 0, frozenSats: 66, unrenewedSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 0)
         #expect(onlyFrozen.frozenFraction == 1)
         #expect(!onlyFrozen.coversFee)
 
-        let empty = WithdrawAllQuote(spendableSats: 0, quotedFeeSats: 0, frozenSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 0)
+        let empty = WithdrawAllQuote(spendableSats: 0, quotedFeeSats: 0, frozenSats: 0, unrenewedSats: 0, lockedSats: 0, incomingSats: 0, leafCount: 0)
         #expect(empty.frozenFraction == 0)
         #expect(!empty.coversFee)
     }
 
     @Test("Result reports the fee the SSP actually took")
     func result() {
-        let r = WithdrawAllResult(txid: "ab", sentSats: 5_000, payoutSats: 3_290, frozenSats: 66, lockedSats: 0, unclaimedSats: 0)
+        let r = WithdrawAllResult(txid: "ab", sentSats: 5_000, payoutSats: 3_290, frozenSats: 66, unrenewedSats: 0, lockedSats: 0, unclaimedSats: 0)
         #expect(r.feeSats == 1_710)
     }
 }

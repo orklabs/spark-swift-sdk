@@ -46,8 +46,10 @@ extension SparkWallet {
     }
 
     /// Pure classification of the coordinator's nodes into the balance figures.
-    /// Owned = AVAILABLE + locked (transfer, split, aggregate, renew). Available excludes AVAILABLE
-    /// leaves at the timelock floor, which are reported as frozen instead.
+    /// Owned = AVAILABLE + locked (transfer, split, aggregate, renew). An AVAILABLE leaf is
+    /// frozen when its refund timelock is below 100 (`SparkLeaf.isFrozen`) and available
+    /// otherwise: leaves at 100…199 count as available because every spend path renews them
+    /// first, as the reference SDK does before counting them.
     static func summarizeNodes(_ nodes: [String: Spark_TreeNode]) -> NodeSummary {
         let lockedStatuses: Set<String> = ["TRANSFER_LOCKED", "SPLIT_LOCKED", "AGGREGATE_LOCK", "RENEW_LOCKED"]
         var summary = NodeSummary()
@@ -55,13 +57,14 @@ extension SparkWallet {
             let value = Int64(node.value)
             switch node.status {
             case "AVAILABLE":
+                let leaf = SparkLeaf(id: id, treeID: node.treeID, valueSats: value, status: node.status, node: node)
                 summary.owned += value
-                if timelockCanDecrement(Data(node.refundTx)) {
-                    summary.available += value
-                } else {
+                if leaf.isFrozen {
                     summary.frozen += value
+                } else {
+                    summary.available += value
                 }
-                summary.leaves.append(SparkLeaf(id: id, treeID: node.treeID, valueSats: value, status: node.status, node: node))
+                summary.leaves.append(leaf)
             case let status where lockedStatuses.contains(status):
                 summary.owned += value
             case "CREATING":

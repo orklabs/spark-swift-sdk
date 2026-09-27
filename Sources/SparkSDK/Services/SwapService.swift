@@ -10,12 +10,12 @@ extension SparkWallet {
     /// AVAILABLE leaves that can be sent right now.
     ///
     /// Leaves whose refund timelock is in the coordinator's renewable range are renewed first
-    /// (best effort, as the reference SDK's leaf manager does before every spend). Leaves at the
-    /// timelock floor are left out: the coordinator will neither move nor renew them, so including
-    /// them would only make the whole operation fail. Their sats are reported as
-    /// `SatsBalance.frozen`. Every spend path (`send`, `payLightningInvoice`, `withdraw`,
-    /// `withdrawAll`, swaps) selects from this set, so it is also the right basis for an app's
-    /// "send everything" amount.
+    /// (best effort, as the reference SDK's leaf manager does before every spend). Leaves that
+    /// still cannot move are left out, since including them would only make the whole operation
+    /// fail: frozen leaves (refund timelock below 100, reported as `SatsBalance.frozen`) and any
+    /// renewable leaf the operators did not renew. Every spend path (`send`,
+    /// `payLightningInvoice`, `withdraw`, `withdrawAll`, swaps) selects from this set, so it is
+    /// also the right basis for an app's "send everything" amount.
     public func getSpendableLeaves() async throws -> [SparkLeaf] {
         var leaves = try await getLeaves()
         if !Self.renewalCandidates(leaves).renewable.isEmpty {

@@ -83,13 +83,15 @@ extension SparkWallet {
 
     /// Everything `withdrawAll` would do, without doing it: claims pending inbound transfers,
     /// renews renewable leaves, and quotes the SSP fee for every spendable leaf. Use it to show
-    /// the user what will move, what it costs, and what stays behind (`frozenSats`).
+    /// the user what will move, what it costs, and what stays behind (`frozenSats`,
+    /// `unrenewedSats`).
     public func quoteWithdrawAll(onChainAddress: String) async throws -> WithdrawAllQuote {
         let plan = try await drainPlan(onChainAddress: onChainAddress)
         return WithdrawAllQuote(
             spendableSats: plan.spendableSats,
             quotedFeeSats: plan.quotedFeeSats,
             frozenSats: plan.balance.frozen,
+            unrenewedSats: plan.unrenewedSats,
             lockedSats: plan.balance.locked,
             incomingSats: plan.balance.incoming,
             leafCount: plan.leaves.count
@@ -99,9 +101,10 @@ extension SparkWallet {
     /// Send every spendable sat to `onChainAddress` in one cooperative exit.
     ///
     /// Pending inbound transfers are claimed first and renewable leaves renewed, then every
-    /// spendable leaf is exited; the SSP's fee comes out of that amount. Leaves at the timelock
-    /// floor cannot be included: they are reported in the result as `frozenSats`, as are sats
-    /// locked by in-flight operations and inbound sats that could not be claimed. The same
+    /// spendable leaf is exited; the SSP's fee comes out of that amount. Frozen leaves (refund
+    /// timelock below 100) cannot be included and are reported in the result as `frozenSats`;
+    /// leaves whose renewal failed as `unrenewedSats`, sats locked by in-flight operations as
+    /// `lockedSats` and inbound sats that could not be claimed as `unclaimedSats`. The same
     /// response verification and fee bound as `withdraw` apply.
     ///
     /// - Parameters:
@@ -125,6 +128,7 @@ extension SparkWallet {
             sentSats: plan.spendableSats,
             payoutSats: exit.payoutSats,
             frozenSats: plan.balance.frozen,
+            unrenewedSats: plan.unrenewedSats,
             lockedSats: plan.balance.locked,
             unclaimedSats: plan.balance.incoming
         )
@@ -135,6 +139,9 @@ extension SparkWallet {
         let balance: SatsBalance
         let spendableSats: Int64
         let quotedFeeSats: Int64
+        /// Available sats that are not spendable after the renewal pass: leaves at 100…199 the
+        /// operators did not renew.
+        var unrenewedSats: Int64 { max(0, balance.available - spendableSats) }
     }
 
     /// Shared prelude of `quoteWithdrawAll` and `withdrawAll`: validate the destination, claim

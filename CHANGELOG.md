@@ -16,8 +16,17 @@ migration note.
 ### Added
 - `claimPendingTransfers()`: claims every pending inbound transfer and returns the claimed
   transfer ids plus the transfers that could not be claimed, with their errors.
+- `SparkLeaf.isFrozen`, and `unrenewedSats` on `WithdrawAllQuote` and `WithdrawAllResult`:
+  renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Fixed
+- `SatsBalance.frozen` counts only leaves the operators will not renew: a refund timelock below
+  100. A leaf at exactly 100 — what a transfer from a leaf at 200 routinely leaves the receiver
+  — was reported frozen, although the coordinator renews refund timelocks from 100 up; frozen
+  figures (analytics, debug screens, the `withdrawAll` quote) therefore overstated what only a
+  unilateral exit can recover. Leaves at 100–199 now count as available, as in the reference
+  SDK, because every spend path renews them first; any the operators decline to renew during a
+  drain are reported as `unrenewedSats` instead of vanishing from the quote.
 - Leaves whose refund timelock is not a multiple of 100 can be spent again, and leaves at 101–199
   blocks are no longer selected without a renewal. The next refund timelock was the current one
   minus 100; the operators require the current one rounded down to the 100-block interval, minus

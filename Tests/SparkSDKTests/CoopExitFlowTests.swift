@@ -108,7 +108,7 @@ struct BalanceSummaryTests {
         return node
     }
 
-    @Test("Available excludes floor-timelock leaves, which are reported as frozen; locked adds to owned only")
+    @Test("Leaves below the renewal minimum are frozen; renewable leaves count as available; locked adds to owned only")
     func summary() {
         let nodes: [String: Spark_TreeNode] = [
             "a": treeNode("a", status: "AVAILABLE", value: 8192, refundTimelock: 1600),
@@ -118,13 +118,17 @@ struct BalanceSummaryTests {
             "e": treeNode("e", status: "CREATING", value: 700, refundTimelock: 2000),
             "f": treeNode("f", status: "SPLIT_LOCKED", value: 9, refundTimelock: 2000),
             "g": treeNode("g", status: "AVAILABLE", value: 64, refundTimelock: 200),
+            "h": treeNode("h", status: "AVAILABLE", value: 16, refundTimelock: 150),
+            "i": treeNode("i", status: "AVAILABLE", value: 4, refundTimelock: 99),
         ]
         let s = SparkWallet.summarizeNodes(nodes)
-        #expect(s.available == 8192 + 64)
-        #expect(s.frozen == 32 + 2)
-        #expect(s.owned == 8192 + 32 + 2 + 500 + 9 + 64)
+        // 100 and 150 are renewable (the coordinator renews refund timelocks from 100), so they
+        // are available; 0 and 99 are below the renewal minimum and frozen.
+        #expect(s.available == 8192 + 2 + 64 + 16)
+        #expect(s.frozen == 32 + 4)
+        #expect(s.owned == 8192 + 32 + 2 + 500 + 9 + 64 + 16 + 4)
         #expect(s.creating == 700)
-        #expect(Set(s.leaves.map(\.id)) == ["a", "b", "c", "g"])
+        #expect(Set(s.leaves.map(\.id)) == ["a", "b", "c", "g", "h", "i"])
         let empty = SparkWallet.summarizeNodes([:])
         #expect(empty.available == 0 && empty.owned == 0 && empty.frozen == 0 && empty.creating == 0 && empty.leaves.isEmpty)
     }

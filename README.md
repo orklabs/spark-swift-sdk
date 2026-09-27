@@ -236,15 +236,17 @@ will renew, exits every spendable leaf, and tells you what stayed behind:
 
 ```swift
 let quote = try await wallet.quoteWithdrawAll(onChainAddress: "bc1q...")
-// quote.spendableSats, quote.quotedFeeSats, quote.frozenSats, quote.frozenFraction
+// quote.spendableSats, quote.quotedFeeSats, quote.frozenSats, quote.unrenewedSats, quote.frozenFraction
 let result = try await wallet.withdrawAll(onChainAddress: "bc1q...", maxFeeSats: quote.quotedFeeSats)
-// result.txid, result.payoutSats, result.feeSats, result.frozenSats
+// result.txid, result.payoutSats, result.feeSats, result.frozenSats, result.unrenewedSats
 ```
 
 The exited leaves stay transfer-locked, and therefore in `satsBalance.owned`, until the exit
 transaction confirms on-chain; `satsBalance.available` drops immediately. `satsBalance.frozen`
-reports sats in leaves at the timelock floor, which the operators will neither move nor renew
-and which only a unilateral exit can recover.
+reports sats in leaves whose refund timelock is below 100 blocks, which the operators will
+neither move nor renew and which only a unilateral exit can recover. Leaves at 100–199 blocks
+are renewable: they count as available, every spend path renews them first, and a drain reports
+any the operators did not renew as `unrenewedSats`.
 
 ### Tokens
 

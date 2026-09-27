@@ -1,15 +1,17 @@
 import Foundation
 
 public struct SatsBalance: Sendable {
-    /// Satoshis that can be sent right now: AVAILABLE leaves whose refund timelock is above the
-    /// floor the coordinator enforces.
+    /// Satoshis the wallet can send: AVAILABLE leaves whose refund timelock is at least 100.
+    /// Leaves at 100…199 are renewed by every spend path before they are selected (the
+    /// coordinator will not move them otherwise), as the reference SDK does.
     public let available: Int64
     /// All satoshis owned (available + frozen + locked in outgoing transfers/swaps)
     public let owned: Int64
     /// Pending inbound transfers not yet claimed
     public let incoming: Int64
-    /// Satoshis in AVAILABLE leaves at the timelock floor. The coordinator will neither move nor
-    /// renew them; only a unilateral on-chain exit can recover them.
+    /// Satoshis in AVAILABLE leaves whose refund timelock is below 100 (`SparkLeaf.isFrozen`).
+    /// The coordinator will neither move nor renew them; only a unilateral on-chain exit can
+    /// recover them. A leaf at exactly 100 is renewable and counts as available.
     public let frozen: Int64
 
     /// Satoshis locked by an in-flight transfer, swap, renewal or exit.
@@ -76,8 +78,12 @@ public struct WithdrawAllQuote: Sendable, Equatable {
     public let spendableSats: Int64
     /// The SSP's fee quote (fast exit) for those leaves. Zero when there is nothing to send.
     public let quotedFeeSats: Int64
-    /// Sats in leaves at the timelock floor. They stay behind; only a unilateral exit moves them.
+    /// Sats in frozen leaves (refund timelock below 100). They stay behind; only a unilateral
+    /// exit moves them.
     public let frozenSats: Int64
+    /// Sats in leaves that need a renewal (refund timelock 100…199) the operators did not
+    /// complete. They stay behind this time; a later attempt can renew and move them.
+    public let unrenewedSats: Int64
     /// Sats in leaves locked by an in-flight swap or exit. Withdraw again once they settle.
     public let lockedSats: Int64
     /// Inbound sats that are still unclaimed after the claim attempt.
@@ -104,8 +110,12 @@ public struct WithdrawAllResult: Sendable, Equatable {
     public let sentSats: Int64
     /// Sats the verified exit transaction pays to the destination.
     public let payoutSats: Int64
-    /// Sats left in frozen leaves; only a unilateral exit can recover them.
+    /// Sats left in frozen leaves (refund timelock below 100); only a unilateral exit can
+    /// recover them.
     public let frozenSats: Int64
+    /// Sats left in leaves whose renewal the operators did not complete; a later drain can move
+    /// them.
+    public let unrenewedSats: Int64
     /// Sats left in leaves locked by an in-flight operation.
     public let lockedSats: Int64
     /// Inbound sats that could not be claimed before the drain.

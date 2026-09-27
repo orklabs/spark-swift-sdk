@@ -40,6 +40,14 @@ extension SparkLeaf {
     public var isRenewable: Bool {
         refundTimelockBlocks >= sparkTimeLockInterval && refundTimelockBlocks < renewalThreshold
     }
+
+    /// Whether the leaf is frozen: its refund timelock is below 100, the minimum the coordinator
+    /// renews, and it is too low to move, so only a unilateral on-chain exit can recover it. A
+    /// leaf at exactly 100 is renewable, not frozen. Leaves only get here through SDKs that
+    /// decremented timelocks without renewing.
+    public var isFrozen: Bool {
+        refundTimelockBlocks < sparkTimeLockInterval
+    }
 }
 
 extension SparkWallet {
