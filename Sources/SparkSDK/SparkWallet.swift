@@ -67,23 +67,27 @@ public final class SparkWallet: Sendable {
         signer: SparkSignerProtocol
     ) -> (GrpcConnectionManager, SparkAuthenticator, SspGraphQLClient) {
         let authenticator = SparkAuthenticator()
-        // Every operator client re-authenticates and replays a call once on UNAUTHENTICATED (the
-        // official SDK's auth middleware), so a token the server stopped honouring is replaced on
-        // the spot rather than replayed until the process restarts. The manager is captured weakly:
-        // the interceptor lives inside the clients the manager owns.
+        // Every operator client sends each attempt with the operator's current token and drops a
+        // token the operator rejects (the official SDK's auth middleware); the transport's retry
+        // policy then re-issues the call with a fresh one. The manager is captured weakly: the
+        // interceptor lives inside the clients the manager owns.
         let managerRef = WeakConnectionManager()
         let connectionManager = GrpcConnectionManager(
             addresses: config.signingOperatorAddresses,
             interceptorFactory: { address in
-                [AuthRetryInterceptor(refreshToken: {
-                    guard let manager = managerRef.manager else {
-                        throw SparkError.grpcError("Connection manager released")
+                [AuthRetryInterceptor(
+                    currentToken: {
+                        guard let manager = managerRef.manager else {
+                            throw SparkError.grpcError("Connection manager released")
+                        }
+                        return try await authenticator.getToken(
+                            connectionManager: manager, soAddress: address, signer: signer
+                        )
+                    },
+                    invalidate: { token in
+                        await authenticator.invalidate(soAddress: address, signer: signer, token: token)
                     }
-                    await authenticator.invalidate(soAddress: address, signer: signer)
-                    return try await authenticator.getToken(
-                        connectionManager: manager, soAddress: address, signer: signer
-                    )
-                })]
+                )]
             }
         )
         managerRef.manager = connectionManager

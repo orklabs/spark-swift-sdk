@@ -33,7 +33,13 @@ let package = Package(
         ),
         .testTarget(
             name: "SparkSDKTests",
-            dependencies: ["SparkSDK"],
+            dependencies: [
+                "SparkSDK",
+                // A local HTTP/2 operator stand-in exercises the real transport stack.
+                .product(name: "GRPCCore", package: "grpc-swift-2"),
+                .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
+                .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+            ],
             path: "Tests/SparkSDKTests"
         ),
     ]

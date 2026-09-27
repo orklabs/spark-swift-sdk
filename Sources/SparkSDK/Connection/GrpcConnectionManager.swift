@@ -15,17 +15,22 @@ actor GrpcConnectionManager {
     /// answers parks the caller until the process restarts.
     static let defaultRPCTimeout: Duration = .seconds(60)
 
-    /// The official SDK's retry policy, verbatim: up to 3 attempts, 1 s → 10 s exponential
-    /// backoff, on UNAVAILABLE and CANCELLED only. That is how a pooled connection the server
-    /// closed while idle (or rotated out by its max connection age) heals: the failed attempt
-    /// never reached the server, and the retry re-establishes the connection. A deadline is
-    /// deliberately NOT retryable.
+    /// The official SDK's retry policy: up to 3 attempts, 1 s → 10 s exponential backoff, on
+    /// UNAVAILABLE and CANCELLED. That is how a pooled connection the server closed while idle (or
+    /// rotated out by its max connection age) heals: the failed attempt never reached the server,
+    /// and the retry re-establishes the connection. A deadline is deliberately NOT retryable.
+    ///
+    /// UNAUTHENTICATED is retried too: the official SDK's auth middleware re-issues a rejected call
+    /// with a fresh token, and here `AuthRetryInterceptor` drops the rejected token so the retry
+    /// authenticates again. grpc-swift only retries a call the server rejected before sending
+    /// response headers, which is how the operators' auth interceptor answers — before any
+    /// handler ran.
     static let retryPolicy = RetryPolicy(
         maxAttempts: 3,
         initialBackoff: .seconds(1),
         maxBackoff: .seconds(10),
         backoffMultiplier: 2,
-        retryableStatusCodes: [.unavailable, .cancelled]
+        retryableStatusCodes: [.unavailable, .cancelled, .unauthenticated]
     )
 
     /// The event subscription is a long-lived server stream: unbounded and never retried here

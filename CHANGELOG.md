@@ -13,7 +13,14 @@ migration note.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+- An operator rejecting a session token no longer crashes the app. The auth interceptor replayed
+  the call on the same HTTP/2 stream, which swift-nio treats as a fatal error ("allows only a
+  single AsyncIterator to be created"). It fired whenever the event subscription, or any call
+  the operator refused without response headers, was answered UNAUTHENTICATED — for example on
+  a device whose clock runs more than a minute behind. The interceptor now drops the rejected
+  token and the transport's retry policy re-issues the call on a new stream with a fresh one,
+  as the official SDK's auth middleware does.
 
 ---
 

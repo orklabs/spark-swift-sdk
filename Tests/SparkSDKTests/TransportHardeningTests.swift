@@ -6,7 +6,7 @@ import GRPCCore
 /// Pins the transport behaviour that stops a wedged connection or a rejected session token from
 /// parking every call until the host process restarts — the values mirror the official Spark
 /// SDK's connection manager (60 s unary cap; 3 attempts, 1 s → 10 s backoff on UNAVAILABLE and
-/// CANCELLED; re-authenticate and replay once on an expired token).
+/// CANCELLED; re-authenticate and re-issue a call rejected as UNAUTHENTICATED).
 @Suite("Transport hardening")
 struct TransportHardeningTests {
 
@@ -22,7 +22,7 @@ struct TransportHardeningTests {
         #expect(GrpcConnectionManager.defaultRPCTimeout == .seconds(60))
     }
 
-    @Test("Every RPC retries like the official SDK: 3 attempts, 1 s to 10 s, UNAVAILABLE and CANCELLED")
+    @Test("Every RPC retries like the official SDK: 3 attempts, 1 s to 10 s, UNAVAILABLE, CANCELLED and UNAUTHENTICATED")
     func retryPolicy() {
         guard let policy = global?.executionPolicy?.retry else {
             Issue.record("no retry policy on the global method config")
@@ -32,7 +32,7 @@ struct TransportHardeningTests {
         #expect(policy.initialBackoff == .seconds(1))
         #expect(policy.maxBackoff == .seconds(10))
         #expect(policy.backoffMultiplier == 2)
-        #expect(policy.retryableStatusCodes == Set<Status.Code>([.unavailable, .cancelled]))
+        #expect(policy.retryableStatusCodes == Set<Status.Code>([.unavailable, .cancelled, .unauthenticated]))
         #expect(!policy.retryableStatusCodes.contains(Status.Code.deadlineExceeded))
     }
 
