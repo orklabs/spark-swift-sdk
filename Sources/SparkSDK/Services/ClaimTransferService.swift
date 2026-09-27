@@ -225,19 +225,13 @@ extension SparkWallet {
             let cpfpSequence = bit30 | (currentTimelock & 0xFFFF)
             let directSequence = bit30 | ((currentTimelock + sparkDirectTimelockOffset) & 0xFFFF)
 
-            // Construct refund tx trio
-            let cpfpNodeTx = Data(node.nodeTx)
-            let directNodeTx = node.directTx.isEmpty ? nil : Data(node.directTx)
-
-            let refundTrio = try constructRefundTxTrio(
-                cpfpNodeTx: cpfpNodeTx,
-                directNodeTx: directNodeTx,
-                vout: 0,
+            // Construct refund tx trio (no direct refund for zero-timelock nodes)
+            let refundTrio = try Self.leafRefundTrio(
+                node: node,
                 receivingPubkey: newSigningPubKey,
                 network: networkStr,
                 sequence: cpfpSequence,
-                directSequence: directSequence,
-                feeSats: sparkDefaultFeeSats
+                directSequence: directSequence
             )
 
             // Commitments interleaved: [leaf0_r0, leaf1_r0, ..., leaf0_r1, ...]

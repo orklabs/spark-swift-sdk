@@ -345,18 +345,14 @@ extension SparkWallet {
     ) throws -> ConnectorRefunds {
         let (cpfpSequence, directSequence) = try computeNextSequences(from: Data(node.refundTx))
         let cpfpNodeTx = Data(node.nodeTx)
-        let isZeroNode = try isZeroTimelockNode(cpfpNodeTx)
-        let directNodeTx: Data? = (node.directTx.isEmpty || isZeroNode) ? nil : Data(node.directTx)
+        let directNodeTx = try directNodeTxForRefund(node)
 
-        let trio = try constructRefundTxTrio(
-            cpfpNodeTx: cpfpNodeTx,
-            directNodeTx: directNodeTx,
-            vout: 0,
+        let trio = try leafRefundTrio(
+            node: node,
             receivingPubkey: receiverPubKey,
             network: network,
             sequence: cpfpSequence,
-            directSequence: directSequence,
-            feeSats: sparkDefaultFeeSats
+            directSequence: directSequence
         )
         let connectorOutput = try connectorTx.output(at: connectorVout)
         let connectorInput = RawTransaction.Input(previousTxid: connectorTxid, previousIndex: connectorVout)

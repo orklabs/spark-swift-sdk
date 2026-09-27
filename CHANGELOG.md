@@ -18,6 +18,13 @@ migration note.
   transfer ids plus the transfers that could not be claimed, with their errors.
 
 ### Fixed
+- Leaves on a zero-timelock node can be sent and claimed again. Send and claim built a direct
+  refund whenever the node carried a direct transaction, and the operators reject a direct refund
+  for a zero node ("zero nodes must not have a direct refund tx") — the shape zero-timelock
+  renewal leaves behind, a timelock-0 node transaction together with a direct one. Such a leaf
+  could not be sent, and an inbound transfer carrying one could never be claimed. Send, claim and
+  cooperative exit now share one refund builder with the reference SDK's `isZeroNode` rule
+  (Lightning HTLC refunds keep their own rule, which the operators check separately).
 - One pending transfer the SDK cannot claim no longer blocks every other incoming payment.
   `claimAllPendingTransfers` stopped at the first failure and read a single page, and the
   operators store a transfer's per-leaf sender signatures without verifying them, so anyone could

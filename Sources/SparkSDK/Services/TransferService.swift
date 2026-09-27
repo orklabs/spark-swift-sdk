@@ -76,18 +76,12 @@ extension SparkWallet {
 
             let (cpfpSequence, directSequence) = try Self.computeNextSequences(from: Data(node.refundTx))
 
-            let cpfpNodeTx = Data(node.nodeTx)
-            let directNodeTx = node.directTx.isEmpty ? nil : Data(node.directTx)
-
-            let refundTrio = try constructRefundTxTrio(
-                cpfpNodeTx: cpfpNodeTx,
-                directNodeTx: directNodeTx,
-                vout: 0,
+            let refundTrio = try Self.leafRefundTrio(
+                node: node,
                 receivingPubkey: receiverIdentityPublicKey,
                 network: networkStr,
                 sequence: cpfpSequence,
-                directSequence: directSequence,
-                feeSats: sparkDefaultFeeSats
+                directSequence: directSequence
             )
 
             cpfpRefundJobs.append(try FrostSigningHelper.buildSigningJob(
@@ -153,6 +147,41 @@ extension SparkWallet {
             createdAt: transfer.createdTime.date,
             sparkInvoice: transfer.sparkInvoice.isEmpty ? nil : transfer.sparkInvoice
         )
+    }
+
+    /// A leaf's refund transactions paying `receivingPubkey` at the given sequences: the CPFP
+    /// refund, the direct-from-CPFP refund, and a direct refund when `directNodeTxForRefund`
+    /// allows one.
+    static func leafRefundTrio(
+        node: Spark_TreeNode,
+        receivingPubkey: Data,
+        network: String,
+        sequence: UInt32,
+        directSequence: UInt32
+    ) throws -> RefundTxTrioResult {
+        try constructRefundTxTrio(
+            cpfpNodeTx: Data(node.nodeTx),
+            directNodeTx: try directNodeTxForRefund(node),
+            vout: 0,
+            receivingPubkey: receivingPubkey,
+            network: network,
+            sequence: sequence,
+            directSequence: directSequence,
+            feeSats: sparkDefaultFeeSats
+        )
+    }
+
+    /// The direct node transaction a leaf's direct refund spends, or nil when the leaf has none or
+    /// is a zero-timelock node. The operators reject a direct refund for a zero node ("zero nodes
+    /// must not have a direct refund tx"), and zero-timelock renewal leaves exactly that shape: a
+    /// timelock-0 node transaction together with a direct one. Mirrors the reference SDK's
+    /// `isZeroNode` check in its refund builders. (Lightning HTLC refunds follow a different rule:
+    /// the operators expect a direct HTLC refund whenever a direct node transaction exists.)
+    static func directNodeTxForRefund(_ node: Spark_TreeNode) throws -> Data? {
+        guard !node.directTx.isEmpty, try !isZeroTimelockNode(Data(node.nodeTx)) else {
+            return nil
+        }
+        return Data(node.directTx)
     }
 
     /// Compute next cpfp and direct sequences from a refund tx.
