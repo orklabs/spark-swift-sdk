@@ -233,7 +233,7 @@ extension SparkWallet {
         }
 
         // Step 3: Refund transactions that also spend a connector output, FROST-signed by the user
-        let receiverPubKey = config.sspIdentityPublicKey
+        let receiverPubKey = try config.requireSspIdentityPublicKey()
         var cpfpJobs: [Spark_UserSignedTxSigningJob] = []
         var directJobs: [Spark_UserSignedTxSigningJob] = []
         var directFromCpfpJobs: [Spark_UserSignedTxSigningJob] = []

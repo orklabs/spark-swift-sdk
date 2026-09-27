@@ -126,7 +126,7 @@ extension SparkWallet {
         if let resumeTransferId, let held = try await heldLightningSend(transferId: resumeTransferId) {
             try LightningValidator.verifyHeldSend(
                 held, transferId: resumeTransferId, for: payment,
-                identityPublicKey: signer.identityPublicKey, sspIdentityPublicKey: config.sspIdentityPublicKey
+                identityPublicKey: signer.identityPublicKey, sspIdentityPublicKey: try config.requireSspIdentityPublicKey()
             )
             return try await requestLightningSend(payment, transferId: resumeTransferId)
         }
@@ -173,7 +173,7 @@ extension SparkWallet {
         )
 
         // receiverIdentityPubkey = SSP identity public key (matching JS SDK)
-        let receiverPubKey = config.sspIdentityPublicKey
+        let receiverPubKey = try config.requireSspIdentityPublicKey()
 
         // ── Step 1: Prepare key tweaks (for TransferPackage) ──
 

@@ -354,7 +354,8 @@ func withFakeOperator<T: Sendable>(
             identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
         )],
         // A scheme URLSession cannot send: every SSP call fails at once, without retries.
-        sspURL: "unreachable://127.0.0.1/graphql"
+        sspURL: "unreachable://127.0.0.1/graphql",
+        sspIdentityPublicKeyHex: "022bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe"
     )
     let wallet = try SparkWallet(
         config: config,

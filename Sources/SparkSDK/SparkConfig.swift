@@ -26,9 +26,14 @@ public struct SigningOperatorConfig: Sendable {
 }
 
 public struct SparkConfig: Sendable {
+    /// Lightspark's hosted SSP, the default.
+    public static let defaultSspURL = "https://api.lightspark.com/graphql/spark/2025-03-19"
+
     public let network: SparkNetwork
     public let signingOperators: [SigningOperatorConfig]
     public let sspURL: String
+    /// The SSP's identity key, when it is not the default SSP's (see `sspIdentityPublicKey`).
+    private let sspIdentityPublicKeyHex: String?
     /// FROST signing threshold the operators enforce. Defaults to the reference SDK's value for
     /// the operator count (2 of 3 on mainnet).
     public let signingThreshold: UInt32
@@ -37,10 +42,17 @@ public struct SparkConfig: Sendable {
     /// Relative block locktime the coordinator is expected to set on token outputs (reference SDK: 1 000).
     public let expectedWithdrawRelativeBlockLocktime: UInt64
 
+    /// - Parameters:
+    ///   - sspURL: The SSP's GraphQL endpoint; Lightspark's hosted SSP by default.
+    ///   - sspIdentityPublicKeyHex: The SSP's identity key, which transfers to the SSP (Lightning
+    ///     sends, leaf swaps, cooperative exits) are addressed to. Required with a custom
+    ///     `sspURL`: without it those operations refuse to run rather than send to Lightspark's
+    ///     key, as the reference SDK takes the SSP's URL and key together.
     public init(
         network: SparkNetwork = .mainnet,
         signingOperators: [SigningOperatorConfig]? = nil,
         sspURL: String? = nil,
+        sspIdentityPublicKeyHex: String? = nil,
         signingThreshold: UInt32? = nil,
         expectedWithdrawBondSats: UInt64 = 10_000,
         expectedWithdrawRelativeBlockLocktime: UInt64 = 1_000
@@ -48,7 +60,8 @@ public struct SparkConfig: Sendable {
         self.network = network
         let operators = signingOperators ?? Self.defaultOperators(for: network)
         self.signingOperators = operators
-        self.sspURL = sspURL ?? "https://api.lightspark.com/graphql/spark/2025-03-19"
+        self.sspURL = sspURL ?? Self.defaultSspURL
+        self.sspIdentityPublicKeyHex = sspIdentityPublicKeyHex
         self.signingThreshold = signingThreshold ?? Self.defaultThreshold(operatorCount: operators.count)
         self.expectedWithdrawBondSats = expectedWithdrawBondSats
         self.expectedWithdrawRelativeBlockLocktime = expectedWithdrawRelativeBlockLocktime
@@ -126,12 +139,30 @@ public struct SparkConfig: Sendable {
         signingOperators[0].address
     }
 
+    /// The SSP's identity key: the one configured, else the default SSP's for the network. Empty
+    /// for a custom `sspURL` configured without a key.
     public var sspIdentityPublicKey: Data {
+        if let sspIdentityPublicKeyHex {
+            return Data(hexString: sspIdentityPublicKeyHex) ?? Data()
+        }
+        guard sspURL == Self.defaultSspURL else { return Data() }
         switch network {
         case .mainnet:
-            return Data(hexString: "023e33e2920326f64ea31058d44777442d97d7d5cbfcf54e3060bc1695e5261c93")!
+            return Data(hexString: "023e33e2920326f64ea31058d44777442d97d7d5cbfcf54e3060bc1695e5261c93") ?? Data()
         case .regtest:
-            return Data(hexString: "022bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe")!
+            return Data(hexString: "022bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe") ?? Data()
         }
+    }
+
+    /// The SSP's identity key for a transfer to it; throws `SparkError.invalidArgument` when there
+    /// is none (a custom `sspURL` without `sspIdentityPublicKeyHex`) or it is not a compressed key.
+    func requireSspIdentityPublicKey() throws -> Data {
+        let key = sspIdentityPublicKey
+        guard key.count == 33, key.first == 0x02 || key.first == 0x03 else {
+            throw SparkError.invalidArgument(
+                "no valid SSP identity key: a custom sspURL needs sspIdentityPublicKeyHex, the SSP's compressed public key"
+            )
+        }
+        return key
     }
 }

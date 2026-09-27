@@ -111,7 +111,7 @@ extension SparkWallet {
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
         let networkStr = config.networkString
-        let receiverPubKey = config.sspIdentityPublicKey
+        let receiverPubKey = try config.requireSspIdentityPublicKey()
 
         // Get SO operator list
         let soListResponse = try await client.get_signing_operator_list(

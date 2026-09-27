@@ -14,6 +14,12 @@ migration note.
 ## [Unreleased]
 
 ### Security
+- A custom `sspURL` no longer sends the SSP's side of Lightning payments, leaf swaps and
+  cooperative exits to Lightspark's SSP key. The SSP identity key was fixed per network whatever
+  `sspURL` said, so those transfers named Lightspark's SSP while another SSP was asked to act on
+  them. The key now comes with the SSP (`sspIdentityPublicKeyHex`), as in the reference SDK; the
+  default applies only to the default SSP, and without one those operations throw before any
+  leaf moves.
 - On mainnet, operators are reached over TLS only: an `http://` operator address (or any scheme
   but `https`) is refused, where it silently got a plaintext connection that carried session
   tokens and signing material. Regtest still allows `http://` for local operators.
@@ -31,6 +37,8 @@ migration note.
   of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Added
+- `SparkConfig(sspIdentityPublicKeyHex:)` and `SparkConfig.defaultSspURL`: the identity key of a
+  custom SSP.
 - `claimStaticDeposit(transactionId:outputIndex:quote:)`: claims a static deposit for exactly the
   credit of a quote from `getDepositFeeEstimate`, as the reference SDK's `claimStaticDeposit`
   does. `DepositFeeEstimate` has a public initializer.

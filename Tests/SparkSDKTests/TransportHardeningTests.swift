@@ -170,6 +170,27 @@ struct TransportHardeningTests {
         await regtest.close()
     }
 
+    @Test("The SSP identity key follows the SSP: the default SSP's by network, the configured one, or none")
+    func sspIdentityKey() throws {
+        #expect(SparkConfig().sspIdentityPublicKey.hexString == "023e33e2920326f64ea31058d44777442d97d7d5cbfcf54e3060bc1695e5261c93")
+        #expect(SparkConfig(network: .regtest).sspIdentityPublicKey.hexString
+                == "022bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe")
+        #expect(SparkConfig(sspURL: SparkConfig.defaultSspURL).sspIdentityPublicKey == SparkConfig().sspIdentityPublicKey)
+
+        // A custom SSP without its key: no key, and transfers to the SSP refuse to run.
+        let custom = SparkConfig(sspURL: "https://ssp.example/graphql")
+        #expect(custom.sspIdentityPublicKey.isEmpty)
+        #expect(throws: SparkError.self) { _ = try custom.requireSspIdentityPublicKey() }
+
+        let key = "03" + String(repeating: "ab", count: 32)
+        let configured = SparkConfig(sspURL: "https://ssp.example/graphql", sspIdentityPublicKeyHex: key)
+        #expect(try configured.requireSspIdentityPublicKey().hexString == key)
+        #expect(throws: SparkError.self) { _ = try SparkConfig(sspIdentityPublicKeyHex: "zz").requireSspIdentityPublicKey() }
+        #expect(throws: SparkError.self) {
+            _ = try SparkConfig(sspIdentityPublicKeyHex: "04" + String(repeating: "ab", count: 32)).requireSspIdentityPublicKey()
+        }
+    }
+
     @Test("An SSP auth rejection is recognised, other failures are not")
     func sspAuthFailureClassifier() {
         #expect(SspGraphQLClient.isAuthFailure(.graphqlError("HTTP 401")))
