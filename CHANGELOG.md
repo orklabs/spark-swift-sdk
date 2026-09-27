@@ -64,6 +64,9 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Leaf renewals carry an idempotency key, the txid of the refund transaction being replaced, as
+  in the reference SDK. The transport retries `renew_leaf` on UNAVAILABLE, and a retry of a
+  renewal the operators had already applied failed, reporting a renewed leaf as not renewed.
 - Responses over 4 MiB no longer fail. gRPC's 4 MiB default applied, so a large answer (the
   reference SDK has seen ~5 MB `start_transfer_v2` responses) failed with RESOURCE_EXHAUSTED, and
   the balance, leaf list and recovery snapshot asked for all of a wallet's nodes in one response.

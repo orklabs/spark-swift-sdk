@@ -192,7 +192,7 @@ extension SparkWallet {
         var request = Spark_RenewLeafRequest()
         request.leafID = node.id
         request.renewRefundTimelockSigningJob = renewJob
-        try await submitRenewal(request, leafId: node.id)
+        try await submitRenewal(request, renewing: node)
     }
 
     /// Full node renewal: zero-timelock "split node" spliced above a fresh
@@ -232,7 +232,7 @@ extension SparkWallet {
         var request = Spark_RenewLeafRequest()
         request.leafID = node.id
         request.renewNodeTimelockSigningJob = renewJob
-        try await submitRenewal(request, leafId: node.id)
+        try await submitRenewal(request, renewing: node)
     }
 
     /// Zero-node renewal: the node tx is at timelock 0 (L1-deposit roots) —
@@ -261,7 +261,7 @@ extension SparkWallet {
         var request = Spark_RenewLeafRequest()
         request.leafID = node.id
         request.renewNodeZeroTimelockSigningJob = renewJob
-        try await submitRenewal(request, leafId: node.id)
+        try await submitRenewal(request, renewing: node)
     }
 
     // MARK: - Renewal transactions (what the operators rebuild, renew_leaf_handler.go)
@@ -436,13 +436,28 @@ extension SparkWallet {
         return jobs
     }
 
-    private func submitRenewal(_ request: Spark_RenewLeafRequest, leafId: String) async throws {
+    /// Submits a renewal under the idempotency key `renewalIdempotencyKey(for:)`, so the transport's
+    /// retry of a renewal the operators already applied gets their answer instead of failing.
+    private func submitRenewal(_ request: Spark_RenewLeafRequest, renewing node: Spark_TreeNode) async throws {
         let client = try await getCoordinatorClient()
         let response = try await client.renew_leaf(
-            request: try await makeAuthenticatedRequest(message: request)
+            request: ClientRequest(
+                message: request,
+                metadata: metadataWithIdempotencyKey(
+                    try Self.renewalIdempotencyKey(for: node),
+                    base: try await getAuthMetadata(for: config.coordinatorAddress)
+                )
+            )
         )
         guard response.renewResult != nil else {
-            throw SparkError.invalidResponse("renew_leaf returned no result for leaf \(leafId)")
+            throw SparkError.invalidResponse("renew_leaf returned no result for leaf \(node.id)")
         }
+    }
+
+    /// A leaf renewal's idempotency key: the txid of the refund transaction being replaced, as the
+    /// reference SDK keys all three renewal variants. It changes with every renewal, so it names
+    /// exactly one.
+    static func renewalIdempotencyKey(for node: Spark_TreeNode) throws -> String {
+        try RawTransaction.parse(node.refundTx, context: "refund tx").txidHex
     }
 }

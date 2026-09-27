@@ -125,4 +125,20 @@ struct RenewalTransactionTests {
         #expect(SparkWallet.renewalVariant(nodeSequence: (1 << 30) | 200) == .refundTimelock)
         #expect(SparkWallet.renewalVariant(nodeSequence: (1 << 30) | 2000) == .refundTimelock)
     }
+
+    @Test("A renewal is keyed by the txid of the refund it replaces, as in the reference SDK")
+    func renewalIdempotencyKey() throws {
+        let refund = RawTransaction(
+            version: 3,
+            inputs: [RawTransaction.Input(previousTxid: Data(repeating: 0x21, count: 32), previousIndex: 0, sequence: 150)],
+            outputs: [RawTransaction.Output(value: 1_000, scriptPubKey: Data([0x51, 0x20]) + Data(repeating: 0x07, count: 32))],
+            locktime: 0, hasWitnessSerialization: false
+        )
+        var node = Spark_TreeNode()
+        node.refundTx = refund.serialized(includeWitness: false)
+        #expect(try SparkWallet.renewalIdempotencyKey(for: node) == refund.txidHex)
+        #expect(try SparkWallet.renewalIdempotencyKey(for: node).count == 64)
+        node.refundTx = Data()
+        #expect(throws: SparkError.self) { _ = try SparkWallet.renewalIdempotencyKey(for: node) }
+    }
 }
