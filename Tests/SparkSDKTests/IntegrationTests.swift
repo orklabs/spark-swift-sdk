@@ -1056,6 +1056,38 @@ struct TokenIntegrationTests {
         #expect(try await balanceB() == before)
     }
 
+    @Test("A send retried with its idempotency key is made once and returns the same hash")
+    func idempotentTokenSend() async throws {
+        let walletA = try await makeWallet(walletAMnemonic)
+        defer { Task { await walletA.close() } }
+        let walletB = try await makeWallet(walletBMnemonic)
+        defer { Task { await walletB.close() } }
+
+        let issued = try await walletA.queryTokenMetadata(issuerPublicKeys: [walletA.signer.identityPublicKey])
+        let token = try #require(issued.first, "wallet A has issued no token; the lifecycle test creates one").tokenIdentifier
+        let balanceB = { (try await walletB.getTokenBalances()).first { $0.tokenMetadata.tokenIdentifier == token }?.ownedBalance ?? 0 }
+        let before = try await balanceB()
+
+        let key = UUID().uuidString
+        let addressB = walletB.getSparkAddress()
+        let send = {
+            try await walletA.transferTokens(tokenIdentifier: token, tokenAmount: 7, receiverSparkAddress: addressB, idempotencyKey: key)
+        }
+        let first = try await send()
+        let retry = try await send()
+        print("Keyed send: \(first), retried: \(retry)")
+        #expect(retry == first)
+
+        try await Task.sleep(for: .seconds(5))
+        #expect(try await balanceB() == before + 7)
+
+        // Back to A.
+        let addressA = walletA.getSparkAddress()
+        _ = try await walletB.transferTokens(tokenIdentifier: token, tokenAmount: 7, receiverSparkAddress: addressA)
+        try await Task.sleep(for: .seconds(5))
+        #expect(try await balanceB() == before)
+    }
+
     @Test("Should query token outputs")
     func queryTokenOutputs() async throws {
         let wallet = try await makeWallet(walletAMnemonic)

@@ -153,3 +153,58 @@ extension TokenOutputLockTests {
         }
     }
 }
+
+/// Retries of a transfer sent with an idempotency key.
+@Suite("Token transfer idempotency")
+struct TokenTransferIdempotencyTests {
+    @Test("A retry with the key resends the first transaction, unchanged", .timeLimit(.minutes(1)))
+    func retryResends() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            await state.setTokenOutputs(try TokenOutputLockTests.walletOutputs(wallet, amounts: [100, 100]))
+            let token = try encodeBech32mTokenIdentifier(TokenOutputLockTests.tokenIdentifier, network: .regtest)
+            for _ in 0..<2 {
+                await #expect(throws: RPCError.self) {
+                    _ = try await wallet.transferTokens(
+                        tokenIdentifier: token, tokenAmount: 100, receiverSparkAddress: wallet.getSparkAddress(), idempotencyKey: "retry-1"
+                    )
+                }
+            }
+            let started = await state.startedTransactions
+            #expect(started.count == 2)
+            #expect(started.map(\.idempotencyKey) == ["retry-1", "retry-1"])
+            #expect(started.first?.transaction == started.last?.transaction)
+        }
+    }
+
+    @Test("A key used for another transfer is refused before anything is sent", .timeLimit(.minutes(1)))
+    func keyReuseRefused() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            await state.setTokenOutputs(try TokenOutputLockTests.walletOutputs(wallet, amounts: [100, 100]))
+            let token = try encodeBech32mTokenIdentifier(TokenOutputLockTests.tokenIdentifier, network: .regtest)
+            let address = wallet.getSparkAddress()
+            let send = { (amount: UInt128) in
+                _ = try await wallet.transferTokens(
+                    tokenIdentifier: token, tokenAmount: amount, receiverSparkAddress: address, idempotencyKey: "k"
+                )
+            }
+            await #expect(throws: RPCError.self) { try await send(100) }
+            await #expect(throws: SparkError.self) { try await send(50) }
+            #expect(await state.startedTransactions.count == 1)
+        }
+    }
+
+    @Test("The oldest keys are forgotten beyond the capacity")
+    func capacity() {
+        let attempts = TokenTransferAttempts()
+        let request = TokenTransferAttempts.Request(tokenIdentifier: Data(count: 32), amount: 1, receiverIdentityPublicKey: Data(count: 33))
+        let attempt = TokenTransferAttempts.Attempt(request: request, transaction: SparkToken_TokenTransaction(), spentOutputs: [])
+        for index in 0...TokenTransferAttempts.capacity {
+            attempts.remember(attempt, for: "key-\(index)")
+        }
+        #expect(attempts.attempt(for: "key-0") == nil)
+        #expect(attempts.attempt(for: "key-1") != nil)
+        #expect(attempts.attempt(for: "key-\(TokenTransferAttempts.capacity)") != nil)
+    }
+}

@@ -17,6 +17,8 @@ public final class SparkWallet: Sendable {
     let serverClock: ServerClock
     /// Token outputs picked by sends that may still be in flight (see `TokenOutputLocks`).
     let tokenOutputLocks = TokenOutputLocks()
+    /// Token transfers sent with an idempotency key (see `TokenTransferAttempts`).
+    let tokenTransferAttempts = TokenTransferAttempts()
 
     public var identityPublicKeyHex: String {
         signer.identityPublicKey.hexString

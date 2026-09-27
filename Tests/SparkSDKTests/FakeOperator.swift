@@ -59,6 +59,8 @@ actor FakeOperatorState {
     /// The outputs (`TokenOutputLocks.key`) each `start_transaction` spends, in order. Every
     /// start fails, so nothing is spent.
     private(set) var startedSpends: [[String]] = []
+    /// The partial transaction and `x-idempotency-key` of each `start_transaction`, in order.
+    private(set) var startedTransactions: [(transaction: SparkToken_TokenTransaction, idempotencyKey: String?)] = []
     /// Nodes `query_nodes` pages through by id, as the operators page an owner query.
     private(set) var nodes: [Spark_TreeNode] = []
     /// `(limit, offset)` of every `query_nodes` call.
@@ -146,8 +148,11 @@ actor FakeOperatorState {
         metadataRequestSizes.append(size)
     }
 
-    func recordStart(spending outputs: [String]) {
-        startedSpends.append(outputs)
+    func recordStart(_ transaction: SparkToken_TokenTransaction, idempotencyKey: String?) {
+        startedSpends.append(transaction.transferInput.outputsToSpend.map {
+            "\($0.prevTokenTransactionHash.hexString):\($0.prevTokenTransactionVout)"
+        })
+        startedTransactions.append((transaction, idempotencyKey))
     }
 
     func know(_ transfer: Spark_Transfer) {
@@ -203,9 +208,7 @@ struct FakeOperator: RegistrableRPCService {
                 return await Self.reject(state)
             }
             let transaction = try await ServerRequest(stream: request).message.partialTokenTransaction
-            await state.recordStart(spending: transaction.transferInput.outputsToSpend.map {
-                "\($0.prevTokenTransactionHash.hexString):\($0.prevTokenTransactionVout)"
-            })
+            await state.recordStart(transaction, idempotencyKey: request.metadata[stringValues: "x-idempotency-key"].first { _ in true })
             return StreamingServerResponse(error: RPCError(code: .failedPrecondition, message: "the fake operator starts nothing"))
         }
         router.registerHandler(

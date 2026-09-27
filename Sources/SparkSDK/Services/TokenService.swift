@@ -13,7 +13,12 @@ extension SparkWallet {
     /// Transfer tokens to a receiver's Spark address. A Spark invoice is refused with
     /// `SparkError.invalidAddress`, as in `send(receiverSparkAddress:amountSats:)`.
     ///
-    /// - Parameter idempotencyKey: Optional key for deduplication of the gRPC call.
+    /// - Parameter idempotencyKey: Makes retries safe. A retry with the same key, on the same
+    ///   wallet, resends the transaction the first call built, so the transfer is made at most
+    ///   once: a retry after it went through returns its hash again, and a retry after it failed
+    ///   completes it if it can still be sent, else fails again. A key used for another token,
+    ///   amount or receiver is refused with `SparkError.invalidArgument`. The wallet remembers
+    ///   the last 1,000 keys; use a new key for a new transfer.
     public func transferTokens(
         tokenIdentifier: Bech32mTokenIdentifier,
         tokenAmount: UInt128,
@@ -25,29 +30,59 @@ extension SparkWallet {
         // The receiver's identity key, from a Spark address for this network (a Spark invoice is
         // refused), before any output is fetched.
         let receiverData = try SparkAddress.decode(receiverSparkAddress, network: config.network)
+        let request = TokenTransferAttempts.Request(
+            tokenIdentifier: rawTokenId, amount: tokenAmount, receiverIdentityPublicKey: receiverData
+        )
 
-        let outputs = try await fetchTokenOutputs(tokenIdentifiers: [rawTokenId])
+        let attempt: TokenTransferAttempts.Attempt
+        if let idempotencyKey, let earlier = tokenTransferAttempts.attempt(for: idempotencyKey) {
+            guard earlier.request == request else {
+                throw SparkError.invalidArgument("idempotency key \(idempotencyKey) was used for a different token transfer")
+            }
+            attempt = earlier
+        } else {
+            attempt = try await newTokenTransfer(request, tokenIdentifier: tokenIdentifier, strategy: strategy)
+            if let idempotencyKey {
+                tokenTransferAttempts.remember(attempt, for: idempotencyKey)
+            }
+        }
+
+        return try await broadcastTokenTransactionV2(
+            tokenTransaction: attempt.transaction,
+            signingPublicKeys: attempt.spentOutputs.map { $0.output.ownerPublicKey },
+            revocationCommitments: attempt.spentOutputs.compactMap {
+                $0.output.hasRevocationCommitment ? $0.output.revocationCommitment : nil
+            },
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    /// Picks outputs for `request` and builds its transaction, with change back to the wallet.
+    private func newTokenTransfer(
+        _ request: TokenTransferAttempts.Request,
+        tokenIdentifier: Bech32mTokenIdentifier,
+        strategy: TokenOutputSelectionStrategy
+    ) async throws -> TokenTransferAttempts.Attempt {
+        let outputs = try await fetchTokenOutputs(tokenIdentifiers: [request.tokenIdentifier])
         guard !outputs.isEmpty else {
-            throw SparkError.insufficientTokenBalance(token: tokenIdentifier, need: "\(tokenAmount)", have: "0")
+            throw SparkError.insufficientTokenBalance(token: tokenIdentifier, need: "\(request.amount)", have: "0")
         }
 
         // Only available outputs no other send from this wallet has picked (see `TokenOutputLocks`).
         let selected = try tokenOutputLocks.acquire(outputs) {
-            try Self.selectTokenOutputs($0, amount: tokenAmount, strategy: strategy)
+            try Self.selectTokenOutputs($0, amount: request.amount, strategy: strategy)
         }
 
         let tx = try buildTransferTokenTransaction(
             selectedOutputs: selected,
-            receiverOutputs: [(receiverPubKey: receiverData, rawTokenIdentifier: rawTokenId, tokenAmount: tokenAmount)],
+            receiverOutputs: [(
+                receiverPubKey: request.receiverIdentityPublicKey,
+                rawTokenIdentifier: request.tokenIdentifier,
+                tokenAmount: request.amount
+            )],
             changeOwnerPubKey: signer.identityPublicKey
         )
-
-        return try await broadcastTokenTransactionV2(
-            tokenTransaction: tx,
-            signingPublicKeys: selected.map { $0.output.ownerPublicKey },
-            revocationCommitments: selected.compactMap { $0.output.hasRevocationCommitment ? $0.output.revocationCommitment : nil },
-            idempotencyKey: idempotencyKey
-        )
+        return TokenTransferAttempts.Attempt(request: request, transaction: tx, spentOutputs: selected)
     }
 
     /// Get token balances for the current wallet.

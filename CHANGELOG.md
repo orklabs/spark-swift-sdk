@@ -75,6 +75,13 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `transferTokens(idempotencyKey:)` makes a retry safe. A retry built a new transaction, but the
+  operators answer a key with the first transaction, so the SDK refused the answer: seen on
+  mainnet as "final token transaction rejected: input 0 changed", after the first transfer had
+  gone through. The wallet now remembers each key's transaction and resends it unchanged. A retry
+  after the transfer went through returns its hash again, and a retry after a failure completes
+  the transfer if it can still be sent. A key used for another token, amount or receiver is
+  refused with `SparkError.invalidArgument`.
 - `createToken` checks the name and ticker as the operators and the reference SDK do. Names
   must be 3–20 UTF-8 bytes and tickers 3–6, both in Unicode normalization form C. It accepted 1–2
   bytes and did not check normalization. The operators refused those tokens with only INTERNAL
