@@ -61,7 +61,8 @@ SparkSDK assumes:
 - The user is responsible for **secure storage** of mnemonics and account keys. The SDK does
   not provide Keychain integration, encrypted-at-rest storage, or hardware-key isolation.
   Apps embedding the SDK MUST take care of these.
-- Network transport is gRPC over TLS to Spark operators and HTTPS to the SSP. The SDK does
+- Network transport is gRPC over TLS to Spark operators and HTTPS to the SSP; on mainnet the
+  SDK refuses an operator address that is not `https://`. The SDK does
   not implement certificate pinning by default; the response verification described below is
   what limits the damage an impersonated SSP or coordinator can do.
 - The cryptography is provided by `secp256k1.swift` (ECDSA / Schnorr) and the

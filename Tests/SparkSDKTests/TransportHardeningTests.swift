@@ -158,6 +158,18 @@ struct TransportHardeningTests {
         #expect(attempts == 1)
     }
 
+    @Test("Operators are reached over TLS: plaintext only where allowed (never on mainnet), other schemes never")
+    func operatorTransportSecurity() async throws {
+        let mainnet = GrpcConnectionManager(addresses: [])
+        await #expect(throws: SparkError.self) { _ = try await mainnet.getClient(for: "http://operator.example") }
+        _ = try await mainnet.getClient(for: "https://operator.example")
+        let regtest = GrpcConnectionManager(addresses: [], allowsPlaintext: true)
+        _ = try await regtest.getClient(for: "http://127.0.0.1:9001")
+        await #expect(throws: SparkError.self) { _ = try await regtest.getClient(for: "ftp://operator.example") }
+        await mainnet.close()
+        await regtest.close()
+    }
+
     @Test("An SSP auth rejection is recognised, other failures are not")
     func sspAuthFailureClassifier() {
         #expect(SspGraphQLClient.isAuthFailure(.graphqlError("HTTP 401")))

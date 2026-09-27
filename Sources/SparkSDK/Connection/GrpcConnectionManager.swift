@@ -6,6 +6,8 @@ import GRPCProtobuf
 actor GrpcConnectionManager {
     private var clients: [String: GRPCClient<HTTP2ClientTransport.Posix>] = [:]
     private let addresses: [String]
+    /// Whether an `http://` operator may be reached without TLS: never on mainnet.
+    private let allowsPlaintext: Bool
     /// Builds the interceptors for one operator's client — see `AuthRetryInterceptor`.
     private let interceptorFactory: @Sendable (String) -> [any ClientInterceptor]
 
@@ -62,8 +64,10 @@ actor GrpcConnectionManager {
     ])
 
     init(addresses: [String],
+         allowsPlaintext: Bool = false,
          interceptorFactory: @escaping @Sendable (String) -> [any ClientInterceptor] = { _ in [] }) {
         self.addresses = addresses
+        self.allowsPlaintext = allowsPlaintext
         self.interceptorFactory = interceptorFactory
     }
 
@@ -76,9 +80,12 @@ actor GrpcConnectionManager {
               let host = url.host else {
             throw SparkError.grpcError("Invalid SO address: \(address)")
         }
-
-        let port = url.port ?? (url.scheme == "https" ? 443 : 80)
         let useTLS = url.scheme == "https"
+        guard useTLS || (url.scheme == "http" && allowsPlaintext) else {
+            throw SparkError.invalidArgument("operator \(address) must be reached over https")
+        }
+
+        let port = url.port ?? (useTLS ? 443 : 80)
 
         // Transport on the defaults, like the official SDK: no client keepalive (the operators
         // send their own keepalive pings and bound how often clients may ping), default idle time.

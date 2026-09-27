@@ -14,6 +14,9 @@ migration note.
 ## [Unreleased]
 
 ### Security
+- On mainnet, operators are reached over TLS only: an `http://` operator address (or any scheme
+  but `https`) is refused, where it silently got a plaintext connection that carried session
+  tokens and signing material. Regtest still allows `http://` for local operators.
 - Deposit addresses are verified before they are returned, as the reference SDK does. The SDK
   handed out whatever address and verifying key the coordinator sent, so a coordinator — or
   anyone impersonating it — could substitute an address it alone controls, and a static address

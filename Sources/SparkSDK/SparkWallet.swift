@@ -84,6 +84,8 @@ public final class SparkWallet: Sendable {
         let managerRef = WeakConnectionManager()
         let connectionManager = GrpcConnectionManager(
             addresses: config.signingOperatorAddresses,
+            // Operator traffic carries session tokens and signing material: TLS on mainnet.
+            allowsPlaintext: config.network != .mainnet,
             interceptorFactory: { address in
                 let auth = AuthRetryInterceptor(
                     currentToken: {
