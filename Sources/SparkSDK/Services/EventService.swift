@@ -35,18 +35,31 @@ extension SparkWallet {
         }
     }
 
-    private static func mapEvent(_ response: Spark_SubscribeToEventsResponse) -> SparkEvent? {
+    /// The event an operator's stream message is reported as, if any. As in the reference SDK, a
+    /// counter-transfer of the wallet's own swap and a self-transfer are not reported as received
+    /// — the operation that made them claims them — and a deposit is reported once its leaf is
+    /// available.
+    static func mapEvent(_ response: Spark_SubscribeToEventsResponse) -> SparkEvent? {
         switch response.event {
         case .connected:
             return .connected
         case .receiverTransfer(let transferEvent):
+            guard isIncomingPayment(transferEvent.transfer) else { return nil }
             return .transferReceived(SparkTransfer(transferEvent.transfer))
         case .senderTransfer(let transferEvent):
             return .transferSent(SparkTransfer(transferEvent.transfer))
         case .deposit(let depositEvent):
+            guard depositEvent.deposit.status == "AVAILABLE" else { return nil }
             return .depositConfirmed(treeID: depositEvent.deposit.treeID)
         default:
             return nil
         }
+    }
+
+    /// Whether a transfer to this wallet is a payment someone made to it, rather than the
+    /// counter-transfer of one of its own swaps or a transfer to itself.
+    static func isIncomingPayment(_ transfer: Spark_Transfer) -> Bool {
+        transfer.type != .counterSwap && transfer.type != .counterSwapV3
+            && transfer.senderIdentityPublicKey != transfer.receiverIdentityPublicKey
     }
 }

@@ -42,6 +42,12 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- The event stream no longer reports the counter-transfer of the wallet's own swap as a received
+  payment, as the reference SDK does. Every send that needed change, withdrawal, Lightning
+  payment and consolidation showed up as incoming money, and an app that claims on
+  `.transferReceived` raced the swap's own claim. Self-transfers are not reported as received
+  either, and a deposit is reported once its leaf is available. `.transferSent` is documented as
+  what it is: every status change of an outgoing transfer.
 - A transfer or leaf value of 2^63 sats or more from an operator — or an output value that large
   from the block explorer — no longer crashes the app. `Int64(value)` trapped on it in the event
   stream, transfer history, send results, balances, recovery and static deposits, so a hostile or

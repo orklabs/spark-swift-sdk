@@ -557,3 +557,61 @@ extension HardeningIntegrationTests {
         #expect(receiverAfter.owned == receiverBefore.owned + amount)
     }
 }
+
+// MARK: - Events
+
+/// A wallet's events, collected in the background.
+actor EventLog {
+    private(set) var events: [SparkEvent] = []
+
+    func append(_ event: SparkEvent) {
+        events.append(event)
+    }
+
+    func contains(_ predicate: @Sendable (SparkEvent) -> Bool) -> Bool {
+        events.contains(where: predicate)
+    }
+}
+
+extension HardeningIntegrationTests {
+    /// Starts collecting `wallet`'s events into `log`; cancel the task to stop.
+    static func record(_ wallet: SparkWallet, into log: EventLog) async throws -> Task<Void, Never> {
+        let stream = try await wallet.subscribeToEvents()
+        return Task {
+            for await event in stream {
+                await log.append(event)
+            }
+        }
+    }
+
+    @Test("A payment is reported to its receiver, and the sender's swap counter-transfer is not reported as received",
+          .timeLimit(.minutes(5)))
+    func eventsForSwappedSend() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let leaves = try await pair.sender.getSpendableLeaves()
+        let total = leaves.reduce(0) { $0 + $1.valueSats }
+        guard let amount = (1...min(total, 200)).first(where: { SparkWallet.tryExactSelection(leaves, amountSats: $0) == nil }) else {
+            Issue.record(Comment(rawValue: "every amount up to 200 sats has an exact leaf combination"))
+            return
+        }
+        let senderLog = EventLog()
+        let receiverLog = EventLog()
+        let senderEvents = try await Self.record(pair.sender, into: senderLog)
+        let receiverEvents = try await Self.record(pair.receiver, into: receiverLog)
+        try await Task.sleep(for: .seconds(2))
+
+        let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: amount)
+        print("[\(pair.senderLabel)] sent \(amount) sats through a swap, transfer \(transfer.id)")
+        try await Task.sleep(for: .seconds(8))
+        senderEvents.cancel()
+        receiverEvents.cancel()
+
+        #expect(await receiverLog.contains { if case .transferReceived(let received) = $0 { received.id == transfer.id } else { false } })
+        // The swap's counter-transfer reached the sender too, and is not a payment.
+        #expect(await !senderLog.contains { if case .transferReceived = $0 { true } else { false } })
+        #expect(await senderLog.contains { if case .transferSent(let sent) = $0 { sent.id == transfer.id } else { false } })
+        print("sender events: \(await senderLog.events.count), receiver events: \(await receiverLog.events.count)")
+        _ = try await pair.receiver.claimPendingTransfers()
+    }
+}

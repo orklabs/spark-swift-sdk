@@ -298,8 +298,14 @@ public struct ClaimStaticDepositInfo: Sendable {
 }
 
 public enum SparkEvent: Sendable {
+    /// The event stream connected.
     case connected
+    /// A transfer to this wallet is ready to claim. The counter-transfers of the wallet's own
+    /// swaps and transfers to itself are not reported: the operation that made them claims them.
     case transferReceived(SparkTransfer)
+    /// An outgoing transfer changed status — initiated, awaiting or applied the sender's key
+    /// tweak, or returned — so one transfer is reported several times; `status` says which.
     case transferSent(SparkTransfer)
+    /// A deposit's leaf became available.
     case depositConfirmed(treeID: String)
 }
