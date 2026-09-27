@@ -265,10 +265,16 @@ let balances = try await wallet.getTokenBalances()
 ### Events & history
 
 ```swift
-// Stream of inbound transfer / deposit events
-let events = wallet.subscribeToEvents()
+// Events until you stop iterating or close the wallet. The stream reconnects by itself
+// (1 s doubling to 15 s, `.reconnecting` before each wait), claims pending transfers on every
+// connection, and claims each incoming payment before reporting it as `.transferReceived`.
+let events = try await wallet.subscribeToEvents()
 for await event in events {
-    print("event: \(event)")
+    switch event {
+    case .transferReceived(let transfer): print("received \(transfer.totalValueSats) sats")
+    case .reconnecting(let attempt, let retryIn, let reason): print("retry #\(attempt) in \(retryIn): \(reason)")
+    case .connected, .transferSent, .depositConfirmed: break
+    }
 }
 
 // Paginated history

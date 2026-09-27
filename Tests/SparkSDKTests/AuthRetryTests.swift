@@ -38,17 +38,18 @@ struct AuthRetryTests {
         #expect(await state.calls == ["query_nodes Bearer session-1", "query_nodes Bearer session-2"])
     }
 
-    @Test("A rejected event subscription ends cleanly and the next one uses a fresh token",
-          .timeLimit(.minutes(1)))
+    @Test("A rejected event subscription is retried with a fresh token", .timeLimit(.minutes(1)))
     func rejectedSubscription() async throws {
         let state = FakeOperatorState(rejection: .beforeHeaders) { $0 == "session-1" }
-        let (first, second) = try await withFakeOperator(state) { wallet in
-            (try await Self.collect(wallet.subscribeToEvents()), try await Self.collect(wallet.subscribeToEvents()))
+        let events = try await withFakeOperator(state) { wallet in
+            await EventStreamConnectionTests.events(try await wallet.subscribeToEvents(), untilConnection: 1)
         }
-        #expect(first.isEmpty)
-        #expect(second.count == 1)
-        if case .connected? = second.first {} else { Issue.record("expected a connected event, got \(second)") }
-        #expect(await state.calls == ["subscribe_to_events Bearer session-1", "subscribe_to_events Bearer session-2"])
+        guard events.count == 2, case .reconnecting(1, .seconds(1), _) = events[0], case .connected = events[1] else {
+            Issue.record("expected a reconnect, then a connection; got \(events)")
+            return
+        }
+        #expect(await state.issuedTokens == ["session-1", "session-2"])
+        #expect(await Array(state.calls.prefix(2)) == ["subscribe_to_events Bearer session-1", "subscribe_to_events Bearer session-2"])
     }
 
     @Test("A token that is never accepted fails after the retry policy's attempts",
@@ -90,14 +91,5 @@ struct AuthRetryTests {
             #expect(seen == [metadata])
             #expect((try? response.accepted.get()) == nil)
         }
-    }
-
-    /// Every event a subscription yields until it ends.
-    static func collect(_ stream: AsyncStream<SparkEvent>) async -> [SparkEvent] {
-        var events: [SparkEvent] = []
-        for await event in stream {
-            events.append(event)
-        }
-        return events
     }
 }

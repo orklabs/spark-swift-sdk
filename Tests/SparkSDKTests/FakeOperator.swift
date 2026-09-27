@@ -82,6 +82,7 @@ struct FakeOperator: RegistrableRPCService {
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         registerAuthn(with: &router)
         registerSparkService(with: &router)
+        registerTransferMethods(with: &router)
     }
 
     /// The token-issuing service: every challenge verifies, and each session token is new.
@@ -156,6 +157,20 @@ struct FakeOperator: RegistrableRPCService {
             response.preimageRequests = await state.heldSends.filter { query.transferIds.contains($0.transfer.id) }
             response.offset = -1
             return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+    }
+
+    /// Transfers, Lightning sends and the event subscription.
+    private func registerTransferMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.query_pending_transfers.descriptor,
+            deserializer: ProtobufDeserializer<Spark_TransferFilter>(),
+            serializer: ProtobufSerializer<Spark_QueryTransfersResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("query_pending_transfers", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            return StreamingServerResponse(single: ServerResponse(message: Spark_QueryTransfersResponse()))
         }
         router.registerHandler(
             forMethod: Spark_SparkService.Method.initiate_preimage_swap_v3.descriptor,

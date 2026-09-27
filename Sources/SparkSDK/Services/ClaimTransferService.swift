@@ -19,8 +19,13 @@ public struct PendingTransferClaim: Sendable {
         public let error: any Swift.Error
     }
 
+    /// The claimed transfers, as they were claimed.
+    var claimedTransfers: [Spark_Transfer] = []
+
     /// Leaves of the claimed transfers.
-    var claimedLeafIds: [String] = []
+    var claimedLeafIds: [String] {
+        claimedTransfers.flatMap { $0.leaves.map(\.leaf.id) }
+    }
 }
 
 /// One claim pass over the pending inbound transfers, following the reference SDK's
@@ -45,8 +50,7 @@ enum PendingTransferDrain {
         fetch: (_ limit: Int, _ offset: Int) async throws -> [Spark_Transfer],
         claim: (Spark_Transfer) async throws -> Void
     ) async throws -> PendingTransferClaim {
-        var claimed: [String] = []
-        var claimedLeafIds: [String] = []
+        var claimed: [Spark_Transfer] = []
         var failures: [PendingTransferClaim.Failure] = []
         var attempted = Set<String>()
         var offset = 0
@@ -62,8 +66,7 @@ enum PendingTransferDrain {
                 attempted.insert(transfer.id)
                 do {
                     try await claim(transfer)
-                    claimed.append(transfer.id)
-                    claimedLeafIds += transfer.leaves.map(\.leaf.id)
+                    claimed.append(transfer)
                     progress = true
                 } catch {
                     failures.append(PendingTransferClaim.Failure(transferId: transfer.id, error: error))
@@ -74,8 +77,8 @@ enum PendingTransferDrain {
             }
             offset = progress ? 0 : offset + batch.count
         }
-        var result = PendingTransferClaim(claimedTransferIds: claimed, failures: failures)
-        result.claimedLeafIds = claimedLeafIds
+        var result = PendingTransferClaim(claimedTransferIds: claimed.map(\.id), failures: failures)
+        result.claimedTransfers = claimed
         return result
     }
 }
@@ -122,7 +125,7 @@ extension SparkWallet {
     }
 
     /// Best-effort renewal of the renewable leaves among `leafIds`.
-    private func renewClaimedLeaves(_ leafIds: [String]) async {
+    func renewClaimedLeaves(_ leafIds: [String]) async {
         guard !leafIds.isEmpty else { return }
         let ids = Set(leafIds)
         guard let leaves = try? await getLeaves().filter({ ids.contains($0.id) }),

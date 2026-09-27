@@ -614,4 +614,50 @@ extension HardeningIntegrationTests {
         print("sender events: \(await senderLog.events.count), receiver events: \(await receiverLog.events.count)")
         _ = try await pair.receiver.claimPendingTransfers()
     }
+
+    /// Polls `condition` every half second until it holds or `timeout` passes.
+    static func eventually(within timeout: Duration, _ condition: () async throws -> Bool) async throws -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if try await condition() { return true }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        return try await condition()
+    }
+
+    @Test("The event stream claims a payment that arrived while it was down, and a payment as it arrives",
+          .timeLimit(.minutes(5)))
+    func eventStreamClaims() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        guard pair.senderSpendable >= 25 else {
+            Issue.record(Comment(rawValue: "sender needs 25 spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let before = try await pair.receiver.getBalance().satsBalance
+        let address = pair.receiver.getSparkAddress()
+        func received(_ id: String) -> @Sendable (SparkEvent) -> Bool {
+            { if case .transferReceived(let transfer) = $0 { transfer.id == id } else { false } }
+        }
+
+        // Sent while the receiver has no stream: claimed and reported when the stream connects.
+        let whileDown = try await pair.sender.send(receiverSparkAddress: address, amountSats: 10)
+        try await Task.sleep(for: .seconds(3))
+        let log = EventLog()
+        let stream = try await Self.record(pair.receiver, into: log)
+        #expect(try await Self.eventually(within: .seconds(60)) { await log.contains(received(whileDown.id)) })
+
+        // Sent while it is connected: claimed on arrival, then reported.
+        let whileUp = try await pair.sender.send(receiverSparkAddress: address, amountSats: 11)
+        #expect(try await Self.eventually(within: .seconds(60)) { await log.contains(received(whileUp.id)) })
+        stream.cancel()
+
+        // Nobody else claimed them.
+        #expect(try await pair.receiver.getTransfer(id: whileDown.id).status == "\(Spark_TransferStatus.completed)")
+        #expect(try await pair.receiver.getTransfer(id: whileUp.id).status == "\(Spark_TransferStatus.completed)")
+        let after = try await pair.receiver.getBalance().satsBalance
+        #expect(after.owned == before.owned + 21)
+        print("[\(pair.senderLabel)] the receiver's stream claimed \(whileDown.id) on connection and \(whileUp.id) on arrival")
+    }
 }

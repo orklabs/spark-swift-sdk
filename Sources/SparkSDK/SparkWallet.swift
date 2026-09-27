@@ -11,6 +11,8 @@ public final class SparkWallet: Sendable {
     let sspClient: SspGraphQLClient
     /// Serialises transfer claims (see `claimPendingTransfers`).
     let claimLock = AsyncSerialLock()
+    /// Running event streams, stopped by `close()`.
+    let eventStreams = EventStreamRegistry()
 
     public var identityPublicKeyHex: String {
         signer.identityPublicKey.hexString
@@ -120,7 +122,9 @@ public final class SparkWallet: Sendable {
 
     /// Shut every operator connection down. The wallet stays usable: the next call after `close()`
     /// builds fresh clients (that is how a host app cycles connections around backgrounding).
+    /// Stops the wallet's event streams and shuts its operator connections down.
     public func close() async {
+        await eventStreams.close()
         await connectionManager.close()
     }
 

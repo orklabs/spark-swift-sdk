@@ -300,12 +300,17 @@ public struct ClaimStaticDepositInfo: Sendable {
 public enum SparkEvent: Sendable {
     /// The event stream connected.
     case connected
-    /// A transfer to this wallet is ready to claim. The counter-transfers of the wallet's own
-    /// swaps and transfers to itself are not reported: the operation that made them claims them.
+    /// A payment to this wallet arrived. The stream claims it first (best effort; one it cannot
+    /// claim yet stays pending for the next claim pass), and on every connection it claims and
+    /// reports the payments that arrived while it was down. The counter-transfers of the wallet's
+    /// own swaps and transfers to itself are not reported: the operation that made them claims them.
     case transferReceived(SparkTransfer)
     /// An outgoing transfer changed status — initiated, awaiting or applied the sender's key
     /// tweak, or returned — so one transfer is reported several times; `status` says which.
     case transferSent(SparkTransfer)
     /// A deposit's leaf became available.
     case depositConfirmed(treeID: String)
+    /// The event stream failed, or the operator ended it; it subscribes again after `retryIn`.
+    /// `attempt` counts the attempts since the stream was last connected.
+    case reconnecting(attempt: Int, retryIn: Duration, reason: String)
 }

@@ -83,3 +83,59 @@ struct EventStreamTests {
         #expect(SparkWallet.mapEvent(Spark_SubscribeToEventsResponse()) == nil)
     }
 }
+
+/// The event stream's connection handling against a local operator stand-in, whose subscription
+/// sends `connected` and then ends.
+@Suite("Event stream connection")
+struct EventStreamConnectionTests {
+    /// Events up to and including the `count`-th `.connected`; stops iterating there.
+    static func events(_ stream: AsyncStream<SparkEvent>, untilConnection count: Int) async -> [SparkEvent] {
+        var events: [SparkEvent] = []
+        var connections = 0
+        for await event in stream {
+            events.append(event)
+            if case .connected = event {
+                connections += 1
+                if connections == count { break }
+            }
+        }
+        return events
+    }
+
+    @Test("Attempts back off from 1 s doubling to 15 s, as the reference SDK's stream does")
+    func backoff() {
+        #expect((0...7).map(SparkWallet.eventStreamBackoff) == [1, 1, 2, 4, 8, 15, 15, 15].map { .seconds($0) })
+    }
+
+    @Test("An ended subscription is resumed, and every connection claims the pending transfers",
+          .timeLimit(.minutes(1)))
+    func reconnectAndClaim() async throws {
+        let state = FakeOperatorState { _ in false }
+        let events = try await withFakeOperator(state) { wallet in
+            await Self.events(try await wallet.subscribeToEvents(), untilConnection: 2)
+        }
+        guard events.count == 3, case .connected = events[0], case .reconnecting(1, .seconds(1), let reason) = events[1],
+              case .connected = events[2] else {
+            Issue.record("expected connected, reconnecting, connected; got \(events)")
+            return
+        }
+        #expect(reason.contains("ended"))
+        #expect(await Array(state.methods.prefix(3)) == ["subscribe_to_events", "query_pending_transfers", "subscribe_to_events"])
+    }
+
+    @Test("Closing the wallet ends its event streams and refuses new ones", .timeLimit(.minutes(1)))
+    func closeEndsStreams() async throws {
+        let state = FakeOperatorState { _ in false }
+        try await withFakeOperator(state) { wallet in
+            let stream = try await wallet.subscribeToEvents()
+            var iterator = stream.makeAsyncIterator()
+            guard case .connected? = await iterator.next() else {
+                Issue.record("the stream did not connect")
+                return
+            }
+            await wallet.close()
+            while await iterator.next() != nil {}
+            await #expect(throws: SparkError.self) { _ = try await wallet.subscribeToEvents() }
+        }
+    }
+}

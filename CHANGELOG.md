@@ -34,6 +34,10 @@ migration note.
   renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Changed
+- `subscribeToEvents()` streams until the caller stops iterating or the wallet is closed: it
+  reconnects by itself and reports `SparkEvent.reconnecting(attempt:retryIn:reason:)` before
+  each wait — a new case that exhaustive `switch`es over `SparkEvent` must handle — and it claims
+  incoming payments itself (see Fixed). It throws only when the wallet is already closed.
 - `SatsBalance.owned` and `locked` follow the reference SDK: available + frozen + leaves an
   in-flight operation still holds for the wallet (outgoing transfers, Lightning payments and
   cooperative exits before the operators apply the sender's key tweak, swaps the wallet started
@@ -42,6 +46,14 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- The event stream no longer dies silently, as in the reference SDK's background stream. Any
+  error, or the operator ending the subscription (a network change, a deploy), finished the
+  `AsyncStream` as if it were a normal end, it never reconnected, and payments that arrived in
+  the meantime waited until something else claimed them. It now resubscribes forever — 1 s
+  doubling to 15 s between attempts — claims the wallet's pending transfers on every connection
+  and reports those payments as `.transferReceived`, and claims each payment that arrives while
+  connected before reporting it. `close()` stops the wallet's streams; before, a live stream
+  kept the old connection open.
 - The event stream no longer reports the counter-transfer of the wallet's own swap as a received
   payment, as the reference SDK does. Every send that needed change, withdrawal, Lightning
   payment and consolidation showed up as incoming money, and an app that claims on
