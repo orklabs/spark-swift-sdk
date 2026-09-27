@@ -468,9 +468,34 @@ struct HardeningIntegrationTests {
     }
 }
 
-// MARK: - Lightning send resume
+// MARK: - Lightning sends
 
 extension HardeningIntegrationTests {
+    @Test("An invoice pasted in upper case with surrounding whitespace is paid as validated", .timeLimit(.minutes(5)))
+    func pastedInvoice() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let amount: Int64 = 10
+        let invoice = try await pair.receiver.createLightningInvoice(amountSats: amount, memo: "pasted invoice test")
+        let pasted = "  \(invoice.paymentRequest.uppercased())\n"
+        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest)
+        guard pair.senderSpendable >= amount + max(fee, 1) + 5 else {
+            Issue.record(Comment(rawValue: "sender needs \(amount + max(fee, 1) + 5) spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverBefore = try await pair.receiver.getBalance().satsBalance
+        let requestId = try await pair.sender.payLightningInvoice(paymentRequest: pasted, maxFeeSats: max(fee, 1) + 5)
+        print("[\(pair.senderLabel)] paid a pasted invoice: \(requestId)")
+        var receiverAfter = receiverBefore
+        for _ in 0..<10 where receiverAfter.owned < receiverBefore.owned + amount {
+            try await Task.sleep(for: .seconds(3))
+            _ = try await pair.receiver.claimPendingTransfers()
+            receiverAfter = try await pair.receiver.getBalance().satsBalance
+        }
+        #expect(receiverAfter.owned == receiverBefore.owned + amount)
+    }
+
     @Test("An interrupted Lightning send resumes from the transfer the coordinator holds and pays once", .timeLimit(.minutes(5)))
     func lightningSendResume() async throws {
         let pair = try await Self.makePair()

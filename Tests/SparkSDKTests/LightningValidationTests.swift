@@ -395,6 +395,28 @@ struct LightningValidatorTests {
         #expect(request.invoiceAmount.invoiceAmountProof.bolt11Invoice == "lnbc120n1...")
     }
 
+    @Test("A payment forwards the invoice it validated: trimmed and lower case, mixed case still refused")
+    func paymentForwardsValidatedInvoice() throws {
+        let upper = try LightningPayment(
+            paymentRequest: " \(Bolt11InvoiceTests.upper25m)\n", maxFeeSats: 5, amountSats: nil, idempotencyKey: nil, network: .mainnet
+        )
+        #expect(upper.encodedInvoice == Bolt11InvoiceTests.upper25m.lowercased())
+        #expect(try Bolt11Invoice.decode(upper.encodedInvoice) == upper.invoice)
+        #expect(upper.amountSats == 2_500_000)
+        let lower = try LightningPayment(
+            paymentRequest: Bolt11InvoiceTests.coffee2500u, maxFeeSats: 5, amountSats: nil, idempotencyKey: nil, network: .mainnet
+        )
+        #expect(lower.encodedInvoice == Bolt11InvoiceTests.coffee2500u)
+        let mixed = "lnbc" + Bolt11InvoiceTests.coffee2500u.dropFirst(4).uppercased()
+        #expect(throws: SparkError.self) {
+            _ = try LightningPayment(paymentRequest: mixed, maxFeeSats: 5, amountSats: nil, idempotencyKey: nil, network: .mainnet)
+        }
+        // Everything the SSP and the coordinator are sent carries that form.
+        #expect(SparkWallet.lightningSendVariables(
+            encodedInvoice: upper.encodedInvoice, amountlessInvoiceAmountSats: nil, idempotencyKey: nil, transferId: "t"
+        )["encoded_invoice"] as? String == Bolt11InvoiceTests.upper25m.lowercased())
+    }
+
     @Test("Every preimage swap carries an idempotency key: the caller's, else the transfer id")
     func preimageSwapIdempotencyKey() {
         #expect(SparkWallet.preimageSwapIdempotencyKey(idempotencyKey: nil, transferId: "t") == "t")

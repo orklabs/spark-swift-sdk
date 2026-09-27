@@ -251,6 +251,8 @@ struct Bolt11Invoice: Sendable, Equatable {
 /// A Lightning payment `payLightningInvoice` has checked before touching a leaf: a BOLT-11
 /// invoice for the wallet's network, the amount to pay and the fee cap.
 struct LightningPayment: Sendable {
+    /// The invoice as validated, in the form sent on: surrounding whitespace dropped and lower
+    /// case (the reference SDK lower-cases it before use; the SSP refuses anything else).
     let encodedInvoice: String
     let invoice: Bolt11Invoice
     /// Sats the invoice is paid with: its own amount, or the caller's for an amountless invoice.
@@ -262,11 +264,13 @@ struct LightningPayment: Sendable {
         guard maxFeeSats >= 0 else {
             throw SparkError.invalidArgument("maxFeeSats must not be negative, got \(maxFeeSats)")
         }
-        let invoice = try Bolt11Invoice.decode(paymentRequest)
+        let trimmed = paymentRequest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let invoice = try Bolt11Invoice.decode(trimmed)
         guard invoice.belongs(to: network) else {
             throw SparkError.invalidInvoice("invoice is for \(invoice.network), wallet is on \(network)")
         }
-        self.encodedInvoice = paymentRequest
+        // Decoded before lower-casing, so a mixed-case string is still refused.
+        self.encodedInvoice = trimmed.lowercased()
         self.invoice = invoice
         self.amountSats = try LightningValidator.resolvePaymentAmountSats(
             invoiceAmountMsat: invoice.amountMsat, requestedAmountSats: amountSats

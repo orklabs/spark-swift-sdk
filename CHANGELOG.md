@@ -42,6 +42,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `payLightningInvoice` sends on the invoice it validated. An invoice pasted with surrounding
+  whitespace or in upper case passed the SDK's checks, but the raw string went to the SSP, which
+  refused it ("not a valid Lightning Network invoice"). The trimmed, lower-case form now goes to
+  the SSP and into the preimage swap, as the reference SDK lower-cases the invoice first; a
+  mixed-case string is still refused.
 - BOLT-11 invoices without a payment secret (`s` field) are refused, as BOLT-11 readers must
   and the reference SDK does. They were accepted for payment, and an SSP-created invoice without
   one passed the receive checks.
