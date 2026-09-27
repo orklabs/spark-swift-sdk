@@ -26,9 +26,10 @@ public enum SparkError: Swift.Error, LocalizedError, Sendable {
     case untrustedResponse(String)
     /// A quoted fee exceeds the limit the caller allowed.
     case feeExceedsLimit(feeSats: Int64, maxFeeSats: Int64)
-    /// The coordinator locked leaves for a lightning payment but the SSP request failed.
-    /// Retry `payLightningInvoice` with the same `transferId` to resume, or reconcile via
-    /// `getTransferFromSsp`.
+    /// The coordinator may hold leaves for a lightning payment: it locked them but the SSP
+    /// request failed, or the preimage swap failed in a way that leaves its outcome unknown.
+    /// Retry `payLightningInvoice` with the same invoice and `transferId` to resume, or reconcile
+    /// via `getTransferFromSsp`.
     case lightningSendIncomplete(transferId: String, reason: String)
 
     public var errorDescription: String? {

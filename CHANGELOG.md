@@ -42,6 +42,12 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- A Lightning send whose preimage swap fails without a clear refusal — a connection lost after
+  the request went out, a deadline, a cancelled task, an internal error — throws
+  `lightningSendIncomplete` with the transfer id. The coordinator may have committed such a swap
+  and locked the leaves, and the error carried no id to resume with, so they stayed locked until
+  the transfer expired. A swap the operators refused before committing (invalid argument,
+  unavailable leaf, lock conflict, …) still throws its own error.
 - Resuming a Lightning send no longer selects leaves again. A retry with the `transferId` from
   `lightningSendIncomplete` re-ran leaf selection before the coordinator's idempotent swap, but
   the first attempt's leaves were locked by then, so the retry failed with `insufficientBalance`

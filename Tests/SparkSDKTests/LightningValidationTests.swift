@@ -513,6 +513,47 @@ struct LightningResumeTests {
         #expect(await state.methods == ["query_htlc"])
     }
 
+    @Test("A preimage swap whose outcome is unknown reports the transfer id to resume; a refused one does not",
+          .timeLimit(.minutes(1)))
+    func preimageSwapFailures() async throws {
+        let state = FakeOperatorState { _ in false }
+        var request = Spark_InitiatePreimageSwapRequest()
+        request.transferRequest.transferID = Self.transferId
+        try await withFakeOperator(state) { wallet in
+            await state.failPreimageSwaps(with: RPCError(code: .internalError, message: "failed to commit"))
+            do {
+                _ = try await wallet.submitPreimageSwap(request, idempotencyKey: Self.transferId)
+                Issue.record("the operator stand-in fails every swap")
+            } catch SparkError.lightningSendIncomplete(let transferId, _) {
+                #expect(transferId == Self.transferId)
+            }
+            await state.failPreimageSwaps(with: RPCError(code: .failedPrecondition, message: "leaf is not available"))
+            do {
+                _ = try await wallet.submitPreimageSwap(request, idempotencyKey: Self.transferId)
+                Issue.record("the operator stand-in fails every swap")
+            } catch let error as RPCError {
+                #expect(error.code == .failedPrecondition)
+            }
+        }
+        #expect(await state.preimageSwapIdempotencyKeys == [Self.transferId, Self.transferId])
+    }
+
+    @Test("Only a swap the operators refused before committing counts as not taken")
+    func preimageSwapOutcome() {
+        let refused: [RPCError.Code] = [
+            .invalidArgument, .failedPrecondition, .outOfRange, .notFound, .alreadyExists,
+            .permissionDenied, .unauthenticated, .resourceExhausted, .aborted, .unimplemented,
+        ]
+        for code in refused {
+            #expect(!SparkWallet.preimageSwapMayHaveCommitted(RPCError(code: code, message: "")), Comment(rawValue: "\(code)"))
+        }
+        for code in [RPCError.Code.unavailable, .deadlineExceeded, .cancelled, .internalError, .unknown, .dataLoss] {
+            #expect(SparkWallet.preimageSwapMayHaveCommitted(RPCError(code: code, message: "")), Comment(rawValue: "\(code)"))
+        }
+        #expect(SparkWallet.preimageSwapMayHaveCommitted(CancellationError()))
+        #expect(SparkWallet.preimageSwapMayHaveCommitted(SparkError.invalidResponse("truncated")))
+    }
+
     @Test("A held send for another invoice, or above the fee cap, is refused without asking the SSP",
           .timeLimit(.minutes(1)))
     func refuseMismatchedHeldSend() async throws {

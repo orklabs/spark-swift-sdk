@@ -28,6 +28,10 @@ actor FakeOperatorState {
     private(set) var calls: [String] = []
     /// Lightning sends `query_htlc` reports as held, matched by transfer id.
     private(set) var heldSends: [Spark_PreimageRequestWithTransfer] = []
+    /// What every `initiate_preimage_swap_v3` fails with.
+    private(set) var preimageSwapError = RPCError(code: .internalError, message: "preimage swap failed")
+    /// The `x-idempotency-key` of every `initiate_preimage_swap_v3`, in order.
+    private(set) var preimageSwapIdempotencyKeys: [String] = []
 
     init(
         rejection: Rejection = .beforeHeaders,
@@ -47,6 +51,14 @@ actor FakeOperatorState {
 
     func hold(_ send: Spark_PreimageRequestWithTransfer) {
         heldSends.append(send)
+    }
+
+    func failPreimageSwaps(with error: RPCError) {
+        preimageSwapError = error
+    }
+
+    func recordPreimageSwap(idempotencyKey: String) {
+        preimageSwapIdempotencyKeys.append(idempotencyKey)
     }
 
     /// The SparkService methods called, in order.
@@ -144,6 +156,19 @@ struct FakeOperator: RegistrableRPCService {
             response.preimageRequests = await state.heldSends.filter { query.transferIds.contains($0.transfer.id) }
             response.offset = -1
             return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.initiate_preimage_swap_v3.descriptor,
+            deserializer: ProtobufDeserializer<Spark_InitiatePreimageSwapRequest>(),
+            serializer: ProtobufSerializer<Spark_InitiatePreimageSwapResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("initiate_preimage_swap_v3", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            await state.recordPreimageSwap(
+                idempotencyKey: request.metadata[stringValues: "x-idempotency-key"].first { _ in true } ?? ""
+            )
+            return StreamingServerResponse(error: await state.preimageSwapError)
         }
         router.registerHandler(
             forMethod: Spark_SparkService.Method.subscribe_to_events.descriptor,

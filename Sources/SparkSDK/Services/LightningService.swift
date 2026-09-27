@@ -237,13 +237,47 @@ extension SparkWallet {
             transferRequest: transferRequest
         )
 
-        let swapMetadata = metadataWithIdempotencyKey(
-            Self.preimageSwapIdempotencyKey(idempotencyKey: payment.idempotencyKey, transferId: transferId), base: metadata
+        return try await submitPreimageSwap(
+            swapRequest,
+            idempotencyKey: Self.preimageSwapIdempotencyKey(idempotencyKey: payment.idempotencyKey, transferId: transferId)
         )
+    }
 
-        return try await client.initiate_preimage_swap_v3(
-            request: ClientRequest(message: swapRequest, metadata: swapMetadata)
-        ).transfer
+    /// Hand a Lightning send's preimage swap to the coordinator. A failure after which the
+    /// coordinator may still have committed the swap — leaves locked under the transfer id —
+    /// surfaces as `lightningSendIncomplete` with that id, so the caller can resume instead of
+    /// losing track of the leaves until the transfer expires.
+    func submitPreimageSwap(_ request: Spark_InitiatePreimageSwapRequest, idempotencyKey: String) async throws -> Spark_Transfer {
+        let client = try await getCoordinatorClient()
+        let metadata = metadataWithIdempotencyKey(
+            idempotencyKey, base: try await getAuthMetadata(for: config.coordinatorAddress)
+        )
+        do {
+            return try await client.initiate_preimage_swap_v3(
+                request: ClientRequest(message: request, metadata: metadata)
+            ).transfer
+        } catch where Self.preimageSwapMayHaveCommitted(error) {
+            throw SparkError.lightningSendIncomplete(
+                transferId: request.transferRequest.transferID,
+                reason: "the preimage swap's outcome is unknown: \(error)"
+            )
+        }
+    }
+
+    /// Whether a failed `initiate_preimage_swap_v3` may still have been committed by the
+    /// coordinator. The statuses the operators give a request they refused before committing —
+    /// validation, authentication, a leaf or resource that is not available, a lock conflict —
+    /// rule it out. Anything else (a connection lost after the request went out, a deadline, a
+    /// cancelled task, an internal or unknown error) does not.
+    static func preimageSwapMayHaveCommitted(_ error: any Swift.Error) -> Bool {
+        guard let rpcError = error as? RPCError else { return true }
+        switch rpcError.code {
+        case .invalidArgument, .failedPrecondition, .outOfRange, .notFound, .alreadyExists,
+             .permissionDenied, .unauthenticated, .resourceExhausted, .aborted, .unimplemented:
+            return false
+        default:
+            return true
+        }
     }
 
     /// Step 4 of a Lightning send: ask the SSP to pay the invoice from the transfer the
