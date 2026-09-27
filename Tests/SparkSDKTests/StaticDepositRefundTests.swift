@@ -211,3 +211,55 @@ struct BlockExplorerTests {
         #expect(try RawTransaction.parse(raw).txidHex == txid)
     }
 }
+
+/// Without an output index, static-deposit calls use the output that pays the wallet's static
+/// deposit address, as the reference SDK's `getDepositTransactionVout` finds it.
+@Suite("Static deposit output detection")
+struct StaticDepositVoutTests {
+    static let staticAddress = "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0"
+    static let otherAddress = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+
+    static func transaction(paying addresses: [String]) throws -> RawTransaction {
+        RawTransaction(
+            version: 2,
+            inputs: [RawTransaction.Input(previousTxid: Data(repeating: 0x01, count: 32), previousIndex: 0)],
+            outputs: try addresses.map {
+                RawTransaction.Output(value: 1_000, scriptPubKey: try BitcoinAddress.scriptPubKey(for: $0, network: .mainnet))
+            },
+            locktime: 0, hasWitnessSerialization: false
+        )
+    }
+
+    @Test("The first output paying a static deposit address is used; none is an error")
+    func detection() throws {
+        let addresses = [Self.staticAddress]
+        #expect(try SparkWallet.staticDepositVout(
+            of: try Self.transaction(paying: [Self.otherAddress, Self.staticAddress]), paying: addresses, network: .mainnet
+        ) == 1)
+        #expect(try SparkWallet.staticDepositVout(
+            of: try Self.transaction(paying: [Self.staticAddress, Self.staticAddress]), paying: addresses, network: .mainnet
+        ) == 0)
+        #expect(throws: SparkError.self) {
+            let other = try Self.transaction(paying: [Self.otherAddress])
+            _ = try SparkWallet.staticDepositVout(of: other, paying: addresses, network: .mainnet)
+        }
+        #expect(throws: SparkError.self) {
+            _ = try SparkWallet.staticDepositVout(of: try Self.transaction(paying: [Self.staticAddress]), paying: [], network: .mainnet)
+        }
+    }
+
+    @Test("A past deposit to a test wallet's static address is found at the output the operators report",
+          .enabled(if: TestConfig.hasIntegrationCredentials), .timeLimit(.minutes(2)))
+    func detectsPastDeposit() async throws {
+        for mnemonic in [TestConfig.walletBMnemonic, TestConfig.walletAMnemonic] {
+            let wallet = try await makeWallet(mnemonic)
+            defer { Task { await wallet.close() } }
+            let address = try await wallet.getStaticDepositAddress().address
+            guard let utxo = try await wallet.getUtxosForDepositAddress(address: address, excludeClaimed: false).first else { continue }
+            #expect(try await wallet.staticDepositVout(txid: utxo.txid, outputIndex: nil) == utxo.vout)
+            print("static deposit \(utxo.txid):\(utxo.vout) found by its address")
+            return
+        }
+        Issue.record("neither test wallet has ever received a static deposit")
+    }
+}

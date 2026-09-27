@@ -37,6 +37,11 @@ migration note.
   renewable sats a drain leaves behind because the operators did not renew them.
 
 ### Changed
+- Static-deposit calls take `outputIndex: UInt32? = nil`: without an index,
+  `getDepositFeeEstimate`, `claimStaticDeposit`, `claimStaticDepositWithMaxFee`,
+  `refundStaticDeposit` and `refundAndBroadcastStaticDeposit` use the output that pays the
+  wallet's static deposit address, as the reference SDK does, instead of output 0. Calls that pass
+  an index are unchanged.
 - `claimStaticDeposit(transactionId:outputIndex:)` is deprecated: it signs whatever credit the SSP
   quotes. Use `claimStaticDepositWithMaxFee` or the `quote:` variant.
 - `subscribeToEvents()` streams until the caller stops iterating or the wallet is closed: it

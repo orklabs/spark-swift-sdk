@@ -197,36 +197,41 @@ extension SparkWallet {
     /// Claim a static deposit for whatever credit the SSP quotes, unchecked.
     /// - Parameters:
     ///   - transactionId: The on-chain tx id
-    ///   - outputIndex: The output index (vout)
+    ///   - outputIndex: The output index (vout); by default the output that pays this wallet's
+    ///     static deposit address.
     /// Returns the Spark transfer ID for the claimed deposit.
     @available(*, deprecated, message: """
         Signs whatever credit the SSP quotes. Use claimStaticDepositWithMaxFee, or \
         claimStaticDeposit(transactionId:outputIndex:quote:) with a quote you checked.
         """)
     @discardableResult
-    public func claimStaticDeposit(transactionId: String, outputIndex: UInt32 = 0) async throws -> String {
-        let quote = try await getDepositFeeEstimate(transactionId: transactionId, outputIndex: outputIndex)
-        return try await claimStaticDeposit(transactionId: transactionId, outputIndex: outputIndex, quote: quote)
+    public func claimStaticDeposit(transactionId: String, outputIndex: UInt32? = nil) async throws -> String {
+        let vout = try await staticDepositVout(txid: transactionId, outputIndex: outputIndex)
+        let quote = try await getDepositFeeEstimate(transactionId: transactionId, outputIndex: vout)
+        return try await claimStaticDeposit(transactionId: transactionId, outputIndex: vout, quote: quote)
     }
 
     /// Claim a static deposit for exactly the credit of `quote` — the SSP-signed quote
     /// `getDepositFeeEstimate` returned for this output — as the reference SDK's
     /// `claimStaticDeposit` does: the wallet signs a fixed-amount claim for that credit and the
-    /// SSP's quote signature, so the SSP cannot credit less.
+    /// SSP's quote signature, so the SSP cannot credit less. Without `outputIndex` the output that
+    /// pays this wallet's static deposit address is claimed.
     /// Returns the Spark transfer ID for the claimed deposit.
     @discardableResult
     public func claimStaticDeposit(
         transactionId: String,
-        outputIndex: UInt32 = 0,
+        outputIndex: UInt32? = nil,
         quote: DepositFeeEstimate
     ) async throws -> String {
-        let outpoint = try DepositOutpoint(txid: transactionId, vout: outputIndex)
         guard quote.creditAmountSats > 0 else {
             throw SparkError.invalidArgument("the quote credits \(quote.creditAmountSats) sats; nothing to claim")
         }
         guard let quoteSignature = Data(hexString: quote.quoteSignature), !quoteSignature.isEmpty else {
             throw SparkError.invalidResponse("the SSP's quote signature is not hex")
         }
+        let outpoint = try DepositOutpoint(
+            txid: transactionId, vout: try await staticDepositVout(txid: transactionId, outputIndex: outputIndex)
+        )
         let statement = Self.staticDepositStatement(
             outpoint, network: config.network, requestType: .fixed,
             creditAmountSats: UInt64(quote.creditAmountSats), authorization: quoteSignature
@@ -331,26 +336,25 @@ extension SparkWallet {
 
     /// Claim a static deposit, but only if the fee is at or below `maxFee` sats: the SSP's quote
     /// is checked against the deposit's value (from a transaction that hashes to the txid) and
-    /// then claimed exactly, as the reference SDK does.
+    /// then claimed exactly, as the reference SDK does. Without `outputIndex` the output that pays
+    /// this wallet's static deposit address is claimed.
     /// Returns nil if the fee exceeds the max.
     @discardableResult
     public func claimStaticDepositWithMaxFee(
         transactionId: String,
         maxFee: Int64,
-        outputIndex: UInt32 = 0
+        outputIndex: UInt32? = nil
     ) async throws -> String? {
-        let outpoint = try DepositOutpoint(txid: transactionId, vout: outputIndex)
-        let rawTx = try await fetchRawTransaction(txID: outpoint.txid)
-        guard try RawTransaction.parse(rawTx, context: "deposit tx").txid == outpoint.internalOrderTxid else {
-            throw SparkError.untrustedResponse("block explorer returned a transaction that does not hash to \(outpoint.txid)")
-        }
-        let depositSats = Int64(reportedSats: try Self.parseTxOutput(rawTx, vout: outputIndex).value)
+        let depositTx = try await fetchDepositTransaction(txid: transactionId)
+        let vout = try await staticDepositVout(txid: transactionId, outputIndex: outputIndex, transaction: depositTx)
+        let outpoint = try DepositOutpoint(txid: transactionId, vout: vout)
+        let depositSats = Int64(reportedSats: try depositTx.output(at: vout).value)
 
-        let quote = try await getDepositFeeEstimate(transactionId: outpoint.txid, outputIndex: outputIndex)
+        let quote = try await getDepositFeeEstimate(transactionId: outpoint.txid, outputIndex: vout)
         guard Self.staticDepositFee(depositSats: depositSats, quote: quote) <= maxFee else {
             return nil
         }
-        return try await claimStaticDeposit(transactionId: outpoint.txid, outputIndex: outputIndex, quote: quote)
+        return try await claimStaticDeposit(transactionId: outpoint.txid, outputIndex: vout, quote: quote)
     }
 
     /// What the SSP keeps of a deposit under `quote`.
@@ -359,12 +363,17 @@ extension SparkWallet {
     }
 
     /// Get fee quote for claiming a static deposit (how much will be credited after fees).
-    public func getDepositFeeEstimate(transactionId: String, outputIndex: UInt32 = 0) async throws -> DepositFeeEstimate {
+    /// Without `outputIndex` the quote is for the output that pays this wallet's static deposit
+    /// address.
+    public func getDepositFeeEstimate(transactionId: String, outputIndex: UInt32? = nil) async throws -> DepositFeeEstimate {
+        let outpoint = try DepositOutpoint(
+            txid: transactionId, vout: try await staticDepositVout(txid: transactionId, outputIndex: outputIndex)
+        )
         let response = try await sspClient.executeRaw(
             query: GraphQLQueries.staticDepositQuote,
             variables: [
-                "transaction_id": transactionId,
-                "output_index": Int(outputIndex),
+                "transaction_id": outpoint.txid,
+                "output_index": Int(outpoint.vout),
                 "network": config.networkGraphQL,
             ] as [String: any Sendable]
         )
@@ -381,13 +390,14 @@ extension SparkWallet {
     /// Refund a static deposit back on-chain. Returns the signed transaction hex.
     /// - Parameters:
     ///   - depositTransactionId: The on-chain tx id of the deposit
-    ///   - outputIndex: The output index (vout)
+    ///   - outputIndex: The output index (vout); by default the output that pays this wallet's
+    ///     static deposit address
     ///   - destinationAddress: Bitcoin address to send refund to
     ///   - satsPerVbyte: Fee rate (max 150)
     /// - Returns: Signed transaction hex ready for broadcast
     public func refundStaticDeposit(
         depositTransactionId: String,
-        outputIndex: UInt32 = 0,
+        outputIndex: UInt32? = nil,
         destinationAddress: String,
         satsPerVbyte: UInt64
     ) async throws -> String {
@@ -402,16 +412,15 @@ extension SparkWallet {
             throw SparkError.invalidResponse("Fee must be at least 194 sats")
         }
 
-        let outpoint = try DepositOutpoint(txid: depositTransactionId, vout: outputIndex)
+        // The deposit output, from a transaction that hashes to the txid.
+        let depositTx = try await fetchDepositTransaction(txid: depositTransactionId)
+        let outpoint = try DepositOutpoint(
+            txid: depositTransactionId,
+            vout: try await staticDepositVout(txid: depositTransactionId, outputIndex: outputIndex, transaction: depositTx)
+        )
+        let depositOutput = try depositTx.output(at: outpoint.vout)
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
-
-        // The deposit output, from a transaction that hashes to the txid.
-        let rawDepositTx = try await fetchRawTransaction(txID: outpoint.txid)
-        guard try RawTransaction.parse(rawDepositTx, context: "deposit tx").txid == outpoint.internalOrderTxid else {
-            throw SparkError.untrustedResponse("block explorer returned a transaction that does not hash to \(outpoint.txid)")
-        }
-        let depositOutput = try Self.parseTxOutput(rawDepositTx, vout: outputIndex)
         let totalAmount = depositOutput.value
         let creditAmountSats = Int64(reportedSats: totalAmount) - Int64(fee)
         guard creditAmountSats > 0 else {
@@ -430,7 +439,7 @@ extension SparkWallet {
         let sighash = try computeMultiInputSighashUniffi(
             tx: spendTx,
             inputIndex: 0,
-            prevOutScripts: [depositOutput.script],
+            prevOutScripts: [depositOutput.scriptPubKey],
             prevOutValues: [depositOutput.value]
         )
 
@@ -531,7 +540,7 @@ extension SparkWallet {
     /// Refund a static deposit and broadcast it. Returns the txid.
     public func refundAndBroadcastStaticDeposit(
         depositTransactionId: String,
-        outputIndex: UInt32 = 0,
+        outputIndex: UInt32? = nil,
         destinationAddress: String,
         satsPerVbyte: UInt64
     ) async throws -> String {
@@ -545,6 +554,41 @@ extension SparkWallet {
     }
 
     // MARK: - Internal helpers
+
+    /// A deposit transaction from the block explorer, checked to hash to `txid`.
+    func fetchDepositTransaction(txid: String) async throws -> RawTransaction {
+        let normalized = try DepositOutpoint.normalizedTxid(txid)
+        let tx = try RawTransaction.parse(try await fetchRawTransaction(txID: normalized), context: "deposit tx")
+        guard tx.txidHex == normalized else {
+            throw SparkError.untrustedResponse("block explorer returned a transaction that does not hash to \(normalized)")
+        }
+        return tx
+    }
+
+    /// `outputIndex`, or else the output of deposit `txid` that pays this wallet's static deposit
+    /// address, as the reference SDK's `getDepositTransactionVout` finds it.
+    func staticDepositVout(txid: String, outputIndex: UInt32?, transaction: RawTransaction? = nil) async throws -> UInt32 {
+        if let outputIndex {
+            return outputIndex
+        }
+        let tx: RawTransaction
+        if let transaction {
+            tx = transaction
+        } else {
+            tx = try await fetchDepositTransaction(txid: txid)
+        }
+        let addresses = try await queryStaticDepositAddresses().map(\.address)
+        return try Self.staticDepositVout(of: tx, paying: addresses, network: config.network)
+    }
+
+    /// The first output of `tx` paying one of `addresses`.
+    static func staticDepositVout(of tx: RawTransaction, paying addresses: [String], network: SparkNetwork) throws -> UInt32 {
+        let scripts = Set(addresses.compactMap { try? BitcoinAddress.scriptPubKey(for: $0, network: network) })
+        guard let index = tx.outputs.firstIndex(where: { scripts.contains($0.scriptPubKey) }) else {
+            throw SparkError.invalidArgument("transaction \(tx.txidHex) does not pay this wallet's static deposit address")
+        }
+        return UInt32(index)
+    }
 
     /// Parse a display-order (big-endian hex) txid into the internal byte order used on the wire.
     static func txidBytes(fromDisplayHex hex: String) throws -> Data {
