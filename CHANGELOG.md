@@ -21,6 +21,11 @@ migration note.
   operators' proof of possession, every operator's signature over the address (the
   coordinator's too for static addresses) against the configured keys, and that the address pays
   the verifying key, and throw `SparkError.untrustedResponse` otherwise.
+- `createLightningInvoice` refuses an SSP-created invoice that carries a Spark fallback — a
+  Spark identity in the sentinel route hint (`f42400f424000001`) or a Spark invoice in a
+  version-31 fallback field — which the wallet never asks for. A malicious SSP could otherwise
+  name its own identity there, and payers that prefer paying over Spark would pay the SSP instead
+  of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Added
 - `claimPendingTransfers()`: claims every pending inbound transfer and returns the claimed
@@ -35,13 +40,6 @@ migration note.
   and their counter-transfers until claimed). Sent sats leave `owned` as soon as the transfer is
   committed instead of when the receiver claims it, and `getBalance`/`getLeaves` query only
   AVAILABLE nodes.
-
-### Security
-- `createLightningInvoice` refuses an SSP-created invoice that carries a Spark fallback — a
-  Spark identity in the sentinel route hint (`f42400f424000001`) or a Spark invoice in a
-  version-31 fallback field — which the wallet never asks for. A malicious SSP could otherwise
-  name its own identity there, and payers that prefer paying over Spark would pay the SSP instead
-  of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Fixed
 - A Lightning send's preimage swap always carries an idempotency key — the caller's
