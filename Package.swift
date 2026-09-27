@@ -40,7 +40,9 @@ let package = Package(
                 .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
                 .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
             ],
-            path: "Tests/SparkSDKTests"
+            path: "Tests/SparkSDKTests",
+            // The operators' cross-language hash vectors (see ProtoHashTests).
+            resources: [.copy("Vectors")]
         ),
     ]
 )

@@ -138,6 +138,10 @@ protoc \
 If you change a `.proto` and submit it for review, please also commit the regenerated
 `.swift` files in the same PR.
 
+`Tests/SparkSDKTests/Vectors/` holds the operators' cross-language hash vectors
+(`spark/testdata/*.json` at the same commit), which `ProtoHashTests` checks the Swift protohash
+against. Copy them again, unchanged, whenever the protos are re-vendored.
+
 ## Rebuilding the FROST xcframework
 
 The bundled `Frameworks/spark_frostFFI.xcframework` is built from the `spark-frost` Rust
