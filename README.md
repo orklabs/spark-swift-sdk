@@ -83,7 +83,7 @@ Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/orklabs/spark-swift-sdk.git", from: "0.3.0"),
+    .package(url: "https://github.com/orklabs/spark-swift-sdk.git", from: "0.3.1"),
 ],
 targets: [
     .target(

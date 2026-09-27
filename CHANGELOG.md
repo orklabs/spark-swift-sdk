@@ -13,6 +13,12 @@ migration note.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.3.1] — 2026-09-27
+
 ### Fixed
 - `start()` accepts event streams again after `close()`. Since 0.3.0 `close()` ends the wallet's
   event streams and refuses new ones, and nothing lifted that, so an app that cycles the wallet
@@ -470,7 +476,8 @@ Initial public release.
 - FROST threshold signing via `spark_frostFFI.xcframework` (Rust UniFFI).
 - Test suite: BIP-39 vectors, key derivation, token validation, full integration coverage.
 
-[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/orklabs/spark-swift-sdk/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/orklabs/spark-swift-sdk/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/orklabs/spark-swift-sdk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/orklabs/spark-swift-sdk/compare/v0.1.0...v0.2.0
