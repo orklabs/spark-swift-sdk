@@ -64,11 +64,10 @@ struct TokenTransactionValidationTests {
         return k
     }
 
-    @Test("An honest final transaction passes, with and without keyshare info")
+    @Test("An honest final transaction passes")
     func acceptsHonestFinal() throws {
         let partial = partialTransfer()
         let final = finalize(partial)
-        try TokenTransactionValidator.validate(final: final, partial: partial, keyshareInfo: nil, expectations: expectations)
         try TokenTransactionValidator.validate(final: final, partial: partial, keyshareInfo: keyshare(), expectations: expectations)
 
         // Mint and create transactions too.
@@ -78,7 +77,7 @@ struct TokenTransactionValidationTests {
         var mint = partial
         mint.tokenInputs = .mintInput(mintInput)
         mint.tokenOutputs = [output(owner: owner, amount: 1_000)]
-        try TokenTransactionValidator.validate(final: finalize(mint), partial: mint, keyshareInfo: nil, expectations: expectations)
+        try TokenTransactionValidator.validate(final: finalize(mint), partial: mint, keyshareInfo: keyshare(), expectations: expectations)
 
         var createInput = SparkToken_TokenCreateInput()
         createInput.issuerPublicKey = owner
@@ -95,7 +94,7 @@ struct TokenTransactionValidationTests {
             ci.creationEntityPublicKey = Data([0x02]) + Data(repeating: 0x77, count: 32)   // server-set
             finalCreate.tokenInputs = .createInput(ci)
         }
-        try TokenTransactionValidator.validate(final: finalCreate, partial: create, keyshareInfo: nil, expectations: expectations)
+        try TokenTransactionValidator.validate(final: finalCreate, partial: create, keyshareInfo: keyshare(), expectations: expectations)
     }
 
     @Test("Every tampered field is refused")
@@ -107,7 +106,7 @@ struct TokenTransactionValidationTests {
             var final = honest
             mutate(&final)
             #expect(throws: SparkError.self, Comment(rawValue: label)) {
-                try TokenTransactionValidator.validate(final: final, partial: partial, keyshareInfo: nil, expectations: expectations)
+                try TokenTransactionValidator.validate(final: final, partial: partial, keyshareInfo: keyshare(), expectations: expectations)
             }
         }
 
@@ -142,10 +141,21 @@ struct TokenTransactionValidationTests {
             mintInput.tokenIdentifier = self.tokenId
             $0.tokenInputs = .mintInput(mintInput)
         }
+        expectRejected("client timestamp moved a millisecond") { $0.clientCreatedTimestamp.nanos += 1_000_000 }
+        expectRejected("client timestamp removed") { $0.clearClientCreatedTimestamp() }
         expectRejected("invoice attachment added") {
             var attachment = SparkToken_InvoiceAttachment()
             attachment.sparkInvoice = "spark1..."
             $0.invoiceAttachments = [attachment]
+        }
+    }
+
+    @Test("A start answer without keyshare info is refused, as the reference SDK refuses it")
+    func keyshareRequired() {
+        let partial = partialTransfer()
+        let final = finalize(partial)
+        #expect(throws: SparkError.self) {
+            try TokenTransactionValidator.validate(final: final, partial: partial, keyshareInfo: nil, expectations: expectations)
         }
     }
 

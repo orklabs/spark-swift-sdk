@@ -14,6 +14,10 @@ migration note.
 ## [Unreleased]
 
 ### Security
+- Token commits check the coordinator's final transaction as the reference SDK does. It must
+  carry the wallet's client timestamp (to the millisecond, which the transaction hash covers)
+  and keyshare info naming the configured operators. The keyshare checks used to be skipped when
+  the coordinator left the info out, and the timestamp was not compared.
 - A custom `sspURL` no longer sends the SSP's side of Lightning payments, leaf swaps and
   cooperative exits to Lightspark's SSP key. The SSP identity key was fixed per network whatever
   `sspURL` said, so those transfers named Lightspark's SSP while another SSP was asked to act on

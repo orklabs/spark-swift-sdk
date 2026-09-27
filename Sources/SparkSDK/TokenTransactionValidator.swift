@@ -1,10 +1,12 @@
 import Foundation
+import SwiftProtobuf
 
 /// Checks that the "final" token transaction the coordinator returns from `start_transaction` is
 /// the transaction the wallet submitted, plus only the server-set fields it is allowed to add
-/// (output ids, revocation commitments, withdraw bond and locktime, expiry). Mirrors the reference
-/// SDK's `validateTokenTransaction`. Runs before the wallet signs the final hash for every
-/// operator, so a coordinator cannot redirect or resize token outputs.
+/// (output ids, revocation commitments, withdraw bond and locktime, expiry), and that its keyshare
+/// info names the configured operators. Mirrors the reference SDK's `validateTokenTransaction`.
+/// Runs before the wallet signs the final hash for every operator, so a coordinator cannot
+/// redirect or resize token outputs.
 enum TokenTransactionValidator {
 
     struct Expectations {
@@ -30,6 +32,11 @@ enum TokenTransactionValidator {
         guard final.version == partial.version else { throw fail("version changed") }
         guard final.network == partial.network else { throw fail("network changed") }
         guard final.invoiceAttachments == partial.invoiceAttachments else { throw fail("invoice attachments changed") }
+        // To the millisecond, the precision the transaction hash covers.
+        guard final.hasClientCreatedTimestamp, partial.hasClientCreatedTimestamp,
+              milliseconds(final.clientCreatedTimestamp) == milliseconds(partial.clientCreatedTimestamp) else {
+            throw fail("client created timestamp changed")
+        }
 
         let expectedKeys = Set(expectations.operatorIdentityPublicKeys)
         guard Set(final.sparkOperatorIdentityPublicKeys) == expectedKeys,
@@ -40,9 +47,13 @@ enum TokenTransactionValidator {
 
         try validateInputs(final: final, partial: partial, fail: fail)
         try validateOutputs(final: final, partial: partial, expectations: expectations, fail: fail)
-        if let keyshareInfo {
-            try validateKeyshare(keyshareInfo, expectations: expectations, fail: fail)
-        }
+        // The operators always send it, and the reference SDK refuses an answer without it.
+        guard let keyshareInfo else { throw fail("keyshare info missing") }
+        try validateKeyshare(keyshareInfo, expectations: expectations, fail: fail)
+    }
+
+    private static func milliseconds(_ timestamp: Google_Protobuf_Timestamp) -> Int64 {
+        timestamp.seconds * 1_000 + Int64(timestamp.nanos / 1_000_000)
     }
 
     private static func validateInputs(
