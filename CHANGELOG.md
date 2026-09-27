@@ -37,6 +37,10 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Amountless Lightning invoices can be paid. The SSP's `request_lightning_send` needs
+  `amount_sats` for an invoice without an amount (and only then), and the SDK never sent it,
+  although it had already quoted the fee for the caller's amount and locked the leaves with the
+  operators — the leaves then stayed locked until the transfer expired.
 - Legacy deposit-root leaves whose node transaction has a final (timelock-disabled) sequence can
   be renewed. The operators renew them like zero-timelock nodes; the SDK read the final sequence
   as timelock 65535, went looking for a parent the root does not have, and failed.

@@ -110,6 +110,30 @@ struct HardeningIntegrationTests {
         print("receiver \(receiverBefore.satsBalance.owned) -> \(receiverAfter.satsBalance.owned), sender \(senderBefore.satsBalance.owned) -> \(senderAfter.satsBalance.owned)")
     }
 
+    @Test("An amountless Lightning invoice is paid with the caller's amount", .timeLimit(.minutes(5)))
+    func amountlessLightningInvoice() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let amount: Int64 = 12
+        let invoice = try await pair.receiver.createLightningInvoice(amountSats: 0, memo: "amountless invoice test")
+        #expect(try Bolt11Invoice.decode(invoice.paymentRequest).amountMsat == nil)
+        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest, amountSats: amount)
+        guard pair.senderSpendable >= amount + max(fee, 1) + 5 else {
+            Issue.record(Comment(rawValue: "sender needs \(amount + max(fee, 1) + 5) spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverBefore = try await pair.receiver.getBalance().satsBalance
+        let requestId = try await pair.sender.payLightningInvoice(
+            paymentRequest: invoice.paymentRequest, maxFeeSats: max(fee, 1) + 5, amountSats: amount
+        )
+        print("[\(pair.senderLabel)] paid an amountless invoice with \(amount) sats (fee estimate \(fee)): \(requestId)")
+        try await Task.sleep(for: .seconds(5))
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverAfter = try await pair.receiver.getBalance().satsBalance
+        #expect(receiverAfter.owned >= receiverBefore.owned + amount)
+    }
+
     @Test("A fee cap below the SSP estimate is refused before any leaf is locked", .timeLimit(.minutes(3)))
     func feeCapRefusal() async throws {
         let pair = try await Self.makePair()

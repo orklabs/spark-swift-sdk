@@ -300,16 +300,12 @@ extension SparkWallet {
 
         // ── Step 5: SSP call with transfer external ID ──
 
-        // SSP accepts either idempotency_key or user_outbound_transfer_external_id, not both.
-        // When an idempotency key is provided, use it; otherwise use the transfer external ID.
-        var sspVariables: [String: any Sendable] = [
-            "encoded_invoice": paymentRequest,
-        ]
-        if let idempotencyKey {
-            sspVariables["idempotency_key"] = idempotencyKey
-        } else {
-            sspVariables["user_outbound_transfer_external_id"] = swapResponse.transfer.id
-        }
+        let sspVariables = Self.lightningSendVariables(
+            encodedInvoice: paymentRequest,
+            amountlessInvoiceAmountSats: invoice.amountMsat == nil ? invoiceAmountSats : nil,
+            idempotencyKey: idempotencyKey,
+            transferId: swapResponse.transfer.id
+        )
 
         // From here on the coordinator holds the leaves for this transfer. Surface the transfer
         // id on failure so the app can resume (same `transferId`) or reconcile via the SSP.
@@ -334,6 +330,28 @@ extension SparkWallet {
         }
 
         return id
+    }
+
+    /// Variables of the SSP's `request_lightning_send`. `amount_sats` is set for an amountless
+    /// invoice only — the SSP schema says it "should ONLY be set when the invoice amount is zero",
+    /// and without it the SSP cannot pay one (reference SDK, CHANGELOG 0.7.6). The SSP accepts
+    /// either `idempotency_key` or `user_outbound_transfer_external_id`, not both.
+    static func lightningSendVariables(
+        encodedInvoice: String,
+        amountlessInvoiceAmountSats: Int64?,
+        idempotencyKey: String?,
+        transferId: String
+    ) -> [String: any Sendable] {
+        var variables: [String: any Sendable] = ["encoded_invoice": encodedInvoice]
+        if let amountlessInvoiceAmountSats {
+            variables["amount_sats"] = amountlessInvoiceAmountSats
+        }
+        if let idempotencyKey {
+            variables["idempotency_key"] = idempotencyKey
+        } else {
+            variables["user_outbound_transfer_external_id"] = transferId
+        }
+        return variables
     }
 
     /// HTLC refund signing jobs (cpfp, direct, directFromCpfp) for a lightning send, one set per leaf.

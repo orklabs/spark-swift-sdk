@@ -203,6 +203,27 @@ struct LightningValidatorTests {
         }
     }
 
+    @Test("The SSP gets amount_sats for an amountless invoice only, and one of idempotency key or transfer id")
+    func lightningSendVariables() {
+        let amountless = SparkWallet.lightningSendVariables(
+            encodedInvoice: "lnbc1...", amountlessInvoiceAmountSats: 1_000, idempotencyKey: nil, transferId: "t"
+        )
+        #expect(amountless["amount_sats"] as? Int64 == 1_000)
+        #expect(amountless["user_outbound_transfer_external_id"] as? String == "t")
+        #expect(amountless["idempotency_key"] == nil)
+
+        let fixed = SparkWallet.lightningSendVariables(
+            encodedInvoice: "lnbc10n1...", amountlessInvoiceAmountSats: nil, idempotencyKey: "key", transferId: "t"
+        )
+        #expect(fixed["amount_sats"] == nil)
+        #expect(fixed["idempotency_key"] as? String == "key")
+        #expect(fixed["user_outbound_transfer_external_id"] == nil)
+
+        // The mutation declares the variable and passes it to the input (RequestLightningSendInput).
+        #expect(GraphQLMutations.requestLightningSend.contains("$amount_sats: Long"))
+        #expect(GraphQLMutations.requestLightningSend.contains("amount_sats: $amount_sats"))
+    }
+
     @Test("Resumable transfer ids must be UUIDs and are normalised to lower case")
     func transferIds() throws {
         #expect(try LightningValidator.normalizeTransferId(nil) == nil)
