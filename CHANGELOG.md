@@ -64,6 +64,13 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- The SDK keeps time by the operators' clock, as the reference SDK does. Session-token expiry
+  (the operators' time) was compared with the device clock, so a device clock running ahead
+  re-authenticated on every call once the skew passed the token lifetime, and one running behind
+  kept using expired tokens; token transactions were stamped with the device clock, which the
+  operators refuse outside the transaction's validity window. The operators' clock is now
+  estimated from the `date` and `x-processing-time-ms` headers of their answers and advanced on the
+  monotonic clock.
 - Leaf renewals carry an idempotency key, the txid of the refund transaction being replaced, as
   in the reference SDK. The transport retries `renew_leaf` on UNAVAILABLE, and a retry of a
   renewal the operators had already applied failed, reporting a renewed leaf as not renewed.

@@ -12,6 +12,12 @@ actor SparkAuthenticator {
 
     private var tokenCache: [String: CachedToken] = [:]
     private static let refreshBuffer: TimeInterval = 60
+    /// Token expiry is the operators' time, so it is compared with their clock, not the device's.
+    private let clock: ServerClock
+
+    init(clock: ServerClock = ServerClock()) {
+        self.clock = clock
+    }
 
     func getToken(
         connectionManager: GrpcConnectionManager,
@@ -21,7 +27,7 @@ actor SparkAuthenticator {
         let cacheKey = "\(soAddress):\(signer.identityPublicKey.hexString)"
 
         if let cached = tokenCache[cacheKey],
-           cached.expiresAt > Date().addingTimeInterval(Self.refreshBuffer) {
+           cached.expiresAt > clock.now().addingTimeInterval(Self.refreshBuffer) {
             return cached.token
         }
 

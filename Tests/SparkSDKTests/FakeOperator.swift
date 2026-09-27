@@ -30,6 +30,8 @@ actor FakeOperatorState {
 
     let rejection: Rejection
     private(set) var subscription: Subscription = .end
+    /// How far the operator's clock is from the device's; its answers carry its `date`.
+    private(set) var clockOffset: TimeInterval = 0
     /// What `generate_deposit_address` and `generate_static_deposit_address` hand out.
     let depositAddress: Spark_Address
     private let rejects: @Sendable (_ token: String) -> Bool
@@ -64,6 +66,23 @@ actor FakeOperatorState {
         let token = "session-\(issuedTokens.count + 1)"
         issuedTokens.append(token)
         return token
+    }
+
+    func setClockOffset(_ offset: TimeInterval) {
+        clockOffset = offset
+    }
+
+    /// The operator's current time, as its date header and token expiries state it.
+    var now: Date {
+        Date().addingTimeInterval(clockOffset)
+    }
+
+    /// The headers the operators' `TimestampHeaderInterceptor` adds to every successful answer.
+    var timeHeaders: Metadata {
+        var metadata = Metadata()
+        metadata.addString(ServerClock.dateFormatter.string(from: now), forKey: "date")
+        metadata.addString("1", forKey: "x-processing-time-ms")
+        return metadata
     }
 
     func setSubscription(_ subscription: Subscription) {
@@ -128,11 +147,11 @@ struct FakeOperator: RegistrableRPCService {
             forMethod: SparkAuthn_SparkAuthnService.Method.get_challenge.descriptor,
             deserializer: ProtobufDeserializer<SparkAuthn_GetChallengeRequest>(),
             serializer: ProtobufSerializer<SparkAuthn_GetChallengeResponse>()
-        ) { _, _ in
+        ) { [state] _, _ in
             var response = SparkAuthn_GetChallengeResponse()
             response.protectedChallenge.challenge.nonce = Data(repeating: 7, count: 32)
-            response.protectedChallenge.challenge.timestamp = Int64(Date().timeIntervalSince1970)
-            return StreamingServerResponse(single: ServerResponse(message: response))
+            response.protectedChallenge.challenge.timestamp = Int64(await state.now.timeIntervalSince1970)
+            return StreamingServerResponse(single: ServerResponse(message: response, metadata: await state.timeHeaders))
         }
         router.registerHandler(
             forMethod: SparkAuthn_SparkAuthnService.Method.verify_challenge.descriptor,
@@ -141,8 +160,8 @@ struct FakeOperator: RegistrableRPCService {
         ) { [state] _, _ in
             var response = SparkAuthn_VerifyChallengeResponse()
             response.sessionToken = await state.issueToken()
-            response.expirationTimestamp = Int64(Date().addingTimeInterval(3_600).timeIntervalSince1970)
-            return StreamingServerResponse(single: ServerResponse(message: response))
+            response.expirationTimestamp = Int64(await state.now.addingTimeInterval(3_600).timeIntervalSince1970)
+            return StreamingServerResponse(single: ServerResponse(message: response, metadata: await state.timeHeaders))
         }
     }
 
@@ -159,7 +178,7 @@ struct FakeOperator: RegistrableRPCService {
             var response = Spark_QueryNodesResponse()
             response.nodes = await state.nodesPage(limit: query.limit, offset: query.offset)
             response.offset = -1
-            return StreamingServerResponse(single: ServerResponse(message: response))
+            return StreamingServerResponse(single: ServerResponse(message: response, metadata: await state.timeHeaders))
         }
         router.registerHandler(
             forMethod: Spark_SparkService.Method.generate_deposit_address.descriptor,

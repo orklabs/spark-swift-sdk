@@ -661,8 +661,10 @@ extension SparkWallet {
 
     // MARK: - Internal: Timestamp
 
+    /// Now on the operators' clock: they refuse a client timestamp outside the transaction's
+    /// validity window measured on theirs (the reference SDK stamps server time too).
     private func currentTimestamp() -> Google_Protobuf_Timestamp {
-        var ts = Google_Protobuf_Timestamp(date: Date())
+        var ts = Google_Protobuf_Timestamp(date: serverClock.now())
         ts.nanos = (ts.nanos / 1000) * 1000
         return ts
     }

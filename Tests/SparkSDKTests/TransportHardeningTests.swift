@@ -122,4 +122,53 @@ struct TransportHardeningTests {
         #expect(!SspGraphQLClient.isAuthFailure(.graphqlError("Insufficient funds for coop exit")))
         #expect(!SspGraphQLClient.isAuthFailure(.invalidResponse("Invalid fee estimate response")))
     }
+
+    @Test("The operators' clock is estimated from their date and processing-time headers")
+    func serverClock() throws {
+        let clock = ServerClock()
+        #expect(!clock.isSynced)
+        #expect(abs(clock.now().timeIntervalSinceNow) < 1)
+        // Garbage headers are ignored.
+        clock.record(date: "yesterday", processingTime: "1", sent: .now, received: .now)
+        clock.record(date: "Mon, 02 Jan 2006 15:04:05 UTC", processingTime: "-5", sent: .now, received: .now)
+        #expect(!clock.isSynced)
+
+        // Answered 200 ms after sending, 100 ms of it processing: 50 ms each way.
+        let received = ContinuousClock.now
+        clock.record(
+            date: "Mon, 02 Jan 2006 15:04:05 UTC", processingTime: "100",
+            sent: received - .milliseconds(200), received: received
+        )
+        #expect(clock.isSynced)
+        let stated = try #require(ServerClock.dateFormatter.date(from: "Mon, 02 Jan 2006 15:04:05 UTC"))
+        #expect(stated == Date(timeIntervalSince1970: 1_136_214_245))
+        let offset = clock.now().timeIntervalSince(stated)
+        #expect(offset >= 0.05 && offset < 1.05)
+    }
+
+    @Test("Session tokens are kept by the operator's clock: a device clock two hours ahead does not re-authenticate every call",
+          .timeLimit(.minutes(1)))
+    func skewedDeviceClock() async throws {
+        let state = FakeOperatorState { _ in false }
+        await state.setClockOffset(-2 * 3_600)
+        try await withFakeOperator(state) { wallet in
+            for _ in 0..<3 {
+                _ = try await wallet.getLeaves()
+            }
+            #expect(abs(wallet.serverClock.now().timeIntervalSinceNow + 2 * 3_600) < 5)
+        }
+        #expect(await state.issuedTokens == ["session-1"])
+    }
+
+    @Test("On mainnet the operators' answers set the clock, close to this machine's",
+          .enabled(if: TestConfig.hasIntegrationCredentials), .timeLimit(.minutes(1)))
+    func mainnetServerClock() async throws {
+        let wallet = try await makeWallet(TestConfig.walletBMnemonic)
+        defer { Task { await wallet.close() } }
+        _ = try await wallet.getLeaves()
+        #expect(wallet.serverClock.isSynced)
+        let skew = wallet.serverClock.now().timeIntervalSinceNow
+        #expect(abs(skew) < 10)
+        print("operators' clock is \(String(format: "%.2f", skew)) s from this machine's")
+    }
 }

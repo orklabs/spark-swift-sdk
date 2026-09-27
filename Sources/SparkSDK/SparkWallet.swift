@@ -13,6 +13,8 @@ public final class SparkWallet: Sendable {
     let claimLock = AsyncSerialLock()
     /// Running event streams, stopped by `close()`.
     let eventStreams = EventStreamRegistry()
+    /// The operators' clock, estimated from their answers (see `ServerClock`).
+    let serverClock: ServerClock
 
     public var identityPublicKeyHex: String {
         signer.identityPublicKey.hexString
@@ -31,14 +33,16 @@ public final class SparkWallet: Sendable {
     ///     Defaults to `true`; pass `false` only for phrases known to be non-standard.
     public init(config: SparkConfig = SparkConfig(), mnemonic: String, account: Int? = nil, validateMnemonic: Bool = true) throws {
         self.config = config
+        self.serverClock = ServerClock()
         let resolvedAccount = account ?? (config.network == .mainnet ? 1 : 0)
         self.signer = try SparkSigner(mnemonic: mnemonic, account: resolvedAccount, validateMnemonic: validateMnemonic)
         (self.connectionManager, self.authenticator, self.sspClient) =
-            Self.makeComponents(config: config, signer: self.signer)
+            Self.makeComponents(config: config, signer: self.signer, serverClock: self.serverClock)
     }
 
     /// Initialize from pre-derived account key material (64 bytes: key + chain code).
     public init(config: SparkConfig = SparkConfig(), accountKey: Data) throws {
+        self.serverClock = ServerClock()
         guard accountKey.count == 64 else {
             throw SparkError.keyDerivationFailed
         }
@@ -47,7 +51,7 @@ public final class SparkWallet: Sendable {
         self.config = config
         self.signer = try SparkSigner(accountKey: Data(key), accountChainCode: Data(chainCode))
         (self.connectionManager, self.authenticator, self.sspClient) =
-            Self.makeComponents(config: config, signer: self.signer)
+            Self.makeComponents(config: config, signer: self.signer, serverClock: self.serverClock)
     }
 
     /// Export account key material for caching (64 bytes). Only available when the wallet was
@@ -60,17 +64,19 @@ public final class SparkWallet: Sendable {
     }
 
     public init(config: SparkConfig = SparkConfig(), signer: SparkSignerProtocol) {
+        self.serverClock = ServerClock()
         self.config = config
         self.signer = signer
         (self.connectionManager, self.authenticator, self.sspClient) =
-            Self.makeComponents(config: config, signer: signer)
+            Self.makeComponents(config: config, signer: signer, serverClock: self.serverClock)
     }
 
     private static func makeComponents(
         config: SparkConfig,
-        signer: SparkSignerProtocol
+        signer: SparkSignerProtocol,
+        serverClock: ServerClock
     ) -> (GrpcConnectionManager, SparkAuthenticator, SspGraphQLClient) {
-        let authenticator = SparkAuthenticator()
+        let authenticator = SparkAuthenticator(clock: serverClock)
         // Every operator client sends each attempt with the operator's current token and drops a
         // token the operator rejects (the official SDK's auth middleware); the transport's retry
         // policy then re-issues the call with a fresh one. The manager is captured weakly: the
@@ -79,7 +85,7 @@ public final class SparkWallet: Sendable {
         let connectionManager = GrpcConnectionManager(
             addresses: config.signingOperatorAddresses,
             interceptorFactory: { address in
-                [AuthRetryInterceptor(
+                let auth = AuthRetryInterceptor(
                     currentToken: {
                         guard let manager = managerRef.manager else {
                             throw SparkError.grpcError("Connection manager released")
@@ -91,7 +97,9 @@ public final class SparkWallet: Sendable {
                     invalidate: { token in
                         await authenticator.invalidate(soAddress: address, signer: signer, token: token)
                     }
-                )]
+                )
+                // Innermost, the clock measures only the operator's round trip.
+                return [auth, ServerTimeInterceptor(clock: serverClock)]
             }
         )
         managerRef.manager = connectionManager
