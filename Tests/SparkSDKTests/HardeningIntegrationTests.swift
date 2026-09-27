@@ -71,92 +71,6 @@ struct HardeningIntegrationTests {
         print("receiver \(receiverBefore.satsBalance.owned) -> \(receiverAfter.satsBalance.owned), sender \(senderBefore.satsBalance.owned) -> \(senderAfter.satsBalance.owned)")
     }
 
-    @Test("Lightning payment of a verified invoice under a fee cap, then claim", .timeLimit(.minutes(5)))
-    func lightningRoundTrip() async throws {
-        let pair = try await Self.makePair()
-        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
-        let amount: Int64 = 10
-        let invoice = try await pair.receiver.createLightningInvoice(amountSats: amount, memo: "hardening test")
-        #expect(invoice.amountSats == amount)
-        let decoded = try Bolt11Invoice.decode(invoice.paymentRequest)
-        #expect(decoded.paymentHash.hexString == invoice.paymentHash)
-        #expect(decoded.amountMsat == UInt64(amount) * 1000)
-        #expect(decoded.network == .mainnet)
-
-        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest)
-        print("[\(pair.senderLabel)] fee estimate \(fee) sats for \(amount) sats")
-        guard pair.senderSpendable >= amount + max(fee, 1) + 5 else {
-            Issue.record(Comment(rawValue: "sender needs \(amount + max(fee, 1) + 5) spendable sats, has \(pair.senderSpendable)"))
-            return
-        }
-        let receiverBefore = try await pair.receiver.getBalance()
-        let senderBefore = try await pair.sender.getBalance()
-
-        let requestId = try await pair.sender.payLightningInvoice(
-            paymentRequest: invoice.paymentRequest, maxFeeSats: max(fee, 1) + 5
-        )
-        #expect(!requestId.isEmpty)
-        print("lightning send request \(requestId)")
-
-        try await Task.sleep(for: .seconds(5))
-        let claimed = try await pair.receiver.claimAllPendingTransfers()
-        print("receiver claimed \(claimed) transfer(s)")
-
-        let receiverAfter = try await pair.receiver.getBalance()
-        let senderAfter = try await pair.sender.getBalance()
-        #expect(receiverAfter.satsBalance.owned >= receiverBefore.satsBalance.owned + amount)
-        #expect(senderAfter.satsBalance.owned <= senderBefore.satsBalance.owned - amount)
-        #expect(senderAfter.satsBalance.owned >= senderBefore.satsBalance.owned - amount - max(fee, 1) - 5)
-        print("receiver \(receiverBefore.satsBalance.owned) -> \(receiverAfter.satsBalance.owned), sender \(senderBefore.satsBalance.owned) -> \(senderAfter.satsBalance.owned)")
-    }
-
-    @Test("An amountless Lightning invoice is paid with the caller's amount", .timeLimit(.minutes(5)))
-    func amountlessLightningInvoice() async throws {
-        let pair = try await Self.makePair()
-        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
-        let amount: Int64 = 12
-        let invoice = try await pair.receiver.createLightningInvoice(amountSats: 0, memo: "amountless invoice test")
-        #expect(try Bolt11Invoice.decode(invoice.paymentRequest).amountMsat == nil)
-        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest, amountSats: amount)
-        guard pair.senderSpendable >= amount + max(fee, 1) + 5 else {
-            Issue.record(Comment(rawValue: "sender needs \(amount + max(fee, 1) + 5) spendable sats, has \(pair.senderSpendable)"))
-            return
-        }
-        _ = try await pair.receiver.claimPendingTransfers()
-        let receiverBefore = try await pair.receiver.getBalance().satsBalance
-        let requestId = try await pair.sender.payLightningInvoice(
-            paymentRequest: invoice.paymentRequest, maxFeeSats: max(fee, 1) + 5, amountSats: amount
-        )
-        print("[\(pair.senderLabel)] paid an amountless invoice with \(amount) sats (fee estimate \(fee)): \(requestId)")
-        try await Task.sleep(for: .seconds(5))
-        _ = try await pair.receiver.claimPendingTransfers()
-        let receiverAfter = try await pair.receiver.getBalance().satsBalance
-        #expect(receiverAfter.owned >= receiverBefore.owned + amount)
-    }
-
-    @Test("A fee cap below the SSP estimate is refused before any leaf is locked", .timeLimit(.minutes(3)))
-    func feeCapRefusal() async throws {
-        let pair = try await Self.makePair()
-        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
-        let invoice = try await pair.receiver.createLightningInvoice(amountSats: 10, memo: "fee cap test")
-        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest)
-        guard fee >= 1 else {
-            Issue.record(Comment(rawValue: "the SSP quotes no fee for this invoice, so no cap can fall below it"))
-            return
-        }
-        let before = try await pair.sender.getBalance()
-        do {
-            _ = try await pair.sender.payLightningInvoice(paymentRequest: invoice.paymentRequest, maxFeeSats: fee - 1)
-            Issue.record(Comment(rawValue: "payment went through with a cap of \(fee - 1) (estimate \(fee))"))
-        } catch SparkError.feeExceedsLimit(let quoted, let cap) {
-            #expect(cap == fee - 1)
-            #expect(quoted >= fee)
-        }
-        let after = try await pair.sender.getBalance()
-        #expect(after.satsBalance.owned == before.satsBalance.owned)
-        #expect(after.satsBalance.available == before.satsBalance.available)
-    }
-
     @Test("Bad arguments are rejected before any network call moves a leaf", .timeLimit(.minutes(3)))
     func argumentValidation() async throws {
         let pair = try await Self.makePair()
@@ -167,6 +81,8 @@ struct HardeningIntegrationTests {
         await #expect(throws: SparkError.self) { _ = try await pair.sender.send(receiverSparkAddress: address, amountSats: 0) }
         await #expect(throws: SparkError.self) { _ = try await pair.sender.send(receiverSparkAddress: address, amountSats: -1) }
         await #expect(throws: SparkError.self) { _ = try await pair.sender.send(receiverSparkAddress: "sparkrt1qq", amountSats: 1) }
+        let invoice = try SparkInvoiceTests.satsInvoice(identityPublicKey: pair.receiver.signer.identityPublicKey, amountSats: 10, network: .mainnet)
+        await #expect(throws: SparkError.self) { _ = try await pair.sender.send(receiverSparkAddress: invoice, amountSats: 10) }
         await #expect(throws: SparkError.self) { _ = try await pair.sender.send(receiverSparkAddress: address, amountSats: 1_000_000_000) }
         await #expect(throws: SparkError.self) { _ = try await pair.sender.withdraw(onChainAddress: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", amountSats: 0) }
         await #expect(throws: SparkError.self) { _ = try await pair.sender.withdraw(onChainAddress: "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080", amountSats: 1_000) }
@@ -474,6 +390,92 @@ struct HardeningIntegrationTests {
 // MARK: - Lightning sends
 
 extension HardeningIntegrationTests {
+    @Test("Lightning payment of a verified invoice under a fee cap, then claim", .timeLimit(.minutes(5)))
+    func lightningRoundTrip() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let amount: Int64 = 10
+        let invoice = try await pair.receiver.createLightningInvoice(amountSats: amount, memo: "hardening test")
+        #expect(invoice.amountSats == amount)
+        let decoded = try Bolt11Invoice.decode(invoice.paymentRequest)
+        #expect(decoded.paymentHash.hexString == invoice.paymentHash)
+        #expect(decoded.amountMsat == UInt64(amount) * 1000)
+        #expect(decoded.network == .mainnet)
+
+        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest)
+        print("[\(pair.senderLabel)] fee estimate \(fee) sats for \(amount) sats")
+        guard pair.senderSpendable >= amount + max(fee, 1) + 5 else {
+            Issue.record(Comment(rawValue: "sender needs \(amount + max(fee, 1) + 5) spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        let receiverBefore = try await pair.receiver.getBalance()
+        let senderBefore = try await pair.sender.getBalance()
+
+        let requestId = try await pair.sender.payLightningInvoice(
+            paymentRequest: invoice.paymentRequest, maxFeeSats: max(fee, 1) + 5
+        )
+        #expect(!requestId.isEmpty)
+        print("lightning send request \(requestId)")
+
+        try await Task.sleep(for: .seconds(5))
+        let claimed = try await pair.receiver.claimAllPendingTransfers()
+        print("receiver claimed \(claimed) transfer(s)")
+
+        let receiverAfter = try await pair.receiver.getBalance()
+        let senderAfter = try await pair.sender.getBalance()
+        #expect(receiverAfter.satsBalance.owned >= receiverBefore.satsBalance.owned + amount)
+        #expect(senderAfter.satsBalance.owned <= senderBefore.satsBalance.owned - amount)
+        #expect(senderAfter.satsBalance.owned >= senderBefore.satsBalance.owned - amount - max(fee, 1) - 5)
+        print("receiver \(receiverBefore.satsBalance.owned) -> \(receiverAfter.satsBalance.owned), sender \(senderBefore.satsBalance.owned) -> \(senderAfter.satsBalance.owned)")
+    }
+
+    @Test("An amountless Lightning invoice is paid with the caller's amount", .timeLimit(.minutes(5)))
+    func amountlessLightningInvoice() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let amount: Int64 = 12
+        let invoice = try await pair.receiver.createLightningInvoice(amountSats: 0, memo: "amountless invoice test")
+        #expect(try Bolt11Invoice.decode(invoice.paymentRequest).amountMsat == nil)
+        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest, amountSats: amount)
+        guard pair.senderSpendable >= amount + max(fee, 1) + 5 else {
+            Issue.record(Comment(rawValue: "sender needs \(amount + max(fee, 1) + 5) spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverBefore = try await pair.receiver.getBalance().satsBalance
+        let requestId = try await pair.sender.payLightningInvoice(
+            paymentRequest: invoice.paymentRequest, maxFeeSats: max(fee, 1) + 5, amountSats: amount
+        )
+        print("[\(pair.senderLabel)] paid an amountless invoice with \(amount) sats (fee estimate \(fee)): \(requestId)")
+        try await Task.sleep(for: .seconds(5))
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverAfter = try await pair.receiver.getBalance().satsBalance
+        #expect(receiverAfter.owned >= receiverBefore.owned + amount)
+    }
+
+    @Test("A fee cap below the SSP estimate is refused before any leaf is locked", .timeLimit(.minutes(3)))
+    func feeCapRefusal() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let invoice = try await pair.receiver.createLightningInvoice(amountSats: 10, memo: "fee cap test")
+        let fee = try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest)
+        guard fee >= 1 else {
+            Issue.record(Comment(rawValue: "the SSP quotes no fee for this invoice, so no cap can fall below it"))
+            return
+        }
+        let before = try await pair.sender.getBalance()
+        do {
+            _ = try await pair.sender.payLightningInvoice(paymentRequest: invoice.paymentRequest, maxFeeSats: fee - 1)
+            Issue.record(Comment(rawValue: "payment went through with a cap of \(fee - 1) (estimate \(fee))"))
+        } catch SparkError.feeExceedsLimit(let quoted, let cap) {
+            #expect(cap == fee - 1)
+            #expect(quoted >= fee)
+        }
+        let after = try await pair.sender.getBalance()
+        #expect(after.satsBalance.owned == before.satsBalance.owned)
+        #expect(after.satsBalance.available == before.satsBalance.available)
+    }
+
     @Test("An invoice pasted in upper case with surrounding whitespace is paid as validated", .timeLimit(.minutes(5)))
     func pastedInvoice() async throws {
         let pair = try await Self.makePair()

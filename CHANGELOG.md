@@ -42,6 +42,14 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- `send(receiverSparkAddress:)` and `transferTokens` refuse Spark invoices with
+  `SparkError.invalidAddress`, as the reference SDK does. A Spark invoice is a Spark address
+  whose payload also carries an amount, expiry, sender restriction and the payee's signature; the
+  SDK read only the identity key at the front, so a pasted invoice paid the payee's key whatever
+  it said, without linking the transfer to it — the payee saw it unpaid and the payer might pay
+  again. Addresses are now decoded whole, as the reference SDK decodes them, the identity key must
+  be a valid curve point, and `transferTokens` checks the receiver before fetching outputs.
+  Paying Spark invoices (`fulfillSparkInvoice`) is not supported yet.
 - `payLightningInvoice` offers the SSP its fee estimate as is, as the reference SDK does. A 1-sat
   floor turned an estimate of 0 into a 1-sat fee and refused the README's
   `maxFeeSats: estimate` pattern with `feeExceedsLimit`.

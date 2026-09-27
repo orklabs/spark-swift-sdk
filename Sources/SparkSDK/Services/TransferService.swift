@@ -6,7 +6,8 @@ import SwiftProtobuf
 extension SparkWallet {
     /// Send sats to another Spark wallet identified by its bech32m Spark address
     /// (`spark1...` on mainnet, `sparkrt1...` on regtest). The address must be for the wallet's
-    /// network.
+    /// network. A Spark invoice is refused with `SparkError.invalidAddress`: sending to it as an
+    /// address would ignore its amount, expiry and sender, and the payee would not see it paid.
     public func send(
         receiverSparkAddress: String,
         amountSats: Int64

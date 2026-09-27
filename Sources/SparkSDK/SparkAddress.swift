@@ -1,7 +1,9 @@
 import Foundation
+import secp256k1
 
-/// Spark addresses: a bech32m encoding of the protobuf `SparkAddress { identity_public_key = 1 }`
-/// payload under a network-specific human-readable part.
+/// Spark addresses: a bech32m encoding of the protobuf `SparkAddress` payload under a
+/// network-specific human-readable part. A plain address carries only `identity_public_key`; a
+/// Spark invoice also carries `spark_invoice_fields` and the receiver's signature.
 enum SparkAddress {
     /// Current prefix plus the legacy one the reference SDK still accepts.
     private static func prefixes(for network: SparkNetwork) -> (current: String, legacy: String) {
@@ -22,9 +24,21 @@ enum SparkAddress {
         return Bech32m.encode(hrp: hrp(for: network), data: Bech32.toWords(payload))
     }
 
-    /// The identity public key an address encodes. Throws `SparkError.invalidAddress` for a
-    /// malformed address or one for another network.
-    static func decode(_ address: String, network: SparkNetwork) throws -> Data {
+    /// A decoded Spark address or Spark invoice.
+    struct Payload: Sendable {
+        let identityPublicKey: Data
+        /// Present when the string is a Spark invoice: what to pay (sats or tokens, and how much),
+        /// until when, from whom, with a memo.
+        let invoiceFields: Spark_SparkInvoiceFields?
+        /// The receiver's signature over an invoice.
+        let signature: Data?
+    }
+
+    /// Decode the whole `SparkAddress` payload of a Spark address or Spark invoice, as the
+    /// reference SDK's `decodeSparkAddress` does. Throws `SparkError.invalidAddress` for a
+    /// malformed string, one for another network, or an identity key that is not a compressed
+    /// secp256k1 point.
+    static func decodePayload(_ address: String, network: SparkNetwork) throws -> Payload {
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
         let hrp: String
         let words: [UInt8]
@@ -37,17 +51,33 @@ enum SparkAddress {
         guard hrp == allowed.current || hrp == allowed.legacy else {
             throw SparkError.invalidAddress("'\(trimmed)' is not a \(network) Spark address (prefix '\(hrp)')")
         }
-        guard let payload = Bech32.fromWords(words) else {
+        guard let bytes = Bech32.fromWords(words),
+              let payload = try? Spark_SparkAddress(serializedBytes: bytes) else {
             throw SparkError.invalidAddress("'\(trimmed)' has an invalid payload encoding")
         }
-        // field 1 (identity_public_key), length-delimited, 33-byte compressed key
-        guard payload.count >= 35, payload[payload.startIndex] == 0x0a, payload[payload.startIndex + 1] == 33 else {
-            throw SparkError.invalidAddress("'\(trimmed)' does not start with a 33-byte identity public key")
+        guard payload.identityPublicKey.count == 33,
+              (try? secp256k1.Signing.PublicKey(dataRepresentation: payload.identityPublicKey, format: .compressed)) != nil else {
+            throw SparkError.invalidAddress("'\(trimmed)' does not carry a valid 33-byte identity public key")
         }
-        let key = payload.subdata(in: (payload.startIndex + 2)..<(payload.startIndex + 35))
-        guard key.first == 0x02 || key.first == 0x03 else {
-            throw SparkError.invalidAddress("'\(trimmed)' carries an invalid compressed public key")
+        return Payload(
+            identityPublicKey: payload.identityPublicKey,
+            invoiceFields: payload.hasSparkInvoiceFields ? payload.sparkInvoiceFields : nil,
+            signature: payload.hasSignature ? payload.signature : nil
+        )
+    }
+
+    /// The identity public key a plain Spark address encodes. Throws `SparkError.invalidAddress`
+    /// for a malformed address, one for another network, or a Spark invoice: paying an invoice as
+    /// if it were an address ignores its amount, expiry and sender restriction, and the transfer
+    /// is not linked to it, so the payee never sees it paid (the reference SDK's `transfer` and
+    /// `transferTokens` refuse invoices too).
+    static func decode(_ address: String, network: SparkNetwork) throws -> Data {
+        let payload = try decodePayload(address, network: network)
+        guard payload.invoiceFields == nil else {
+            throw SparkError.invalidAddress(
+                "this is a Spark invoice, not a Spark address; paying it as an address would ignore its amount, expiry and sender"
+            )
         }
-        return key
+        return payload.identityPublicKey
     }
 }

@@ -10,7 +10,8 @@ extension SparkWallet {
 
     // MARK: - Public Token API
 
-    /// Transfer tokens to a receiver.
+    /// Transfer tokens to a receiver's Spark address. A Spark invoice is refused with
+    /// `SparkError.invalidAddress`, as in `send(receiverSparkAddress:amountSats:)`.
     ///
     /// - Parameter idempotencyKey: Optional key for deduplication of the gRPC call.
     public func transferTokens(
@@ -21,6 +22,9 @@ extension SparkWallet {
         idempotencyKey: String? = nil
     ) async throws -> String {
         let (rawTokenId, _) = try decodeBech32mTokenIdentifier(tokenIdentifier, network: config.network)
+        // The receiver's identity key, from a Spark address for this network (a Spark invoice is
+        // refused), before any output is fetched.
+        let receiverData = try SparkAddress.decode(receiverSparkAddress, network: config.network)
 
         let outputs = try await fetchTokenOutputs(tokenIdentifiers: [rawTokenId])
         guard !outputs.isEmpty else {
@@ -28,9 +32,6 @@ extension SparkWallet {
         }
 
         let selected = try Self.selectTokenOutputs(outputs, amount: tokenAmount, strategy: strategy)
-
-        // Decode receiver's Spark address (must be for this network) to get their identity public key
-        let receiverData = try SparkAddress.decode(receiverSparkAddress, network: config.network)
 
         let tx = try buildTransferTokenTransaction(
             selectedOutputs: selected,
