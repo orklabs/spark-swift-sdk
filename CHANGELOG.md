@@ -37,6 +37,10 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Lightning preimage shares go to the operator that validates them. Share `i` went to the `i`-th
+  configured operator, but each operator validates the share at its own index (encoded in its
+  identifier), so a configuration listing operators in another order made every invoice creation
+  fail. Shares are now matched by index, as the reference SDK does.
 - Lightning receives no longer sign the preimage-share request with the identity key. The
   current protocol reserves `user_signature` on `store_preimage_share_v2` and the operators never
   read it; the reference SDK dropped it in 0.6.5.

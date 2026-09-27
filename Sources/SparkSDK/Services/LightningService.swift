@@ -266,9 +266,11 @@ extension SparkWallet {
     }
 
     /// The `store_preimage_share_v2` request of a Lightning receive: each operator's share of the
-    /// preimage, ECIES-encrypted to its configured identity key. No `user_signature`: the current
-    /// protocol reserves that field and the operators never read it (reference SDK 0.6.5, "Remove
-    /// user signature requirement from Lightning preimage storage").
+    /// preimage, ECIES-encrypted to its configured identity key. An operator validates the share
+    /// at its own index (`Index + 1`, which its identifier encodes), so each gets the share with
+    /// that index whatever the order of the configuration — the reference SDK's
+    /// `shares[operator.id]`. No `user_signature`: the current protocol reserves that field and
+    /// the operators never read it (reference SDK 0.6.5).
     static func storePreimageShareRequest(
         paymentHash: Data,
         shares: [VerifiableSecretShareResult],
@@ -281,8 +283,11 @@ extension SparkWallet {
         request.threshold = config.signingThreshold
         request.invoiceString = encodedInvoice
         request.userIdentityPublicKey = identityPublicKey
-        // Match shares to operators by array index, encrypt to each SO's identity key
-        for (soConfig, share) in zip(config.signingOperators, shares) {
+        for soConfig in config.signingOperators {
+            guard let index = operatorShareIndex(soConfig.identifier),
+                  let share = shares.first(where: { $0.index == index }) else {
+                throw SparkError.invalidArgument("no preimage share for operator \(soConfig.identifier)")
+            }
             var secretShareProto = Spark_SecretShare()
             secretShareProto.secretShare = share.share
             secretShareProto.proofs = share.proofs
@@ -294,6 +299,13 @@ extension SparkWallet {
             )
         }
         return request
+    }
+
+    /// The secret-share index an operator validates its share at: its identifier, a 32-byte
+    /// big-endian number equal to its index + 1.
+    static func operatorShareIndex(_ identifier: String) -> UInt32? {
+        guard identifier.count == 64, let index = UInt32(identifier, radix: 16), index > 0 else { return nil }
+        return index
     }
 
     /// The `initiate_preimage_swap_v3` request of a Lightning send: the HTLC transfer to the SSP

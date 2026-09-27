@@ -263,6 +263,40 @@ struct LightningValidatorTests {
         #expect(try recoverSecretUniffi(shares: Array(recovered.suffix(2))) == preimage)
     }
 
+    @Test("Each operator gets the preimage share at its own index, whatever the configured order")
+    func preimageSharesFollowOperatorIndex() throws {
+        let keys = try (0..<3).map { _ in try secp256k1.Signing.PrivateKey() }
+        // Operators listed out of order: identifiers 3, 1, 2.
+        let identifiers = [3, 1, 2].map { String(format: "%064x", $0) }
+        let operators = zip(identifiers, keys).map { identifier, key in
+            SigningOperatorConfig(address: "https://\(identifier.suffix(1)).example", identifier: identifier,
+                                  identityPublicKeyHex: key.publicKey.dataRepresentation.hexString)
+        }
+        let config = SparkConfig(network: .mainnet, signingOperators: operators)
+        let preimage = try randomSecretKeyBytes()
+        let shares = try splitSecretWithProofsUniffi(secret: preimage, threshold: config.signingThreshold, numShares: 3)
+        let request = try SparkWallet.storePreimageShareRequest(
+            paymentHash: Data(SHA256.hash(data: preimage)), shares: shares, encodedInvoice: "lnbc1...",
+            identityPublicKey: keys[0].publicKey.dataRepresentation, config: config
+        )
+        // Recover with the index each operator validates at (its identifier): only a correct
+        // pairing reproduces the preimage.
+        var recovered: [SecretShareResult] = []
+        for (signingOperator, key) in zip(operators, keys) {
+            let encrypted = try #require(request.encryptedPreimageShares[signingOperator.identifier])
+            let share = try Spark_SecretShare(serializedBytes: try decryptEcies(encryptedMsg: encrypted, privateKey: key.dataRepresentation))
+            let index = try #require(SparkWallet.operatorShareIndex(signingOperator.identifier))
+            recovered.append(SecretShareResult(threshold: config.signingThreshold, index: index, share: share.secretShare))
+        }
+        #expect(try recoverSecretUniffi(shares: Array(recovered.prefix(2))) == preimage)
+        #expect(try recoverSecretUniffi(shares: [recovered[0], recovered[2]]) == preimage)
+
+        #expect(SparkWallet.operatorShareIndex(String(format: "%064x", 2)) == 2)
+        #expect(SparkWallet.operatorShareIndex(String(repeating: "0", count: 64)) == nil)
+        #expect(SparkWallet.operatorShareIndex("01") == nil)
+        #expect(SparkWallet.operatorShareIndex(String(repeating: "f", count: 64)) == nil)
+    }
+
     @Test("A Lightning send's preimage swap carries only the HTLC transfer request")
     func preimageSwapRequest() {
         var transferRequest = Spark_StartTransferRequest()
