@@ -372,11 +372,179 @@ struct LightningValidatorTests {
         #expect(Array(metadata[stringValues: "x-idempotency-key"]) == ["t"])
     }
 
+    @Test("A resumed send must be this wallet's HTLC to the SSP for this invoice, not returned, within the fee cap")
+    func heldSendVerification() throws {
+        let identity = Data([0x02] + Array(repeating: 0x11, count: 32))
+        let ssp = Data([0x03] + Array(repeating: 0x22, count: 32))
+        let transferId = LightningResumeTests.transferId
+        let payment = try LightningPayment(
+            paymentRequest: Bolt11InvoiceTests.coffee2500u, maxFeeSats: 5, amountSats: nil, idempotencyKey: nil, network: .mainnet
+        )
+        let held = LightningResumeTests.heldSend(
+            identity: identity, ssp: ssp, paymentHash: payment.invoice.paymentHash, totalValue: 250_002
+        )
+        func verify(_ candidate: Spark_PreimageRequestWithTransfer) throws {
+            try LightningValidator.verifyHeldSend(
+                candidate, transferId: transferId, for: payment, identityPublicKey: identity, sspIdentityPublicKey: ssp
+            )
+        }
+        try verify(held)
+        // A send that went through resumes too: the SSP answers with the request it already has.
+        var paid = held
+        paid.status = .preimageShared
+        paid.transfer.status = .completed
+        try verify(paid)
+        var atCap = held
+        atCap.transfer.totalValue = 250_005
+        try verify(atCap)
+
+        var refused: [(String, Spark_PreimageRequestWithTransfer)] = []
+        var otherInvoice = held
+        otherInvoice.paymentHash = Data(repeating: 0xAB, count: 32)
+        refused.append(("another invoice", otherInvoice))
+        var otherTransfer = held
+        otherTransfer.transfer.id = "0199a8f0-0000-7000-8000-000000000002"
+        refused.append(("another transfer id", otherTransfer))
+        var notToSsp = held
+        notToSsp.receiverIdentityPubkey = identity
+        refused.append(("HTLC to someone else", notToSsp))
+        var transferNotToSsp = held
+        transferNotToSsp.transfer.receiverIdentityPublicKey = identity
+        refused.append(("transfer to someone else", transferNotToSsp))
+        var notOurs = held
+        notOurs.senderIdentityPubkey = ssp
+        refused.append(("someone else's HTLC", notOurs))
+        var plainTransfer = held
+        plainTransfer.transfer.type = .transfer
+        refused.append(("not a preimage swap", plainTransfer))
+        var noTransfer = held
+        noTransfer.clearTransfer()
+        refused.append(("no transfer", noTransfer))
+        var returned = held
+        returned.status = .returned
+        refused.append(("HTLC returned", returned))
+        var transferReturned = held
+        transferReturned.transfer.status = .returned
+        refused.append(("transfer returned", transferReturned))
+        var expired = held
+        expired.transfer.status = .expired
+        refused.append(("transfer expired", expired))
+        var short = held
+        short.transfer.totalValue = 249_999
+        refused.append(("less than the amount", short))
+        for (label, candidate) in refused {
+            #expect(throws: SparkError.self, Comment(rawValue: label)) { try verify(candidate) }
+        }
+
+        // Above the cap the SSP would keep more than maxFeeSats.
+        var overCap = held
+        overCap.transfer.totalValue = 250_006
+        do {
+            try verify(overCap)
+            Issue.record("a held send above the fee cap was accepted")
+        } catch SparkError.feeExceedsLimit(let fee, let cap) {
+            #expect(fee == 6)
+            #expect(cap == 5)
+        }
+    }
+
     @Test("Resumable transfer ids must be UUIDs and are normalised to lower case")
     func transferIds() throws {
         #expect(try LightningValidator.normalizeTransferId(nil) == nil)
         #expect(try LightningValidator.normalizeTransferId("0190A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B") == "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
         #expect(throws: SparkError.self) { _ = try LightningValidator.normalizeTransferId("not-a-uuid") }
         #expect(throws: SparkError.self) { _ = try LightningValidator.normalizeTransferId("") }
+    }
+}
+
+/// The resume path of `payLightningInvoice` against a local operator stand-in whose `query_htlc`
+/// reports a held send; the wallet's SSP is unreachable, so the SSP request always fails.
+@Suite("Lightning send resume")
+struct LightningResumeTests {
+    static let transferId = "0199a8f0-0000-7000-8000-000000000001"
+
+    /// The specification's 2500u coffee invoice under the regtest prefix (the signature is not
+    /// checked client-side).
+    static func regtestInvoice() throws -> String {
+        let (_, words, _) = try Bech32.decode(Bolt11InvoiceTests.coffee2500u, maxLength: nil)
+        return Bech32.encode(hrp: "lnbcrt2500u", data: words, encoding: .bech32)
+    }
+
+    /// A pending Lightning send as `query_htlc` reports it: the wallet's HTLC to the SSP with its
+    /// preimage-swap transfer.
+    static func heldSend(
+        identity: Data, ssp: Data, paymentHash: Data, totalValue: UInt64, transferId: String = transferId
+    ) -> Spark_PreimageRequestWithTransfer {
+        var held = Spark_PreimageRequestWithTransfer()
+        held.paymentHash = paymentHash
+        held.senderIdentityPubkey = identity
+        held.receiverIdentityPubkey = ssp
+        held.status = .waitingForPreimage
+        held.transfer.id = transferId
+        held.transfer.type = .preimageSwap
+        held.transfer.status = .senderKeyTweakPending
+        held.transfer.senderIdentityPublicKey = identity
+        held.transfer.receiverIdentityPublicKey = ssp
+        held.transfer.totalValue = totalValue
+        return held
+    }
+
+    @Test("Resuming a send the coordinator holds selects, signs and locks nothing before asking the SSP",
+          .timeLimit(.minutes(1)))
+    func resumeHeldSend() async throws {
+        let state = FakeOperatorState { _ in false }
+        let invoice = try Self.regtestInvoice()
+        let paymentHash = try Bolt11Invoice.decode(invoice).paymentHash
+        try await withFakeOperator(state) { wallet in
+            await state.hold(Self.heldSend(
+                identity: wallet.signer.identityPublicKey, ssp: wallet.config.sspIdentityPublicKey,
+                paymentHash: paymentHash, totalValue: 250_002
+            ))
+            do {
+                _ = try await wallet.payLightningInvoice(
+                    paymentRequest: invoice, maxFeeSats: 5, transferId: Self.transferId.uppercased()
+                )
+                Issue.record("the SSP stand-in is unreachable, so the send cannot complete")
+            } catch SparkError.lightningSendIncomplete(let transferId, _) {
+                #expect(transferId == Self.transferId)
+            }
+        }
+        // Only the lookup reached the operator: no node query, signing commitments or preimage swap.
+        #expect(await state.methods == ["query_htlc"])
+    }
+
+    @Test("A held send for another invoice, or above the fee cap, is refused without asking the SSP",
+          .timeLimit(.minutes(1)))
+    func refuseMismatchedHeldSend() async throws {
+        let state = FakeOperatorState { _ in false }
+        let invoice = try Self.regtestInvoice()
+        let paymentHash = try Bolt11Invoice.decode(invoice).paymentHash
+        let otherInvoiceId = "0199a8f0-0000-7000-8000-00000000000a"
+        let overCapId = "0199a8f0-0000-7000-8000-00000000000b"
+        try await withFakeOperator(state) { wallet in
+            let identity = wallet.signer.identityPublicKey
+            let ssp = wallet.config.sspIdentityPublicKey
+            await state.hold(Self.heldSend(
+                identity: identity, ssp: ssp, paymentHash: Data(repeating: 0xAB, count: 32),
+                totalValue: 250_002, transferId: otherInvoiceId
+            ))
+            await state.hold(Self.heldSend(
+                identity: identity, ssp: ssp, paymentHash: paymentHash, totalValue: 250_010, transferId: overCapId
+            ))
+            do {
+                _ = try await wallet.payLightningInvoice(paymentRequest: invoice, maxFeeSats: 5, transferId: otherInvoiceId)
+                Issue.record("a held send for another invoice was resumed")
+            } catch SparkError.invalidArgument(let reason) {
+                #expect(reason.contains("another invoice"))
+            }
+            do {
+                _ = try await wallet.payLightningInvoice(paymentRequest: invoice, maxFeeSats: 5, transferId: overCapId)
+                Issue.record("a held send above the fee cap was resumed")
+            } catch SparkError.feeExceedsLimit(let fee, let cap) {
+                #expect(fee == 10)
+                #expect(cap == 5)
+            }
+        }
+        #expect(await state.methods == ["query_htlc", "query_htlc"])
     }
 }

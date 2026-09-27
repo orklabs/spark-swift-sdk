@@ -467,3 +467,63 @@ struct HardeningIntegrationTests {
         #expect(after.satsBalance.owned > before.satsBalance.owned)
     }
 }
+
+// MARK: - Lightning send resume
+
+extension HardeningIntegrationTests {
+    @Test("An interrupted Lightning send resumes from the transfer the coordinator holds and pays once", .timeLimit(.minutes(5)))
+    func lightningSendResume() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let amount: Int64 = 10
+        let invoice = try await pair.receiver.createLightningInvoice(amountSats: amount, memo: "resume test")
+        let maxFee = max(try await pair.sender.getLightningSendFeeEstimate(encodedInvoice: invoice.paymentRequest), 1) + 5
+        guard pair.senderSpendable >= 2 * (amount + maxFee) + 5 else {
+            Issue.record(Comment(rawValue: "sender needs \(2 * (amount + maxFee) + 5) spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let receiverBefore = try await pair.receiver.getBalance().satsBalance
+        let payment = try LightningPayment(
+            paymentRequest: invoice.paymentRequest, maxFeeSats: maxFee, amountSats: nil, idempotencyKey: nil, network: .mainnet
+        )
+        let transferId = UUID().uuidString.lowercased()
+
+        // The first attempt ends after the swap, as when the SSP request fails: the coordinator
+        // holds the leaves under the transfer id.
+        let held = try await pair.sender.startLightningSend(payment, transferId: transferId)
+        #expect(held.id == transferId)
+        #expect(held.totalValue >= UInt64(amount))
+        // The same swap again: the coordinator answers with the transfer it holds and locks nothing more.
+        let availableBefore = try await pair.sender.getBalance().satsBalance.available
+        let repeated = try await pair.sender.startLightningSend(payment, transferId: transferId)
+        #expect(repeated.id == transferId)
+        #expect(Set(repeated.leaves.map(\.leaf.id)) == Set(held.leaves.map(\.leaf.id)))
+        #expect(try await pair.sender.getBalance().satsBalance.available == availableBefore)
+
+        // Resuming selects no leaf: the SSP pays from the held transfer.
+        let requestId = try await pair.sender.payLightningInvoice(
+            paymentRequest: invoice.paymentRequest, maxFeeSats: maxFee, transferId: transferId
+        )
+        #expect(try await pair.sender.getBalance().satsBalance.available == availableBefore)
+        // Paying again under the same id pays nothing twice: the SSP answers with its request.
+        let again = try await pair.sender.payLightningInvoice(
+            paymentRequest: invoice.paymentRequest, maxFeeSats: maxFee, transferId: transferId
+        )
+        #expect(again == requestId)
+        // Another invoice cannot be paid from that transfer.
+        let other = try await pair.receiver.createLightningInvoice(amountSats: amount, memo: "resume test, other invoice")
+        await #expect(throws: SparkError.self) {
+            _ = try await pair.sender.payLightningInvoice(paymentRequest: other.paymentRequest, maxFeeSats: maxFee, transferId: transferId)
+        }
+        print("[\(pair.senderLabel)] resumed transfer \(transferId) (\(held.totalValue) sats) as \(requestId)")
+
+        var receiverAfter = receiverBefore
+        for _ in 0..<10 where receiverAfter.owned < receiverBefore.owned + amount {
+            try await Task.sleep(for: .seconds(3))
+            _ = try await pair.receiver.claimPendingTransfers()
+            receiverAfter = try await pair.receiver.getBalance().satsBalance
+        }
+        #expect(receiverAfter.owned == receiverBefore.owned + amount)
+    }
+}

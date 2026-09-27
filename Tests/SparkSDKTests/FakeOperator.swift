@@ -26,6 +26,8 @@ actor FakeOperatorState {
     private(set) var issuedTokens: [String] = []
     /// `"<method> <authorization header>"` for every SparkService call received.
     private(set) var calls: [String] = []
+    /// Lightning sends `query_htlc` reports as held, matched by transfer id.
+    private(set) var heldSends: [Spark_PreimageRequestWithTransfer] = []
 
     init(
         rejection: Rejection = .beforeHeaders,
@@ -43,6 +45,15 @@ actor FakeOperatorState {
         return token
     }
 
+    func hold(_ send: Spark_PreimageRequestWithTransfer) {
+        heldSends.append(send)
+    }
+
+    /// The SparkService methods called, in order.
+    var methods: [String] {
+        calls.map { String($0.prefix { $0 != " " }) }
+    }
+
     /// Records the call; returns whether its token is accepted.
     func admit(_ method: String, authorization: String) -> Bool {
         calls.append("\(method) \(authorization)")
@@ -57,6 +68,12 @@ struct FakeOperator: RegistrableRPCService {
     static let unauthenticated = RPCError(code: .unauthenticated, message: "failed to verify token: token has expired")
 
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+        registerAuthn(with: &router)
+        registerSparkService(with: &router)
+    }
+
+    /// The token-issuing service: every challenge verifies, and each session token is new.
+    private func registerAuthn<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         router.registerHandler(
             forMethod: SparkAuthn_SparkAuthnService.Method.get_challenge.descriptor,
             deserializer: ProtobufDeserializer<SparkAuthn_GetChallengeRequest>(),
@@ -77,6 +94,9 @@ struct FakeOperator: RegistrableRPCService {
             response.expirationTimestamp = Int64(Date().addingTimeInterval(3_600).timeIntervalSince1970)
             return StreamingServerResponse(single: ServerResponse(message: response))
         }
+    }
+
+    private func registerSparkService<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         router.registerHandler(
             forMethod: Spark_SparkService.Method.query_nodes.descriptor,
             deserializer: ProtobufDeserializer<Spark_QueryNodesRequest>(),
@@ -109,6 +129,20 @@ struct FakeOperator: RegistrableRPCService {
             }
             var response = Spark_GenerateStaticDepositAddressResponse()
             response.depositAddress = state.depositAddress
+            return StreamingServerResponse(single: ServerResponse(message: response))
+        }
+        router.registerHandler(
+            forMethod: Spark_SparkService.Method.query_htlc.descriptor,
+            deserializer: ProtobufDeserializer<Spark_QueryHtlcRequest>(),
+            serializer: ProtobufSerializer<Spark_QueryHtlcResponse>()
+        ) { [state] request, _ in
+            guard await state.admit("query_htlc", authorization: Self.authorization(request.metadata)) else {
+                return await Self.reject(state)
+            }
+            let query = try await ServerRequest(stream: request).message
+            var response = Spark_QueryHtlcResponse()
+            response.preimageRequests = await state.heldSends.filter { query.transferIds.contains($0.transfer.id) }
+            response.offset = -1
             return StreamingServerResponse(single: ServerResponse(message: response))
         }
         router.registerHandler(
@@ -145,6 +179,7 @@ struct FakeOperator: RegistrableRPCService {
 }
 
 /// Runs `body` against a regtest wallet whose only operator is a `FakeOperator` on a local port.
+/// The wallet's SSP URL points at a closed local port, so any SSP call fails fast offline.
 @discardableResult
 func withFakeOperator<T: Sendable>(
     _ state: FakeOperatorState,
@@ -162,7 +197,8 @@ func withFakeOperator<T: Sendable>(
                 address: "http://127.0.0.1:\(port)",
                 identifier: "0000000000000000000000000000000000000000000000000000000000000001",
                 identityPublicKeyHex: "03dfbdff4b6332c220f8fa2ba8ed496c698ceada563fa01b67d9983bfc5c95e763"
-            )]
+            )],
+            sspURL: "http://127.0.0.1:1/graphql"
         )
         let wallet = try SparkWallet(
             config: config,

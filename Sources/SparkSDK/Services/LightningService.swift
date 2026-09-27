@@ -100,8 +100,12 @@ extension SparkWallet {
     ///   - idempotencyKey: Optional key for deduplication. If the same key is used for multiple
     ///     calls, the server returns the same result instead of creating duplicates.
     ///   - transferId: Optional UUID to make the whole send resumable. On
-    ///     `SparkError.lightningSendIncomplete` call again with the same id: the coordinator
-    ///     returns the transfer it already holds instead of locking more leaves.
+    ///     `SparkError.lightningSendIncomplete` call again with the same id (and the same invoice,
+    ///     amount and `idempotencyKey`): when the coordinator already holds that transfer, no leaf
+    ///     is selected or locked again — the held transfer must pay this invoice's payment hash
+    ///     with at most `maxFeeSats` on top — and the SSP is asked to pay from it. The SSP answers
+    ///     a repeated request for a transfer with the request it already has, so a send that went
+    ///     through returns its request id instead of paying twice.
     /// - Returns: The SSP lightning send request id.
     public func payLightningInvoice(
         paymentRequest: String,
@@ -110,74 +114,87 @@ extension SparkWallet {
         idempotencyKey: String? = nil,
         transferId: String? = nil
     ) async throws -> String {
-        guard maxFeeSats >= 0 else {
-            throw SparkError.invalidArgument("maxFeeSats must not be negative, got \(maxFeeSats)")
-        }
-        let invoice = try Bolt11Invoice.decode(paymentRequest)
-        guard invoice.belongs(to: config.network) else {
-            throw SparkError.invalidInvoice("invoice is for \(invoice.network), wallet is on \(config.network)")
-        }
-        let paymentHash = invoice.paymentHash
-        let invoiceAmountSats = try LightningValidator.resolvePaymentAmountSats(
-            invoiceAmountMsat: invoice.amountMsat, requestedAmountSats: amountSats
+        let payment = try LightningPayment(
+            paymentRequest: paymentRequest, maxFeeSats: maxFeeSats, amountSats: amountSats,
+            idempotencyKey: idempotencyKey, network: config.network
         )
         let resumeTransferId = try LightningValidator.normalizeTransferId(transferId)
 
-        // Get fee estimate from SSP and refuse anything above the caller's cap.
+        // Resuming a send the coordinator already holds: its leaves are locked for this payment,
+        // so selecting leaves again would come up short (or swap for nothing) and a second swap
+        // would be refused. Check what it holds and have the SSP pay from that.
+        if let resumeTransferId, let held = try await heldLightningSend(transferId: resumeTransferId) {
+            try LightningValidator.verifyHeldSend(
+                held, transferId: resumeTransferId, for: payment,
+                identityPublicKey: signer.identityPublicKey, sspIdentityPublicKey: config.sspIdentityPublicKey
+            )
+            return try await requestLightningSend(payment, transferId: resumeTransferId)
+        }
+        let transfer = try await startLightningSend(payment, transferId: resumeTransferId ?? UUID().uuidString.lowercased())
+        return try await requestLightningSend(payment, transferId: transfer.id)
+    }
+
+    /// The Lightning send this wallet started under `transferId`, as the coordinator holds it —
+    /// its HTLC (preimage request) with the transfer — or nil when the coordinator holds none.
+    func heldLightningSend(transferId: String) async throws -> Spark_PreimageRequestWithTransfer? {
+        var request = Spark_QueryHtlcRequest()
+        request.identityPublicKey = signer.identityPublicKey
+        request.transferIds = [transferId]
+        request.matchRole = .sender
+        request.limit = 1
+        let client = try await getCoordinatorClient()
+        let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
+        let response = try await client.query_htlc(request: ClientRequest(message: request, metadata: metadata))
+        return response.preimageRequests.first
+    }
+
+    /// Steps 1–3 of a Lightning send: quote the fee against the cap, select leaves for amount +
+    /// fee (swapping if needed) and hand them to the coordinator as an HTLC transfer to the SSP in
+    /// one `initiate_preimage_swap_v3`. Returns the transfer the coordinator now holds.
+    func startLightningSend(_ payment: LightningPayment, transferId: String) async throws -> Spark_Transfer {
         let feeEstimate = try await getLightningSendFeeEstimate(
-            encodedInvoice: paymentRequest, amountSats: invoice.amountMsat == nil ? invoiceAmountSats : nil
+            encodedInvoice: payment.encodedInvoice, amountSats: payment.amountlessInvoiceAmountSats
         )
         let feeSats = UInt64(max(feeEstimate, 1))
-        guard Int64(feeSats) <= maxFeeSats else {
-            throw SparkError.feeExceedsLimit(feeSats: Int64(feeSats), maxFeeSats: maxFeeSats)
+        guard Int64(feeSats) <= payment.maxFeeSats else {
+            throw SparkError.feeExceedsLimit(feeSats: Int64(feeSats), maxFeeSats: payment.maxFeeSats)
         }
 
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
-        let networkStr = config.networkString
 
         // Select leaves covering invoice amount + fee (with swap if needed)
-        let (totalNeeded, overflow) = invoiceAmountSats.addingReportingOverflow(Int64(feeSats))
+        let (totalNeeded, overflow) = payment.amountSats.addingReportingOverflow(Int64(feeSats))
         guard !overflow else {
             throw SparkError.invalidArgument("amount plus fee overflows")
         }
         let selectedLeaves = try await selectLeavesWithSwap(amountSats: totalNeeded)
-        let leafIDs = selectedLeaves.map(\.id)
 
         // Get SO operator info
         let soListResponse = try await client.get_signing_operator_list(
             request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata)
         )
-        let soOperators = soListResponse.signingOperators
 
         // receiverIdentityPubkey = SSP identity public key (matching JS SDK)
         let receiverPubKey = config.sspIdentityPublicKey
-        // sender identity public key (for HTLC seqlock destination)
-        let senderIdentityPubKey = signer.identityPublicKey
-        let transferID = resumeTransferId ?? UUID().uuidString.lowercased()
-
-        // Single shared expiry time — 16 days from now (matching JS SDK)
-        let expiryTime = Google_Protobuf_Timestamp(date: Date().addingTimeInterval(16 * 24 * 60 * 60))
 
         // ── Step 1: Prepare key tweaks (for TransferPackage) ──
 
         let (_, tweakPackage) = try KeyTweakHelper.buildSendPackage(
-            transferID: transferID,
+            transferID: transferId,
             leaves: selectedLeaves,
             receiverPubKey: receiverPubKey,
             signer: signer,
-            soOperators: soOperators,
+            soOperators: soListResponse.signingOperators,
             signingOperatorConfigs: config.signingOperators,
             threshold: config.signingThreshold
         )
-        let keyTweakPackage = tweakPackage.keyTweakPackage
-        let packageSignature = tweakPackage.signature
 
         // ── Step 2: Get signing commitments for TransferPackage (HTLC refunds) ──
 
         var htlcCommitmentsReq = Spark_GetSigningCommitmentsRequest()
         htlcCommitmentsReq.count = 3
-        htlcCommitmentsReq.nodeIds = leafIDs
+        htlcCommitmentsReq.nodeIds = selectedLeaves.map(\.id)
         let htlcCommitmentsResp = try await client.get_signing_commitments(
             request: ClientRequest(message: htlcCommitmentsReq, metadata: metadata)
         )
@@ -186,57 +203,59 @@ extension SparkWallet {
             throw SparkError.invalidResponse("Got \(htlcCommitments.count) signing commitments, need \(3 * selectedLeaves.count)")
         }
 
+        // The HTLC's seqlock path pays the sender identity key.
         let htlcJobs = try buildHtlcSigningJobs(
-            selectedLeaves: selectedLeaves, paymentHash: paymentHash, receiverPubKey: receiverPubKey,
-            senderIdentityPubKey: senderIdentityPubKey, htlcCommitments: htlcCommitments, networkStr: networkStr
+            selectedLeaves: selectedLeaves, paymentHash: payment.invoice.paymentHash, receiverPubKey: receiverPubKey,
+            senderIdentityPubKey: signer.identityPublicKey, htlcCommitments: htlcCommitments, networkStr: config.networkString
         )
 
         // Build TransferPackage
         var transferPackage = Spark_TransferPackage()
-        transferPackage.userSignature = packageSignature
+        transferPackage.userSignature = tweakPackage.signature
         transferPackage.hashVariant = .v2
         transferPackage.leavesToSend = htlcJobs.cpfp
         transferPackage.directLeavesToSend = htlcJobs.direct
         transferPackage.directFromCpfpLeavesToSend = htlcJobs.directFromCpfp
-        for (soID, cipher) in keyTweakPackage {
+        for (soID, cipher) in tweakPackage.keyTweakPackage {
             transferPackage.keyTweakPackage[soID] = cipher
         }
 
         // ── Step 3: Single call to initiate_preimage_swap_v3 ──
 
         var transferRequest = Spark_StartTransferRequest()
-        transferRequest.transferID = transferID
+        transferRequest.transferID = transferId
         transferRequest.ownerIdentityPublicKey = signer.identityPublicKey
         transferRequest.receiverIdentityPublicKey = receiverPubKey
-        transferRequest.expiryTime = expiryTime
+        // 16 days from now (matching JS SDK)
+        transferRequest.expiryTime = Google_Protobuf_Timestamp(date: Date().addingTimeInterval(16 * 24 * 60 * 60))
         transferRequest.transferPackage = transferPackage
         let swapRequest = Self.preimageSwapRequest(
-            paymentHash: paymentHash,
-            invoiceAmountSats: invoiceAmountSats,
-            bolt11Invoice: paymentRequest,
+            paymentHash: payment.invoice.paymentHash,
+            invoiceAmountSats: payment.amountSats,
+            bolt11Invoice: payment.encodedInvoice,
             feeSats: feeSats,
             transferRequest: transferRequest
         )
 
         let swapMetadata = metadataWithIdempotencyKey(
-            Self.preimageSwapIdempotencyKey(idempotencyKey: idempotencyKey, transferId: transferID), base: metadata
+            Self.preimageSwapIdempotencyKey(idempotencyKey: payment.idempotencyKey, transferId: transferId), base: metadata
         )
 
-        let swapResponse = try await client.initiate_preimage_swap_v3(
+        return try await client.initiate_preimage_swap_v3(
             request: ClientRequest(message: swapRequest, metadata: swapMetadata)
-        )
+        ).transfer
+    }
 
-        // ── Step 4: SSP call with transfer external ID ──
-
+    /// Step 4 of a Lightning send: ask the SSP to pay the invoice from the transfer the
+    /// coordinator holds. The leaves are locked for that transfer by now, so any failure surfaces
+    /// its id for the app to resume (same `transferId`) or reconcile via the SSP.
+    func requestLightningSend(_ payment: LightningPayment, transferId: String) async throws -> String {
         let sspVariables = Self.lightningSendVariables(
-            encodedInvoice: paymentRequest,
-            amountlessInvoiceAmountSats: invoice.amountMsat == nil ? invoiceAmountSats : nil,
-            idempotencyKey: idempotencyKey,
-            transferId: swapResponse.transfer.id
+            encodedInvoice: payment.encodedInvoice,
+            amountlessInvoiceAmountSats: payment.amountlessInvoiceAmountSats,
+            idempotencyKey: payment.idempotencyKey,
+            transferId: transferId
         )
-
-        // From here on the coordinator holds the leaves for this transfer. Surface the transfer
-        // id on failure so the app can resume (same `transferId`) or reconcile via the SSP.
         let sspResponse: [String: Any]
         do {
             sspResponse = try await sspClient.executeRaw(
@@ -244,19 +263,16 @@ extension SparkWallet {
                 variables: sspVariables
             )
         } catch {
-            throw SparkError.lightningSendIncomplete(
-                transferId: swapResponse.transfer.id, reason: String(describing: error)
-            )
+            throw SparkError.lightningSendIncomplete(transferId: transferId, reason: String(describing: error))
         }
 
         guard let send = sspResponse["request_lightning_send"] as? [String: Any],
               let request = send["request"] as? [String: Any],
               let id = request["id"] as? String else {
             throw SparkError.lightningSendIncomplete(
-                transferId: swapResponse.transfer.id, reason: "invalid lightning send response from the SSP"
+                transferId: transferId, reason: "invalid lightning send response from the SSP"
             )
         }
-
         return id
     }
 

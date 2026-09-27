@@ -244,6 +244,39 @@ struct Bolt11Invoice: Sendable, Equatable {
     }
 }
 
+/// A Lightning payment `payLightningInvoice` has checked before touching a leaf: a BOLT-11
+/// invoice for the wallet's network, the amount to pay and the fee cap.
+struct LightningPayment: Sendable {
+    let encodedInvoice: String
+    let invoice: Bolt11Invoice
+    /// Sats the invoice is paid with: its own amount, or the caller's for an amountless invoice.
+    let amountSats: Int64
+    let maxFeeSats: Int64
+    let idempotencyKey: String?
+
+    init(paymentRequest: String, maxFeeSats: Int64, amountSats: Int64?, idempotencyKey: String?, network: SparkNetwork) throws {
+        guard maxFeeSats >= 0 else {
+            throw SparkError.invalidArgument("maxFeeSats must not be negative, got \(maxFeeSats)")
+        }
+        let invoice = try Bolt11Invoice.decode(paymentRequest)
+        guard invoice.belongs(to: network) else {
+            throw SparkError.invalidInvoice("invoice is for \(invoice.network), wallet is on \(network)")
+        }
+        self.encodedInvoice = paymentRequest
+        self.invoice = invoice
+        self.amountSats = try LightningValidator.resolvePaymentAmountSats(
+            invoiceAmountMsat: invoice.amountMsat, requestedAmountSats: amountSats
+        )
+        self.maxFeeSats = maxFeeSats
+        self.idempotencyKey = idempotencyKey
+    }
+
+    /// The caller's amount for an amountless invoice — the only case the SSP is told one.
+    var amountlessInvoiceAmountSats: Int64? {
+        invoice.amountMsat == nil ? amountSats : nil
+    }
+}
+
 /// Client-side checks around lightning payments and invoices.
 enum LightningValidator {
 
@@ -307,6 +340,44 @@ enum LightningValidator {
             }
         }
         return invoice
+    }
+
+    /// Check the Lightning send the coordinator holds under a transfer id the caller is resuming,
+    /// before the SSP is asked to pay from it: this wallet's HTLC to the SSP for this invoice's
+    /// payment hash, neither returned nor expired, whose leaves cover the amount with at most
+    /// `maxFeeSats` on top — what the SSP keeps beyond the invoice.
+    static func verifyHeldSend(
+        _ held: Spark_PreimageRequestWithTransfer,
+        transferId: String,
+        for payment: LightningPayment,
+        identityPublicKey: Data,
+        sspIdentityPublicKey: Data
+    ) throws {
+        let transfer = held.transfer
+        guard held.hasTransfer, transfer.id.lowercased() == transferId, transfer.type == .preimageSwap,
+              held.senderIdentityPubkey == identityPublicKey, transfer.senderIdentityPublicKey == identityPublicKey,
+              held.receiverIdentityPubkey == sspIdentityPublicKey, transfer.receiverIdentityPublicKey == sspIdentityPublicKey else {
+            throw SparkError.invalidArgument("transfer \(transferId) is not a Lightning send from this wallet to the SSP")
+        }
+        guard held.paymentHash == payment.invoice.paymentHash else {
+            throw SparkError.invalidArgument(
+                "transfer \(transferId) pays another invoice (payment hash \(held.paymentHash.hexString))"
+            )
+        }
+        guard held.status != .returned, transfer.status != .returned, transfer.status != .expired else {
+            throw SparkError.invalidArgument(
+                "the Lightning send of transfer \(transferId) failed and was returned; pay again with a new transferId"
+            )
+        }
+        guard transfer.totalValue >= UInt64(payment.amountSats) else {
+            throw SparkError.invalidArgument(
+                "transfer \(transferId) holds \(transfer.totalValue) sats, less than the \(payment.amountSats) sats to pay"
+            )
+        }
+        let feeSats = transfer.totalValue - UInt64(payment.amountSats)
+        guard feeSats <= UInt64(payment.maxFeeSats) else {
+            throw SparkError.feeExceedsLimit(feeSats: Int64(clamping: feeSats), maxFeeSats: payment.maxFeeSats)
+        }
     }
 
     /// Lower-cased UUID for a caller-supplied transfer id used to resume a lightning send.

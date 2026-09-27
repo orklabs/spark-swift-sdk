@@ -42,6 +42,15 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Resuming a Lightning send no longer selects leaves again. A retry with the `transferId` from
+  `lightningSendIncomplete` re-ran leaf selection before the coordinator's idempotent swap, but
+  the first attempt's leaves were locked by then, so the retry failed with `insufficientBalance`
+  whenever the rest of the wallet could not cover the payment a second time, or swapped for
+  change it never used. The SDK now asks the coordinator for the send it holds under that id
+  (`query_htlc`), checks that it is this wallet's HTLC to the SSP for this invoice, neither
+  returned nor expired, with at most `maxFeeSats` beyond the amount, and has the SSP pay from
+  it. The SSP answers a repeated request for a transfer with the request it already has, so a
+  send that went through returns its request id instead of paying twice.
 - A Lightning send's preimage swap always carries an idempotency key — the caller's
   `idempotencyKey`, else the transfer id — as the reference SDK's does. Without either argument
   it carried none, so when the coordinator committed the swap but its answer was lost, the

@@ -184,8 +184,9 @@ let zeroAmountPaymentId = try await wallet.payLightningInvoice(
 )
 
 // Make a send resumable: on `SparkError.lightningSendIncomplete` call again with the
-// same `transferId` and the coordinator resumes the existing transfer instead of locking
-// a second set of leaves.
+// same invoice and `transferId`. The SDK finds the transfer the coordinator already holds
+// and has the SSP pay from it — no leaves are selected or locked again, and a send that
+// already went through returns its request id instead of paying twice.
 let transferId = UUID().uuidString
 let resumable = try await wallet.payLightningInvoice(
     paymentRequest: "lnbc...", maxFeeSats: fee, transferId: transferId
