@@ -9,6 +9,8 @@ public final class SparkWallet: Sendable {
     let connectionManager: GrpcConnectionManager
     let authenticator: SparkAuthenticator
     let sspClient: SspGraphQLClient
+    /// Serialises transfer claims (see `claimPendingTransfers`).
+    let claimLock = AsyncSerialLock()
 
     public var identityPublicKeyHex: String {
         signer.identityPublicKey.hexString

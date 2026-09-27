@@ -207,8 +207,10 @@ let id = try await wallet.send(
     amountSats: 500
 )
 
-// Receive side: claim any pending inbound transfers
-try await wallet.claimAllPendingTransfers()
+// Receive side: claim every pending inbound transfer. Claims run one at a time per wallet, and
+// a transfer that cannot be claimed is reported without blocking the others.
+let claim = try await wallet.claimPendingTransfers()
+// claim.claimedTransferIds, claim.failures (transferId + error; retried on the next pass)
 ```
 
 ### Withdrawals

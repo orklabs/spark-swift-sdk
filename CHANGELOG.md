@@ -13,7 +13,20 @@ migration note.
 
 ## [Unreleased]
 
+### Added
+- `claimPendingTransfers()`: claims every pending inbound transfer and returns the claimed
+  transfer ids plus the transfers that could not be claimed, with their errors.
+
 ### Fixed
+- One pending transfer the SDK cannot claim no longer blocks every other incoming payment.
+  `claimAllPendingTransfers` stopped at the first failure and read a single page, and the
+  operators store a transfer's per-leaf sender signatures without verifying them, so anyone could
+  plant a transfer that the SDK (rightly) refuses and stall all claims behind it. Claims now
+  follow the reference SDK's claim pass: pages of 25 until the pending set is drained, only
+  claimable statuses, failures recorded and skipped, and claims serialised per wallet so a claim
+  pass, a swap's counter-transfer claim and `withdrawAll` no longer race each other. A transfer
+  the operators already recorded as claimed by this wallet (ALREADY_EXISTS) counts as claimed.
+  `claimAllPendingTransfers` still returns the number claimed.
 - An operator rejecting a session token no longer crashes the app. The auth interceptor replayed
   the call on the same HTTP/2 stream, which swift-nio treats as a fatal error ("allows only a
   single AsyncIterator to be created"). It fired whenever the event subscription, or any call

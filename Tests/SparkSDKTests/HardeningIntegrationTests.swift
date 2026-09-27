@@ -152,6 +152,50 @@ struct HardeningIntegrationTests {
         #expect(after.satsBalance.available == before.satsBalance.available)
     }
 
+    @Test("One claim pass takes every pending transfer and reports no failures", .timeLimit(.minutes(5)))
+    func claimPassTakesEverything() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        let amounts: [Int64] = [1, 2, 8]
+        guard pair.senderSpendable >= amounts.reduce(0, +) + 5 else {
+            Issue.record(Comment(rawValue: "sender needs \(amounts.reduce(0, +) + 5) spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        var sent: [String] = []
+        for amount in amounts {
+            let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: amount)
+            sent.append(transfer.id)
+        }
+        try await Task.sleep(for: .seconds(3))
+
+        let result = try await pair.receiver.claimPendingTransfers()
+        print("[\(pair.senderLabel)] sent \(sent), receiver claimed \(result.claimedTransferIds), failures \(result.failures.map(\.transferId))")
+        #expect(Set(sent).isSubset(of: Set(result.claimedTransferIds)))
+        #expect(result.failures.isEmpty)
+        #expect(!(try await pair.receiver.queryPendingTransfers().contains { sent.contains($0.id) }))
+    }
+
+    @Test("Claiming a transfer this wallet already claimed counts as claimed", .timeLimit(.minutes(5)))
+    func claimingTwiceIsIdempotent() async throws {
+        let pair = try await Self.makePair()
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
+        guard pair.senderSpendable >= 6 else {
+            Issue.record(Comment(rawValue: "sender needs 6 spendable sats, has \(pair.senderSpendable)"))
+            return
+        }
+        _ = try await pair.receiver.claimPendingTransfers()
+        let sent = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: 1)
+        try await Task.sleep(for: .seconds(3))
+        let pending = try #require(try await pair.receiver.queryPendingTransfers().first { $0.id == sent.id })
+
+        try await pair.receiver.claimTransfer(pending)
+        // The operators now answer ALREADY_EXISTS; the reference SDK treats a completed transfer
+        // as claimed, and so must we (a swap and a claim pass can race for the same transfer).
+        try await pair.receiver.claimTransfer(pending)
+        #expect(try await pair.receiver.queryTransferById(sent.id).status == .completed)
+    }
+
     /// Destination: `SPARK_TEST_WITHDRAW_DESTINATION` may be an address, or
     /// `receiver-static-deposit` to pay the other test wallet's static deposit address so the
     /// sats stay inside the test setup and can be claimed back with `claimStaticDeposit`.

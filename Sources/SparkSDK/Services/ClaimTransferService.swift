@@ -5,15 +5,86 @@ import SwiftProtobuf
 
 // Constants defined in KeyTweakHelper.swift
 
+/// The outcome of one pass over the wallet's pending inbound transfers.
+public struct PendingTransferClaim: Sendable {
+    /// Transfers claimed in this pass, in the order they were claimed.
+    public let claimedTransferIds: [String]
+    /// Transfers that could not be claimed. They stay pending and are tried again on the next
+    /// pass. One the SDK refuses to claim (for example because a sender signature does not
+    /// verify) fails every time, but never stops the others from being claimed.
+    public let failures: [Failure]
+
+    public struct Failure: Sendable {
+        public let transferId: String
+        public let error: any Swift.Error
+    }
+}
+
+/// One claim pass over the pending inbound transfers, following the reference SDK's
+/// `claimTransfers`: pages of 25, only transfers in a claimable status, a failure is recorded and
+/// the pass moves on, and after any progress it restarts from the head (claimed transfers leave
+/// the pending set, shifting later ones forward); otherwise it advances past the page. Without a
+/// server-time snapshot the pass is bounded to 100 pages, as the reference SDK's fallback is. A
+/// transfer that failed is not tried again within the same pass.
+enum PendingTransferDrain {
+    static let batchSize = 25
+    static let maxBatches = 100
+    /// Statuses the reference SDK claims; anything else is left for a later pass.
+    static let claimableStatuses: Set<Spark_TransferStatus> = [
+        .senderKeyTweaked,
+        .receiverKeyTweaked,
+        .receiverRefundSigned,
+        .receiverKeyTweakApplied,
+        .receiverKeyTweakLocked,
+    ]
+
+    static func run(
+        fetch: (_ limit: Int, _ offset: Int) async throws -> [Spark_Transfer],
+        claim: (Spark_Transfer) async throws -> Void
+    ) async throws -> PendingTransferClaim {
+        var claimed: [String] = []
+        var failures: [PendingTransferClaim.Failure] = []
+        var attempted = Set<String>()
+        var offset = 0
+        for _ in 0..<maxBatches {
+            try Task.checkCancellation()
+            let batch = try await fetch(batchSize, offset)
+            if batch.isEmpty {
+                break
+            }
+            var progress = false
+            for transfer in batch where claimableStatuses.contains(transfer.status) && !attempted.contains(transfer.id) {
+                try Task.checkCancellation()
+                attempted.insert(transfer.id)
+                do {
+                    try await claim(transfer)
+                    claimed.append(transfer.id)
+                    progress = true
+                } catch {
+                    failures.append(PendingTransferClaim.Failure(transferId: transfer.id, error: error))
+                }
+            }
+            if batch.count < batchSize {
+                break
+            }
+            offset = progress ? 0 : offset + batch.count
+        }
+        return PendingTransferClaim(claimedTransferIds: claimed, failures: failures)
+    }
+}
+
 extension SparkWallet {
-    /// Query pending transfers where this wallet is the receiver
-    func queryPendingTransfers() async throws -> [Spark_Transfer] {
+    /// Query pending transfers where this wallet is the receiver. `limit` 0 asks for the server's
+    /// largest page (100).
+    func queryPendingTransfers(limit: Int = 0, offset: Int = 0) async throws -> [Spark_Transfer] {
         let client = try await getCoordinatorClient()
         let metadata = try await getAuthMetadata(for: config.coordinatorAddress)
 
         var filter = Spark_TransferFilter()
         filter.receiverIdentityPublicKey = signer.identityPublicKey
         filter.network = config.networkProto
+        filter.limit = Int64(limit)
+        filter.offset = Int64(offset)
 
         let response = try await client.query_pending_transfers(
             request: ClientRequest(message: filter, metadata: metadata)
@@ -21,21 +92,54 @@ extension SparkWallet {
         return response.transfers
     }
 
-    /// Claim all pending transfers (lightning receives, spark transfers)
-    public func claimAllPendingTransfers() async throws -> Int {
-        let transfers = try await queryPendingTransfers()
-        var claimed = 0
-        for transfer in transfers {
-            try await claimTransfer(transfer)
-            claimed += 1
+    /// Claim every pending inbound transfer (Spark transfers, Lightning receives, deposits the SSP
+    /// credited) and report what could not be claimed.
+    ///
+    /// Claims run one at a time, wallet-wide: a swap's claim of its counter-transfer or a
+    /// concurrent pass waits for this one. A transfer that cannot be claimed is recorded in
+    /// `failures` and the pass moves on to the rest, as the reference SDK does; a transfer the
+    /// operators already recorded as claimed by this wallet counts as claimed.
+    public func claimPendingTransfers() async throws -> PendingTransferClaim {
+        try await claimLock.run {
+            try await PendingTransferDrain.run(
+                fetch: { limit, offset in try await self.queryPendingTransfers(limit: limit, offset: offset) },
+                claim: { transfer in try await self.claimTransferTreatingDuplicatesAsClaimed(transfer) }
+            )
         }
-        return claimed
+    }
+
+    /// Claim every pending inbound transfer; returns how many were claimed. Transfers that cannot
+    /// be claimed no longer stop the rest — use `claimPendingTransfers()` to see them.
+    @discardableResult
+    public func claimAllPendingTransfers() async throws -> Int {
+        try await claimPendingTransfers().claimedTransferIds.count
+    }
+
+    /// Claim one transfer under the wallet-wide claim lock (used by swaps for their
+    /// counter-transfer, which a concurrent claim pass may already have claimed).
+    func claimTransfer(_ transfer: Spark_Transfer) async throws {
+        try await claimLock.run {
+            try await self.claimTransferTreatingDuplicatesAsClaimed(transfer)
+        }
+    }
+
+    /// The operators answer ALREADY_EXISTS once this receiver has claimed the transfer; like the
+    /// reference SDK, confirm the transfer is complete and treat it as claimed.
+    private func claimTransferTreatingDuplicatesAsClaimed(_ transfer: Spark_Transfer) async throws {
+        do {
+            try await claimTransferNow(transfer)
+        } catch let error as RPCError where error.code == .alreadyExists {
+            guard try await queryTransferById(transfer.id).status == .completed else {
+                throw error
+            }
+        }
     }
 
     /// Claim a single pending transfer using the single-call claim_transfer with ClaimPackage.
     /// The sender's signature on every leaf is verified first; a transfer that fails
     /// verification is refused before any secret is decrypted or any refund is signed.
-    func claimTransfer(_ transfer: Spark_Transfer) async throws {
+    /// Callers hold `claimLock`.
+    private func claimTransferNow(_ transfer: Spark_Transfer) async throws {
         try TransferLeafVerifier.verify(transfer: transfer, receiverIdentityPublicKey: signer.identityPublicKey)
 
         let client = try await getCoordinatorClient()
