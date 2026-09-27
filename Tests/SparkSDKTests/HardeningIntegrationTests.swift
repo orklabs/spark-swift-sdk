@@ -30,6 +30,24 @@ struct HardeningIntegrationTests {
         return leaves.reduce(0) { $0 + $1.valueSats }
     }
 
+    /// A sender, receiver and amount for which the sender has no exact leaf combination, so the
+    /// send swaps for change first. Tries both wallets; nil when neither has a gap up to 2,000 sats.
+    static func swapPair() async throws -> (pair: Pair, amount: Int64)? {
+        let a = try await makeWallet(TestConfig.walletAMnemonic)
+        let b = try await makeWallet(TestConfig.walletBMnemonic)
+        for (sender, receiver, label) in [(a, b, "A"), (b, a, "B")] {
+            let leaves = try await sender.getSpendableLeaves()
+            let total = leaves.reduce(0) { $0 + $1.valueSats }
+            guard total > 0,
+                  let amount = (1...min(total, 2_000)).first(where: { SparkWallet.tryExactSelection(leaves, amountSats: $0) == nil })
+            else { continue }
+            return (Pair(sender: sender, receiver: receiver, senderLabel: label, senderSpendable: total), amount)
+        }
+        await a.close()
+        await b.close()
+        return nil
+    }
+
     static func makePair() async throws -> Pair {
         let a = try await makeWallet(TestConfig.walletAMnemonic)
         let b = try await makeWallet(TestConfig.walletBMnemonic)
@@ -142,14 +160,11 @@ struct HardeningIntegrationTests {
 
     @Test("A send no leaf combination can pay exactly swaps for change first", .timeLimit(.minutes(5)))
     func sendWithSwap() async throws {
-        let pair = try await Self.makePair()
-        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
-        let leaves = try await pair.sender.getSpendableLeaves()
-        let total = leaves.reduce(0) { $0 + $1.valueSats }
-        guard let amount = (1...min(total, 200)).first(where: { SparkWallet.tryExactSelection(leaves, amountSats: $0) == nil }) else {
-            Issue.record(Comment(rawValue: "every amount up to 200 sats has an exact leaf combination"))
+        guard let (pair, amount) = try await Self.swapPair() else {
+            Issue.record(Comment(rawValue: "both wallets have an exact leaf combination for every amount up to 2,000 sats"))
             return
         }
+        defer { Task { await pair.sender.close(); await pair.receiver.close() } }
         _ = try await pair.receiver.claimPendingTransfers()
         let receiverBefore = try await pair.receiver.getBalance().satsBalance
         let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: amount)
@@ -604,15 +619,14 @@ extension HardeningIntegrationTests {
         print("with a 3 s allowance the stream was resubscribed \(tight.count) time(s)")
     }
 
-    @Test("A payment is reported to its receiver, and the sender's swap counter-transfer is not reported as received",
+    @Test("A payment is reported to its receiver, and a swap's counter-transfer is not reported as received",
           .timeLimit(.minutes(5)))
     func eventsForSwappedSend() async throws {
         let pair = try await Self.makePair()
         defer { Task { await pair.sender.close(); await pair.receiver.close() } }
-        let leaves = try await pair.sender.getSpendableLeaves()
-        let total = leaves.reduce(0) { $0 + $1.valueSats }
-        guard let amount = (1...min(total, 200)).first(where: { SparkWallet.tryExactSelection(leaves, amountSats: $0) == nil }) else {
-            Issue.record(Comment(rawValue: "every amount up to 200 sats has an exact leaf combination"))
+        guard pair.senderSpendable >= 15,
+              let smallest = try await pair.sender.getSpendableLeaves().min(by: { $0.valueSats < $1.valueSats }) else {
+            Issue.record(Comment(rawValue: "sender needs 15 spendable sats, has \(pair.senderSpendable)"))
             return
         }
         let senderLog = EventLog()
@@ -621,14 +635,17 @@ extension HardeningIntegrationTests {
         let receiverEvents = try await Self.record(pair.receiver, into: receiverLog)
         try await Task.sleep(for: .seconds(2))
 
-        let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: amount)
-        print("[\(pair.senderLabel)] sent \(amount) sats through a swap, transfer \(transfer.id)")
+        // A swap of the sender's own: the SSP's counter-transfer reaches the sender.
+        _ = try await pair.sender.requestLeavesSwap(targetAmounts: [smallest.valueSats])
+        // A payment to the receiver.
+        let transfer = try await pair.sender.send(receiverSparkAddress: pair.receiver.getSparkAddress(), amountSats: 10)
+        print("[\(pair.senderLabel)] swapped a \(smallest.valueSats)-sat leaf and sent 10 sats, transfer \(transfer.id)")
         try await Task.sleep(for: .seconds(8))
         senderEvents.cancel()
         receiverEvents.cancel()
 
         #expect(await receiverLog.contains { if case .transferReceived(let received) = $0 { received.id == transfer.id } else { false } })
-        // The swap's counter-transfer reached the sender too, and is not a payment.
+        // The swap's counter-transfer is not a payment.
         #expect(await !senderLog.contains { if case .transferReceived = $0 { true } else { false } })
         #expect(await senderLog.contains { if case .transferSent(let sent) = $0 { sent.id == transfer.id } else { false } })
         print("sender events: \(await senderLog.events.count), receiver events: \(await receiverLog.events.count)")
