@@ -117,4 +117,49 @@ struct ClaimVerificationTests {
             try TransferLeafVerifier.verify(transfer: transfer([good], id: id), receiverIdentityPublicKey: sender.identityPublicKey)
         }
     }
+
+    @Test("A multi-receiver transfer is claimed for this wallet's own leaves, whichever receiver the operators recorded")
+    func multiReceiver() throws {
+        let id = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+        let other = Data([0x03] + Array(repeating: 0x44, count: 32))
+        func edge(_ id: String, _ key: Data, _ status: Spark_TransferReceiverStatus = .keyTweaked) -> Spark_TransferReceiver {
+            var receiver = Spark_TransferReceiver()
+            receiver.id = id
+            receiver.identityPublicKey = key
+            receiver.status = status
+            return receiver
+        }
+        var mine = try leaf(id: "leaf-a", transferId: id, cipher: Data(repeating: 1, count: 40), signWith: sender)
+        mine.transferReceiverID = "edge-me"
+        var theirs = try leaf(id: "leaf-b", transferId: id, cipher: Data(repeating: 2, count: 40), signWith: sender)
+        theirs.transferReceiverID = "edge-other"
+        var split = transfer([mine, theirs], id: id)
+        // The operators record the lowest receiver key, which is not this wallet's.
+        split.receiverIdentityPublicKey = other
+        split.receivers = [edge("edge-other", other), edge("edge-me", receiver.identityPublicKey)]
+
+        let scoped = try TransferLeafVerifier.scoped(split, toReceiver: receiver.identityPublicKey)
+        #expect(scoped.leaves.map(\.leaf.id) == ["leaf-a"])
+        try TransferLeafVerifier.verify(transfer: scoped, receiverIdentityPublicKey: receiver.identityPublicKey)
+
+        // Not among the receivers, or no leaves on this wallet's edge.
+        #expect(throws: SparkError.self) { _ = try TransferLeafVerifier.scoped(split, toReceiver: self.sender.identityPublicKey) }
+        var unassigned = split
+        unassigned.leaves = [theirs]
+        #expect(throws: SparkError.self) { _ = try TransferLeafVerifier.scoped(unassigned, toReceiver: self.receiver.identityPublicKey) }
+        // A single-receiver transfer is not narrowed.
+        let single = transfer([mine], id: id)
+        #expect(try TransferLeafVerifier.scoped(single, toReceiver: receiver.identityPublicKey) == single)
+
+        // This wallet's leg completes with its own edge, before the whole transfer does.
+        #expect(!TransferLeafVerifier.isReceiverLegComplete(split, receiverIdentityPublicKey: receiver.identityPublicKey))
+        var legDone = split
+        legDone.receivers = [edge("edge-other", other), edge("edge-me", receiver.identityPublicKey, .completed)]
+        #expect(TransferLeafVerifier.isReceiverLegComplete(legDone, receiverIdentityPublicKey: receiver.identityPublicKey))
+        #expect(!TransferLeafVerifier.isReceiverLegComplete(legDone, receiverIdentityPublicKey: other))
+        var whole = single
+        whole.status = .completed
+        #expect(TransferLeafVerifier.isReceiverLegComplete(whole, receiverIdentityPublicKey: receiver.identityPublicKey))
+        #expect(!TransferLeafVerifier.isReceiverLegComplete(single, receiverIdentityPublicKey: receiver.identityPublicKey))
+    }
 }

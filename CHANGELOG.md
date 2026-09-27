@@ -61,6 +61,12 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- A multi-receiver transfer can be claimed by every receiver. The operators record only the
+  first (lowest-key) receiver in `receiver_identity_public_key` but deliver the transfer to all of
+  them; the SDK refused it unless this wallet was that first receiver, so it stayed pending for
+  good. As in the reference SDK, the transfer is narrowed to this wallet's receiver edge and its
+  leaves before it is verified and claimed, it counts as claimed once this wallet's own leg is
+  complete, and `SatsBalance.incoming` counts only this wallet's leaves of it.
 - Transfers whose leaves carry a scheme-tagged sender signature can be claimed. The current
   protocol lets a leaf carry either the legacy ECDSA signature or a typed one (ECDSA in strict DER,
   or BIP-340 Schnorr, which the operators emit for Schnorr MPC senders); the SDK read only the

@@ -149,22 +149,25 @@ extension SparkWallet {
     }
 
     /// The operators answer ALREADY_EXISTS once this receiver has claimed the transfer; like the
-    /// reference SDK, confirm the transfer is complete and treat it as claimed.
+    /// reference SDK, confirm this wallet's leg is complete and treat it as claimed.
     private func claimTransferTreatingDuplicatesAsClaimed(_ transfer: Spark_Transfer) async throws {
         do {
             try await claimTransferNow(transfer)
         } catch let error as RPCError where error.code == .alreadyExists {
-            guard try await queryTransferById(transfer.id).status == .completed else {
+            guard TransferLeafVerifier.isReceiverLegComplete(
+                try await queryTransferById(transfer.id), receiverIdentityPublicKey: signer.identityPublicKey
+            ) else {
                 throw error
             }
         }
     }
 
     /// Claim a single pending transfer using the single-call claim_transfer with ClaimPackage.
-    /// The sender's signature on every leaf is verified first; a transfer that fails
-    /// verification is refused before any secret is decrypted or any refund is signed.
-    /// Callers hold `claimLock`.
-    private func claimTransferNow(_ transfer: Spark_Transfer) async throws {
+    /// A multi-receiver transfer is narrowed to this wallet's own leaves, and the sender's
+    /// signature on every leaf is verified first; a transfer that fails verification is refused
+    /// before any secret is decrypted or any refund is signed. Callers hold `claimLock`.
+    private func claimTransferNow(_ pending: Spark_Transfer) async throws {
+        let transfer = try TransferLeafVerifier.scoped(pending, toReceiver: signer.identityPublicKey)
         try TransferLeafVerifier.verify(transfer: transfer, receiverIdentityPublicKey: signer.identityPublicKey)
 
         let client = try await getCoordinatorClient()

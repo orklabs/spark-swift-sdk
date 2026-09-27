@@ -196,8 +196,23 @@ struct BalanceSummaryTests {
         selfTransfer.type = .transfer
         let pending = [counterSwap, legacyCounterSwap, payment, selfTransfer]
         // The self-transfer's leaf is already counted as outgoing.
-        #expect(SparkWallet.incomingSats(pending, excludingLeafIds: ["s1"]) == 1_000 + 24)
-        #expect(SparkWallet.incomingSats(pending, excludingLeafIds: []) == 1_000 + 24 + 7)
+        let me = Data([0x02] + Array(repeating: 0x33, count: 32))
+        #expect(SparkWallet.incomingSats(pending, excludingLeafIds: ["s1"], receiver: me) == 1_000 + 24)
+        #expect(SparkWallet.incomingSats(pending, excludingLeafIds: [], receiver: me) == 1_000 + 24 + 7)
+
+        // A multi-receiver payment counts only this wallet's leaves.
+        var split = transfer("split", leaves: [("m1", 300), ("m2", 200), ("m3", 100)])
+        split.type = .transfer
+        split.receivers = [("edge-me", me), ("edge-other", Data([0x03] + Array(repeating: 0x44, count: 32)))].map { id, key in
+            var receiver = Spark_TransferReceiver()
+            receiver.id = id
+            receiver.identityPublicKey = key
+            return receiver
+        }
+        for (index, edge) in ["edge-me", "edge-other", "edge-me"].enumerated() {
+            split.leaves[index].transferReceiverID = edge
+        }
+        #expect(SparkWallet.incomingSats([split], excludingLeafIds: [], receiver: me) == 300 + 100)
     }
 
     @Test("In-flight transfers are queried with the reference SDK's types and statuses")

@@ -77,10 +77,42 @@ enum TransferLeafVerifier {
         }
     }
 
+    /// A transfer narrowed to `receiverIdentityPublicKey`'s own receiver edge and its leaves — the
+    /// reference SDK's `scopeTransferLeavesToReceiver`. The operators record only the first
+    /// (lowest-key) receiver of a multi-receiver transfer in `receiver_identity_public_key`, but
+    /// deliver it to every receiver and may return every receiver's leaves. A transfer with one
+    /// receiver is returned unchanged.
+    static func scoped(_ transfer: Spark_Transfer, toReceiver receiverIdentityPublicKey: Data) throws -> Spark_Transfer {
+        guard transfer.receivers.count > 1 else { return transfer }
+        guard let own = transfer.receivers.first(where: { $0.identityPublicKey == receiverIdentityPublicKey }),
+              !own.id.isEmpty else {
+            throw SparkError.untrustedResponse("transfer \(transfer.id) does not list this wallet among its receivers")
+        }
+        var scoped = transfer
+        scoped.leaves = transfer.leaves.filter { $0.transferReceiverID == own.id }
+        guard !scoped.leaves.isEmpty else {
+            throw SparkError.untrustedResponse("transfer \(transfer.id) assigns no leaves to this wallet")
+        }
+        return scoped
+    }
+
+    /// Whether `receiverIdentityPublicKey`'s leg of a transfer is complete: the whole transfer,
+    /// or for a multi-receiver transfer this receiver's edge — the whole transfer completes only
+    /// once every receiver has claimed (the reference SDK's `isReceiverLegComplete`).
+    static func isReceiverLegComplete(_ transfer: Spark_Transfer, receiverIdentityPublicKey: Data) -> Bool {
+        if transfer.status == .completed {
+            return true
+        }
+        guard transfer.receivers.count > 1 else { return false }
+        return transfer.receivers.first { $0.identityPublicKey == receiverIdentityPublicKey }?.status == .completed
+    }
+
     /// Throws `SparkError.untrustedResponse` unless every leaf is present and carries a valid
-    /// sender signature, and the transfer is addressed to `receiverIdentityPublicKey`.
+    /// sender signature, and the transfer is addressed to `receiverIdentityPublicKey` — as its
+    /// recorded receiver or one of its receivers.
     static func verify(transfer: Spark_Transfer, receiverIdentityPublicKey: Data) throws {
-        guard transfer.receiverIdentityPublicKey == receiverIdentityPublicKey else {
+        guard transfer.receiverIdentityPublicKey == receiverIdentityPublicKey
+                || transfer.receivers.contains(where: { $0.identityPublicKey == receiverIdentityPublicKey }) else {
             throw SparkError.untrustedResponse("transfer \(transfer.id) is not addressed to this wallet")
         }
         guard !transfer.leaves.isEmpty else {
