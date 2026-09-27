@@ -79,6 +79,11 @@ migration note.
   AVAILABLE nodes.
 
 ### Fixed
+- Token transaction hashes order invoice attachments as the operators and the reference SDK do:
+  by each invoice's id (its 16 UUID bytes), not by the invoice string. The two orders can
+  differ, and then the hash did not match the operators' (the reference SDK's known-answer
+  vector failed). An attachment that is not a Spark invoice is refused, as the operators refuse it.
+  The SDK does not attach invoices yet, so no transaction was affected.
 - `transferTokens(idempotencyKey:)` makes a retry safe. A retry built a new transaction, but the
   operators answer a key with the first transaction, so the SDK refused the answer: seen on
   mainnet as "final token transaction rejected: input 0 changed", after the first transfer had

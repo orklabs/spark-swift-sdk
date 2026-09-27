@@ -163,19 +163,34 @@ func hashTokenTransactionV2(
         allHashes.append(sha256(uint64BE(expirySecs)))
     }
 
-    // Hash invoice attachments (V2)
+    // Hash invoice attachments (V2): each raw invoice string, ordered by the invoice's id (its 16
+    // UUID bytes) as the operators and the reference SDK order them.
     let attachments = tx.invoiceAttachments
     allHashes.append(sha256(uint32BE(UInt32(attachments.count))))
-    // Sort invoices by their raw string for deterministic ordering
-    let sorted = attachments.sorted { $0.sparkInvoice < $1.sparkInvoice }
-    for attachment in sorted {
-        allHashes.append(sha256(Data(attachment.sparkInvoice.utf8)))
+    let keyed = try attachments.enumerated().map { index, attachment in
+        (id: try sparkInvoiceId(attachment.sparkInvoice, index: index), raw: attachment.sparkInvoice)
+    }
+    for attachment in keyed.sorted(by: { $0.id.lexicographicallyPrecedes($1.id) }) {
+        allHashes.append(sha256(Data(attachment.raw.utf8)))
     }
 
     // Final hash of all concatenated hashes
     var concatenated = Data()
     for h in allHashes { concatenated.append(h) }
     return sha256(concatenated)
+}
+
+/// The id of the Spark invoice in invoice attachment `index`: the 16 UUID bytes of its
+/// `SparkInvoiceFields.id`. On any network: the hash does not check it, as the operators' and the
+/// reference SDK's do not.
+private func sparkInvoiceId(_ invoice: String, index: Int) throws -> Data {
+    guard let (_, words) = try? Bech32m.decodeBech32m(invoice),
+          let bytes = Bech32.fromWords(words),
+          let address = try? Spark_SparkAddress(serializedBytes: bytes),
+          address.hasSparkInvoiceFields, address.sparkInvoiceFields.id.count == 16 else {
+        throw SparkError.invalidArgument("invoice attachment \(index) is not a Spark invoice with a 16-byte id")
+    }
+    return address.sparkInvoiceFields.id
 }
 
 /// Hash an operator-specific token transaction signable payload.
