@@ -114,3 +114,24 @@ func executeGraphQL(
 
     return GraphQLResponse(data: resultData)
 }
+
+/// An SSP `CurrencyAmount` (`original_value` in `original_unit`) in sats.
+enum SspCurrencyAmount {
+    /// SATOSHI as is, MILLISATOSHI rounded up to whole sats; any other unit, a missing field or a
+    /// negative value is refused, as the reference SDK refuses a fee estimate in another unit.
+    static func sats(_ amount: [String: Any]?, field: String) throws -> Int64 {
+        guard let amount,
+              let value = amount["original_value"] as? Int64, value >= 0,
+              let unit = amount["original_unit"] as? String else {
+            throw SparkError.invalidResponse("SSP \(field) is missing or malformed")
+        }
+        switch unit {
+        case "SATOSHI":
+            return value
+        case "MILLISATOSHI":
+            return value / 1000 + (value % 1000 == 0 ? 0 : 1)
+        default:
+            throw SparkError.invalidResponse("SSP \(field) is in an unsupported unit: \(unit)")
+        }
+    }
+}

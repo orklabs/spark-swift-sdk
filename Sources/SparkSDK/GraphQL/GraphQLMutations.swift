@@ -281,6 +281,7 @@ enum GraphQLQueries {
             }) {
                 fee_estimate {
                     original_value
+                    original_unit
                 }
             }
         }

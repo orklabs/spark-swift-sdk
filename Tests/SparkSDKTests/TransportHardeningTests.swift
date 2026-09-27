@@ -51,6 +51,27 @@ struct TransportHardeningTests {
         #expect(AuthRetryInterceptor.authnService == "spark_authn.SparkAuthnService")
     }
 
+    @Test("SSP amounts are read in their reported unit; other units are refused")
+    func currencyAmounts() throws {
+        func amount(_ value: Any, _ unit: String?) -> [String: Any] {
+            var object: [String: Any] = ["original_value": value]
+            if let unit { object["original_unit"] = unit }
+            return object
+        }
+        // As the SSP's JSON arrives: numbers are NSNumbers.
+        let decoded = try JSONSerialization.jsonObject(with: Data(#"{"original_value": 2000, "original_unit": "MILLISATOSHI"}"#.utf8))
+        #expect(try SspCurrencyAmount.sats(decoded as? [String: Any], field: "fee") == 2)
+        #expect(try SspCurrencyAmount.sats(amount(Int64(2), "SATOSHI"), field: "fee") == 2)
+        #expect(try SspCurrencyAmount.sats(amount(Int64(2001), "MILLISATOSHI"), field: "fee") == 3)
+        #expect(try SspCurrencyAmount.sats(amount(Int64(0), "MILLISATOSHI"), field: "fee") == 0)
+        for bad in [amount(Int64(1), "BITCOIN"), amount(Int64(1), "USD"), amount(Int64(1), nil),
+                    amount(Int64(-1), "SATOSHI"), amount("12", "SATOSHI")] {
+            #expect(throws: SparkError.self) { _ = try SspCurrencyAmount.sats(bad, field: "fee") }
+        }
+        #expect(throws: SparkError.self) { _ = try SspCurrencyAmount.sats(nil, field: "fee") }
+        #expect(GraphQLQueries.lightningSendFeeEstimate.contains("original_unit"))
+    }
+
     @Test("An SSP auth rejection is recognised, other failures are not")
     func sspAuthFailureClassifier() {
         #expect(SspGraphQLClient.isAuthFailure(.graphqlError("HTTP 401")))

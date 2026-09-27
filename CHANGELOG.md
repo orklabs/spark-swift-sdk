@@ -44,6 +44,12 @@ migration note.
   of this wallet. `Bolt11Invoice` decodes both forms as the reference SDK does.
 
 ### Fixed
+- SSP fee amounts are read in the unit the SSP reports. The Lightning fee estimate was always
+  divided by 1000 as if it were in millisatoshi, and the cooperative-exit fees were taken as
+  sats; an estimate reported in another unit would have been misread, capped against the wrong
+  number and, for Lightning, underpaid after the leaves were locked. `original_unit` is now read
+  (SATOSHI, MILLISATOSHI rounded up) and any other unit is refused, as the reference SDK does
+  for the Lightning estimate.
 - Lightning preimage shares go to the operator that validates them. Share `i` went to the `i`-th
   configured operator, but each operator validates the share at its own index (encoded in its
   identifier), so a configuration listing operators in another order made every invoice creation

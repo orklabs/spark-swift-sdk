@@ -20,16 +20,16 @@ extension SparkWallet {
         )
 
         guard let estimates = response["coop_exit_fee_estimates"] as? [String: Any],
-              let fast = estimates["speed_fast"] as? [String: Any],
-              let userFee = fast["user_fee"] as? [String: Any],
-              let l1Fee = fast["l1_broadcast_fee"] as? [String: Any],
-              let userFeeValue = userFee["original_value"] as? Int64,
-              let l1FeeValue = l1Fee["original_value"] as? Int64 else {
+              let fast = estimates["speed_fast"] as? [String: Any] else {
             throw SparkError.invalidResponse("Invalid fee estimate response")
         }
-
-        // Values are in sats
-        let totalFeeSats = userFeeValue + l1FeeValue
+        // Each fee in the unit the SSP reports it in.
+        let userFee = try SspCurrencyAmount.sats(fast["user_fee"] as? [String: Any], field: "cooperative exit user fee")
+        let l1Fee = try SspCurrencyAmount.sats(fast["l1_broadcast_fee"] as? [String: Any], field: "cooperative exit broadcast fee")
+        let (totalFeeSats, overflow) = userFee.addingReportingOverflow(l1Fee)
+        guard !overflow else {
+            throw SparkError.invalidResponse("cooperative exit fees overflow")
+        }
         return FeeQuote(feeSats: totalFeeSats, feeRateSatsPerVbyte: 0)
     }
 

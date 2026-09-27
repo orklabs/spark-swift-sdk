@@ -465,14 +465,11 @@ extension SparkWallet {
             variables: variables
         )
 
-        guard let estimate = response["lightning_send_fee_estimate"] as? [String: Any],
-              let feeEstimate = estimate["fee_estimate"] as? [String: Any],
-              let originalValue = feeEstimate["original_value"] as? Int64 else {
+        guard let estimate = response["lightning_send_fee_estimate"] as? [String: Any] else {
             throw SparkError.invalidResponse("Invalid fee estimate response")
         }
-
-        // originalValue is in millisats, convert to sats (ceiling)
-        return (originalValue + 999) / 1000
+        // In the unit the SSP reports (the reference SDK switches on it too).
+        return try SspCurrencyAmount.sats(estimate["fee_estimate"] as? [String: Any], field: "lightning fee estimate")
     }
 
     /// nSequence of the first input of a raw Bitcoin transaction (where Spark keeps leaf timelocks).
